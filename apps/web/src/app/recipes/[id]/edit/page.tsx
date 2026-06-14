@@ -87,6 +87,7 @@ export default function EditRecipePage() {
     status: (data.recipe.status === "archived" ? "draft" : data.recipe.status) as RecipeStatus,
     enabledSections: (data.recipe.enabledSections as Record<string, boolean>) ?? {},
     notes: data.recipe.notes,
+    isTemplate: (data.recipe as { isTemplate?: boolean }).isTemplate ?? false,
     inputs: data.inputs.map((i, idx) => ({
       uiId: `existing-input-${i.id}`,
       kind: i.kind as InputKind,
@@ -110,6 +111,7 @@ export default function EditRecipePage() {
       estimatedDurationHours: s.estimatedDurationHours !== null ? Number(s.estimatedDurationHours) : null,
       notes: s.notes,
       packagingPath: ((s as { packagingPath?: string }).packagingPath as PackagingPath) ?? "all",
+      isOptional: (s as { isOptional?: boolean }).isOptional ?? false,
     })),
   };
 

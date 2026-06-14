@@ -105,6 +105,8 @@ export interface RecipeStepDraft {
   estimatedDurationHours?: number | null;
   notes?: string | null;
   packagingPath: PackagingPath;
+  /** Situational step — skipped or included per batch at execution time. */
+  isOptional: boolean;
 }
 
 export interface RecipeDraft {
@@ -114,6 +116,8 @@ export interface RecipeDraft {
   status: RecipeStatus;
   enabledSections: Record<string, boolean>;
   notes?: string | null;
+  /** Style template — a reusable starting point cloned and tweaked per batch. */
+  isTemplate: boolean;
   inputs: RecipeInputDraft[];
   steps: RecipeStepDraft[];
 }
@@ -204,6 +208,7 @@ const EMPTY_DRAFT: RecipeDraft = {
   status: "draft",
   enabledSections: { ingredients: true, process_steps: true },
   notes: "",
+  isTemplate: false,
   inputs: [],
   steps: [],
 };
@@ -325,6 +330,7 @@ export function RecipeBuilder({
           actionData: {},
           notes: null,
           packagingPath: "all",
+          isOptional: false,
         },
       ],
     }));
@@ -398,6 +404,7 @@ export function RecipeBuilder({
         status: draft.status,
         enabledSections: draft.enabledSections,
         notes: draft.notes?.trim() || null,
+        isTemplate: draft.isTemplate,
         inputs,
         steps,
         changeSummary: changeSummary.trim() || null,
@@ -460,6 +467,21 @@ export function RecipeBuilder({
               rows={2}
             />
           </div>
+          <label className="md:col-span-2 flex items-start gap-3 p-3 rounded-md border hover:bg-gray-50 cursor-pointer">
+            <Checkbox
+              checked={draft.isTemplate}
+              onCheckedChange={(v) => setField("isTemplate", v === true)}
+              className="mt-0.5"
+            />
+            <div>
+              <div className="font-medium text-sm">Style template</div>
+              <div className="text-xs text-muted-foreground">
+                Mark this as a reusable starting point for a cider style (e.g.
+                &quot;Fruited cider&quot;, &quot;Bottle-conditioned single varietal&quot;).
+                Duplicate it to make a specific recipe and swap the fruit, sugar, etc.
+              </div>
+            </div>
+          </label>
         </CardContent>
       </Card>
 
@@ -1119,6 +1141,11 @@ function StepRow({
                 {PACKAGING_PATHS.find((p) => p.value === step.packagingPath)?.short}
               </Badge>
             )}
+            {step.isOptional && (
+              <Badge variant="outline" className="text-[10px] border-gray-300 text-gray-600">
+                Optional
+              </Badge>
+            )}
           </div>
           {actionSummary ? (
             <div className="truncate text-gray-600">{actionSummary}</div>
@@ -1201,7 +1228,7 @@ function StepRow({
             />
           </div>
 
-          <div className="grid grid-cols-12 gap-2">
+          <div className="grid grid-cols-12 gap-2 items-end">
             <div className="col-span-4">
               <Label className="text-xs">Estimated duration (hours)</Label>
               <Input
@@ -1214,6 +1241,16 @@ function StepRow({
                 className="h-9"
               />
             </div>
+            <label className="col-span-8 flex items-center gap-2 cursor-pointer pb-2">
+              <Checkbox
+                checked={step.isOptional}
+                onCheckedChange={(v) => onChange({ isOptional: v === true })}
+              />
+              <span className="text-xs">
+                Optional step — situational; the operator skips or includes it per batch
+                (e.g. force-carbonate, pasteurize)
+              </span>
+            </label>
           </div>
 
           <div className="flex justify-end">

@@ -1765,6 +1765,12 @@ export const recipes = pgTable(
     /** 'draft' | 'active' | 'archived' (CHECK-constrained in SQL). */
     status: text("status").notNull().default("draft"),
 
+    /**
+     * Style template — a reusable starting point (e.g. "Fruited cider",
+     * "Bottle-conditioned single varietal"). Cloned to make specific recipes.
+     */
+    isTemplate: boolean("is_template").notNull().default(false),
+
     notes: text("notes"),
 
     createdBy: uuid("created_by").references(() => users.id),
@@ -1885,6 +1891,13 @@ export const recipeSteps = pgTable(
      * bottled), so both 'bottle' and 'keg' tails can run on one batch.
      */
     packagingPath: text("packaging_path").notNull().default("all"),
+
+    /**
+     * Situational step — included or skipped per batch at execution time
+     * (e.g. force-carbonation vs bottle-conditioning, optional pasteurization).
+     * Lets one recipe cover both finishes without separate variants.
+     */
+    isOptional: boolean("is_optional").notNull().default(false),
 
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

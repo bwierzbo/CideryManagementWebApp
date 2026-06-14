@@ -80,6 +80,7 @@ const recipeStepInputSchema = z.object({
   estimatedDurationHours: z.number().nonnegative().nullish(),
   notes: z.string().nullish(),
   packagingPath: z.enum(["all", "bottle", "keg"]).default("all"),
+  isOptional: z.boolean().default(false),
 });
 
 const recipeCreateSchema = z.object({
@@ -89,6 +90,7 @@ const recipeCreateSchema = z.object({
   enabledSections: z.record(z.string(), z.boolean()).default({}),
   status: z.enum(["draft", "active"]).default("draft"),
   notes: z.string().nullish(),
+  isTemplate: z.boolean().default(false),
   inputs: z.array(recipeInputInputSchema).default([]),
   steps: z.array(recipeStepInputSchema).default([]),
   changeSummary: z.string().nullish(),
@@ -103,6 +105,7 @@ const recipeUpdateSchema = z.object({
   enabledSections: z.record(z.string(), z.boolean()).optional(),
   status: z.enum(["draft", "active"]).optional(),
   notes: z.string().nullish(),
+  isTemplate: z.boolean().optional(),
   // If inputs/steps are provided, they REPLACE the existing rows entirely
   // (treated as the new authoritative state). Pass undefined to leave alone.
   inputs: z.array(recipeInputInputSchema).optional(),
@@ -147,6 +150,8 @@ export const recipesRouter = router({
           productType: z.enum(PRODUCT_TYPES).optional(),
           status: z.enum(RECIPE_STATUSES).optional(),
           search: z.string().optional(),
+          /** Filter by template flag: true → only templates, false → only non-templates. */
+          isTemplate: z.boolean().optional(),
           includeArchived: z.boolean().default(false),
           limit: z.number().int().min(1).max(200).default(50),
           offset: z.number().int().min(0).default(0),
@@ -173,6 +178,9 @@ export const recipesRouter = router({
       if (opts.search) {
         conditions.push(ilike(recipes.name, `%${opts.search}%`));
       }
+      if (opts.isTemplate !== undefined) {
+        conditions.push(eq(recipes.isTemplate, opts.isTemplate));
+      }
 
       const where = conditions.length > 0 ? and(...conditions) : undefined;
 
@@ -183,6 +191,7 @@ export const recipesRouter = router({
           description: recipes.description,
           productType: recipes.productType,
           status: recipes.status,
+          isTemplate: recipes.isTemplate,
           currentVersion: recipes.currentVersion,
           enabledSections: recipes.enabledSections,
           createdBy: recipes.createdBy,
@@ -294,6 +303,7 @@ export const recipesRouter = router({
             enabledSections: input.enabledSections,
             status: input.status,
             notes: input.notes ?? null,
+            isTemplate: input.isTemplate,
             currentVersion: 1,
             createdBy: ctx.user.id,
             updatedBy: ctx.user.id,
@@ -333,6 +343,7 @@ export const recipesRouter = router({
               estimatedDurationHours: s.estimatedDurationHours?.toString() ?? null,
               notes: s.notes ?? null,
               packagingPath: s.packagingPath,
+              isOptional: s.isOptional,
             })),
           );
         }
@@ -381,6 +392,7 @@ export const recipesRouter = router({
         if (input.enabledSections !== undefined) headPatch.enabledSections = input.enabledSections;
         if (input.status !== undefined)          headPatch.status = input.status;
         if (input.notes !== undefined)           headPatch.notes = input.notes;
+        if (input.isTemplate !== undefined)      headPatch.isTemplate = input.isTemplate;
 
         await tx.update(recipes).set(headPatch).where(eq(recipes.id, input.id));
 
