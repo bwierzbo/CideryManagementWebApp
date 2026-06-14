@@ -16,8 +16,9 @@
  * via the `onSubmit` prop. Parent owns navigation on success.
  */
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { calculatePU } from "lib";
+import { computeCumulativeOffsets, summarizeStepTrigger } from "lib/src/recipes/triggers";
 import { trpc } from "@/utils/trpc";
 import { useOrganizationSettings } from "@/contexts/SettingsContext";
 import {
@@ -222,6 +223,13 @@ export function RecipeBuilder({
   const [draft, setDraft] = useState<RecipeDraft>(initial ?? EMPTY_DRAFT);
   const [changeSummary, setChangeSummary] = useState("");
   const [error, setError] = useState<string | null>(null);
+
+  // Cumulative hours-from-start per step, so each step summary can show the
+  // running total (e.g. "day 5 from start"), not just the per-step offset.
+  const stepCumulativeHours = useMemo(
+    () => computeCumulativeOffsets(draft.steps),
+    [draft.steps],
+  );
 
   // Which rows (by uiId) are open for editing. Rows not in this set render as
   // a compact, read-only summary. Newly added rows are opened automatically;
@@ -619,6 +627,7 @@ export function RecipeBuilder({
                     step={step}
                     index={idx}
                     total={draft.steps.length}
+                    cumulativeHours={stepCumulativeHours[idx]}
                     editing={editingIds.has(step.uiId)}
                     ingredients={draft.inputs.filter((i) => i.kind === "ingredient")}
                     onChange={(p) => updateStep(step.uiId, p)}
@@ -1020,6 +1029,7 @@ function StepRow({
   step,
   index,
   total,
+  cumulativeHours,
   editing,
   ingredients,
   onChange,
@@ -1032,6 +1042,7 @@ function StepRow({
   step: RecipeStepDraft;
   index: number;
   total: number;
+  cumulativeHours: number | null;
   editing: boolean;
   ingredients: RecipeInputDraft[];
   onChange: (p: Partial<RecipeStepDraft>) => void;
@@ -1042,8 +1053,10 @@ function StepRow({
   onDone: () => void;
 }) {
   const kindLabel = STEP_KINDS.find((k) => k.value === step.kind)?.label ?? step.kind;
-  const triggerLabel =
-    TRIGGER_KINDS.find((t) => t.value === step.triggerKind)?.label ?? step.triggerKind;
+  const triggerLabel = summarizeStepTrigger(
+    { triggerKind: step.triggerKind, triggerData: step.triggerData },
+    cumulativeHours,
+  );
   const actionSummary = summarizeStepAction(step);
 
   return (

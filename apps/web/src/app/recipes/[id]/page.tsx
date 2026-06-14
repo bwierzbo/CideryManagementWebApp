@@ -57,6 +57,7 @@ import { toast } from "@/hooks/use-toast";
 import { canWithOverrides } from "lib/src/rbac/roles";
 import { computeScaledAmount } from "lib/src/recipes/scaling";
 import { computeRecipeBOM, recipeRowsToBomInput } from "lib/src/recipes/bom";
+import { computeCumulativeOffsets, summarizeStepTrigger } from "lib/src/recipes/triggers";
 
 // Color helpers (mirrored from the list page)
 function productTypeBadgeClass(productType: string): string {
@@ -98,25 +99,6 @@ const STEP_KIND_LABEL: Record<string, string> = {
   qa_gate:      "QA gate",
   note:         "Note",
 };
-
-function describeTrigger(triggerKind: string, triggerData: any): string {
-  switch (triggerKind) {
-    case "manual":
-      return "Manual — operator decides when";
-    case "date_offset_from_start":
-      return `Day ${triggerData?.days ?? "?"} from batch start`;
-    case "date_offset_from_previous":
-      return `${triggerData?.days ?? "?"} day(s) after previous step`;
-    case "after_previous":
-      return "Immediately after previous step";
-    case "sg_threshold":
-      return `When SG ${triggerData?.direction ?? "below"} ${triggerData?.sg ?? "?"}`;
-    case "sg_terminal_confirmed":
-      return "When terminal SG is confirmed";
-    default:
-      return triggerKind;
-  }
-}
 
 export default function RecipeDetailPage() {
   const params = useParams();
@@ -206,6 +188,9 @@ export default function RecipeDetailPage() {
   if (!data) return null;
 
   const { recipe, inputs, steps } = data;
+  const stepCumulativeHours = computeCumulativeOffsets(
+    steps.map((s) => ({ triggerKind: s.triggerKind, triggerData: s.triggerData as Record<string, unknown> })),
+  );
   const isArchived = !!recipe.archivedAt;
   const ingredients = inputs.filter((i) => i.kind === "ingredient");
   const parentBatchInputs = inputs.filter((i) => i.kind === "parent_batch_requirement");
@@ -480,7 +465,10 @@ export default function RecipeDetailPage() {
                       )}
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      {describeTrigger(s.triggerKind, s.triggerData)}
+                      {summarizeStepTrigger(
+                        { triggerKind: s.triggerKind, triggerData: s.triggerData as Record<string, unknown> },
+                        stepCumulativeHours[i],
+                      )}
                       {s.estimatedDurationHours
                         ? ` · est. ${s.estimatedDurationHours}h`
                         : ""}

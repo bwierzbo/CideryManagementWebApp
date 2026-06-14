@@ -212,6 +212,124 @@ function parseOffset(data: Record<string, unknown>): number | null {
   return null;
 }
 
+// ─── Schedule summary (cumulative time-from-start for the recipe UI) ─────────
+
+/** A step's timing inputs — the subset the schedule summary needs. */
+export interface ScheduleStep {
+  triggerKind: string;
+  triggerData: Record<string, unknown>;
+}
+
+/** Pull a date-offset trigger's {days}|{hours} as hours. Null when absent. */
+function offsetHours(data: Record<string, unknown>): number | null {
+  if (typeof data.days === "number") return data.days * 24;
+  if (typeof data.hours === "number") return data.hours;
+  return null;
+}
+
+/**
+ * Cumulative HOURS from batch start to each step, in order — so the recipe UI
+ * can show "day 5 from start" instead of only "2 days after previous step".
+ *
+ * Rules: `manual` and `after_previous` add 0 (treated as "happens at the same
+ * point"). `date_offset_from_previous` adds its offset. `date_offset_from_start`
+ * sets the absolute position. A missing offset or an SG-based trigger makes the
+ * total indeterminate from that step onward (null) — we genuinely can't predict
+ * a calendar position for those ahead of time.
+ */
+export function computeCumulativeOffsets(steps: ScheduleStep[]): (number | null)[] {
+  const out: (number | null)[] = [];
+  let running: number | null = 0;
+  for (const step of steps) {
+    if (running === null) {
+      out.push(null);
+      continue;
+    }
+    switch (step.triggerKind) {
+      case "manual":
+      case "after_previous":
+        out.push(running);
+        break;
+      case "date_offset_from_previous": {
+        const h = offsetHours(step.triggerData);
+        if (h === null) {
+          running = null;
+        } else {
+          running += h;
+        }
+        out.push(running);
+        break;
+      }
+      case "date_offset_from_start": {
+        const h = offsetHours(step.triggerData);
+        running = h; // absolute reset (null if missing)
+        out.push(running);
+        break;
+      }
+      default: // sg_threshold, sg_terminal_confirmed, unknown
+        running = null;
+        out.push(null);
+        break;
+    }
+  }
+  return out;
+}
+
+/** Format a span of hours as a friendly "N days" / "N hours" string. */
+export function formatDurationHours(hours: number): string {
+  if (hours === 0) return "0 days";
+  if (hours % 24 === 0) {
+    const d = hours / 24;
+    return `${d} day${d === 1 ? "" : "s"}`;
+  }
+  if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"}`;
+  return `${(hours / 24).toFixed(1)} days`;
+}
+
+/**
+ * Human summary of a step's trigger, including the cumulative time from batch
+ * start when known. `cumulativeHours` comes from {@link computeCumulativeOffsets}.
+ *
+ * @example "2 days after previous · 5 days from start"
+ * @example "Immediately after previous · 3 days from start"
+ * @example "Day 3 from batch start"
+ */
+export function summarizeStepTrigger(
+  step: ScheduleStep,
+  cumulativeHours: number | null,
+): string {
+  const total =
+    cumulativeHours !== null && cumulativeHours > 0
+      ? `${formatDurationHours(cumulativeHours)} from start`
+      : null;
+
+  switch (step.triggerKind) {
+    case "manual":
+      return "Manual (operator decides when)";
+    case "after_previous":
+      return total ? `Immediately after previous · ${total}` : "Immediately after previous step";
+    case "date_offset_from_previous": {
+      const h = offsetHours(step.triggerData);
+      if (h === null) return "Set a duration after previous step";
+      const per = `${formatDurationHours(h)} after previous`;
+      return total ? `${per} · ${total}` : per;
+    }
+    case "date_offset_from_start": {
+      const h = offsetHours(step.triggerData);
+      return h === null ? "Set days from batch start" : `${formatDurationHours(h)} from batch start`;
+    }
+    case "sg_threshold": {
+      const sg = step.triggerData.sg;
+      const dir = (step.triggerData.direction as string) ?? "below";
+      return typeof sg === "number" ? `When SG ${dir} ${sg}` : "When SG threshold is reached";
+    }
+    case "sg_terminal_confirmed":
+      return "When fermentation is terminal";
+    default:
+      return step.triggerKind;
+  }
+}
+
 function formatOffset(data: Record<string, unknown>): string {
   if (typeof data.days === "number") return `${data.days} day${data.days === 1 ? "" : "s"}`;
   if (typeof data.hours === "number") return `${data.hours} hour${data.hours === 1 ? "" : "s"}`;
