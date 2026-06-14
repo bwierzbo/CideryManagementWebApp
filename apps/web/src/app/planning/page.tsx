@@ -569,6 +569,8 @@ type Requirement = {
   sources: number;
 };
 
+const ALL_PERIODS = "__all";
+
 function RequirementsPanel({
   isLoading,
   requirements,
@@ -578,29 +580,70 @@ function RequirementsPanel({
   requirements: Requirement[];
   warnings: string[];
 }) {
-  // Group by period, then split additives vs packaging.
-  const byPeriod = useMemo(() => {
-    const map = new Map<string, Requirement[]>();
-    for (const r of requirements) {
-      const list = map.get(r.period) ?? [];
-      list.push(r);
-      map.set(r.period, list);
+  // Scope the buy list to a single period or the whole plan (seasonal total).
+  const [scope, setScope] = useState<string>(ALL_PERIODS);
+
+  const periods = useMemo(
+    () => Array.from(new Set(requirements.map((r) => r.period))).sort((a, b) => a.localeCompare(b)),
+    [requirements],
+  );
+
+  // If the selected period disappears (batches changed), fall back to "all".
+  const effectiveScope = scope !== ALL_PERIODS && !periods.includes(scope) ? ALL_PERIODS : scope;
+
+  // Gross totals for the selected scope — summed by variety, NO on-hand
+  // subtraction. This is "how much to have on hand to run the plan".
+  const lines = useMemo(() => {
+    const inScope =
+      effectiveScope === ALL_PERIODS
+        ? requirements
+        : requirements.filter((r) => r.period === effectiveScope);
+    const map = new Map<string, Requirement>();
+    for (const r of inScope) {
+      const key = `${r.category}|${r.varietyId ?? "null"}|${r.name}|${r.unit}`;
+      const existing = map.get(key);
+      if (existing) {
+        existing.quantity += r.quantity;
+        existing.sources += r.sources;
+      } else {
+        map.set(key, { ...r });
+      }
     }
-    return Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0]));
-  }, [requirements]);
+    return Array.from(map.values());
+  }, [requirements, effectiveScope]);
+
+  const additives = lines.filter((l) => l.category === "additive");
+  const packaging = lines.filter((l) => l.category === "packaging");
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base flex items-center gap-2">
-          <Package className="w-4 h-4" /> Inventory requirements
-        </CardTitle>
-        <CardDescription>
-          Gross quantities each period needs, summed across every planned batch. On-hand
-          comparison and a buy list come next.
-        </CardDescription>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <CardTitle className="text-base flex items-center gap-2">
+              <Package className="w-4 h-4" /> Buy list
+            </CardTitle>
+            <CardDescription>
+              Total quantities you&apos;ll need to purchase to run the plan — gross, before
+              counting what&apos;s already on hand. Plan seasonal items (berries, rhubarb) ahead.
+            </CardDescription>
+          </div>
+          {periods.length > 0 && (
+            <Select value={effectiveScope} onValueChange={setScope}>
+              <SelectTrigger className="w-44 shrink-0">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL_PERIODS}>Entire plan</SelectItem>
+                {periods.map((p) => (
+                  <SelectItem key={p} value={p}>{formatPeriod(p)}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        </div>
       </CardHeader>
-      <CardContent className="space-y-6">
+      <CardContent className="space-y-4">
         {warnings.length > 0 && (
           <Alert variant="destructive">
             <AlertCircle className="h-4 w-4" />
@@ -614,22 +657,20 @@ function RequirementsPanel({
 
         {isLoading ? (
           <Skeleton className="h-32 w-full" />
-        ) : byPeriod.length === 0 ? (
-          <p className="text-sm text-gray-500">Add planned batches to see requirements.</p>
+        ) : lines.length === 0 ? (
+          <p className="text-sm text-gray-500">Add planned batches to see what to buy.</p>
         ) : (
-          byPeriod.map(([period, lines]) => {
-            const additives = lines.filter((l) => l.category === "additive");
-            const packaging = lines.filter((l) => l.category === "packaging");
-            return (
-              <div key={period}>
-                <h3 className="font-semibold text-gray-900 mb-2">{formatPeriod(period)}</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <RequirementTable title="Additives" lines={additives} />
-                  <RequirementTable title="Packaging" lines={packaging} />
-                </div>
-              </div>
-            );
-          })
+          <>
+            <p className="text-xs text-gray-500">
+              {effectiveScope === ALL_PERIODS
+                ? "Totals across every period in the plan."
+                : `Totals for ${formatPeriod(effectiveScope)}.`}
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <RequirementTable title="Additives & ingredients" lines={additives} />
+              <RequirementTable title="Packaging" lines={packaging} />
+            </div>
+          </>
         )}
       </CardContent>
     </Card>
