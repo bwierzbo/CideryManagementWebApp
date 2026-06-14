@@ -125,7 +125,7 @@ export default function RecipeDetailPage() {
     { enabled: !!recipeId },
   );
 
-  const [previewVolumeL, setPreviewVolumeL] = useState<number>(60);
+  const [previewVolumeL, setPreviewVolumeL] = useState<number>(120);
   const [kegPortionL, setKegPortionL] = useState<number>(0);
   const [versionsOpen, setVersionsOpen] = useState(false);
   const [cloneDialogOpen, setCloneDialogOpen] = useState(false);
@@ -322,17 +322,25 @@ export default function RecipeDetailPage() {
                   className="w-32"
                 />
                 <span className="text-sm">L</span>
-                <div className="flex gap-1 ml-2">
-                  {[20, 60, 120, 240, 1000].map((v) => (
+                <div className="flex gap-1 ml-2 flex-wrap">
+                  {[
+                    { l: 20, note: "Carboy" },
+                    { l: 120, note: "Barrel" },
+                    { l: 240 },
+                    { l: 350, note: "3 BBL brite tank" },
+                    { l: 360 },
+                    { l: 1000 },
+                  ].map(({ l, note }) => (
                     <Button
-                      key={v}
+                      key={l}
                       type="button"
-                      variant={previewVolumeL === v ? "default" : "outline"}
+                      title={note}
+                      variant={previewVolumeL === l ? "default" : "outline"}
                       size="sm"
                       className="h-7 px-2 text-xs"
-                      onClick={() => setPreviewVolumeL(v)}
+                      onClick={() => setPreviewVolumeL(l)}
                     >
-                      {v}L
+                      {l}L
                     </Button>
                   ))}
                 </div>
