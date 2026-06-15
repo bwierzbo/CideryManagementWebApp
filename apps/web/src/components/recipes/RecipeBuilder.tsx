@@ -20,6 +20,7 @@ import { useState, useEffect, useMemo } from "react";
 import { calculatePU } from "lib";
 import { computeCumulativeOffsets, summarizeStepTrigger } from "lib/src/recipes/triggers";
 import { trpc } from "@/utils/trpc";
+import { cn } from "@/lib/utils";
 import { useOrganizationSettings } from "@/contexts/SettingsContext";
 import {
   Card,
@@ -42,10 +43,24 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import {
   Plus,
   Trash2,
   ChevronDown,
   ChevronRight,
+  ChevronsUpDown,
   AlertCircle,
   Check,
   Pencil,
@@ -734,6 +749,122 @@ export function RecipeBuilder({
 // Sub-components
 // ═══════════════════════════════════════════════════════════════════════════
 
+/**
+ * Ingredient picker. Selecting an inventory variety links the ingredient to
+ * stock automatically (sets additiveVarietyId). Typing a name that isn't in
+ * inventory creates an unlinked custom ingredient. Stock sufficiency is the
+ * planning view's concern, not this picker's — so no in/out-of-stock badges.
+ */
+function IngredientCombobox({
+  varieties,
+  label,
+  additiveVarietyId,
+  onPick,
+}: {
+  varieties: { id: string; name: string }[];
+  label: string;
+  additiveVarietyId: string | null;
+  onPick: (next: {
+    label: string;
+    additiveName: string;
+    additiveVarietyId: string | null;
+  }) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+
+  const q = query.trim().toLowerCase();
+  const filtered = q
+    ? varieties.filter((v) => v.name.toLowerCase().includes(q))
+    : varieties;
+  const exactMatch = varieties.some((v) => v.name.toLowerCase() === q);
+  const showCustom = q.length > 0 && !exactMatch;
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          className={cn(
+            "h-9 w-full justify-between font-normal",
+            !label && "text-muted-foreground",
+          )}
+        >
+          <span className="truncate">{label || "Search or type a name…"}</span>
+          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent
+        className="w-[--radix-popover-trigger-width] p-0 z-[200]"
+        align="start"
+      >
+        <Command shouldFilter={false}>
+          <CommandInput
+            placeholder="Search or type a name…"
+            value={query}
+            onValueChange={setQuery}
+          />
+          <CommandList className="max-h-[220px] overflow-y-auto overscroll-contain">
+            {filtered.length === 0 && !showCustom && (
+              <CommandEmpty>No inventory items.</CommandEmpty>
+            )}
+            {filtered.length > 0 && (
+              <CommandGroup heading="Inventory">
+                {filtered.map((v) => (
+                  <CommandItem
+                    key={v.id}
+                    value={v.id}
+                    onSelect={() => {
+                      onPick({
+                        label: v.name,
+                        additiveName: v.name,
+                        additiveVarietyId: v.id,
+                      });
+                      setQuery("");
+                      setOpen(false);
+                    }}
+                  >
+                    <Check
+                      className={cn(
+                        "mr-2 h-4 w-4",
+                        additiveVarietyId === v.id ? "opacity-100" : "opacity-0",
+                      )}
+                    />
+                    <span>{v.name}</span>
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            )}
+            {showCustom && (
+              <CommandGroup heading="Custom">
+                <CommandItem
+                  value={`__custom__${query}`}
+                  onSelect={() => {
+                    const name = query.trim();
+                    onPick({
+                      label: name,
+                      additiveName: name,
+                      additiveVarietyId: null,
+                    });
+                    setQuery("");
+                    setOpen(false);
+                  }}
+                >
+                  <Plus className="mr-2 h-4 w-4" />
+                  Use “{query.trim()}” (custom, not linked)
+                </CommandItem>
+              </CommandGroup>
+            )}
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 function IngredientRow({
   input,
   editing,
@@ -757,7 +888,7 @@ function IngredientRow({
     const meta = [
       input.additiveType,
       input.rateValue != null ? `${input.rateValue} ${input.rateUnit ?? ""}`.trim() : null,
-      input.additiveVarietyId ? "inventory-linked" : null,
+      input.additiveVarietyId ? "linked to inventory" : null,
       input.notes,
     ].filter(Boolean).join(" · ");
     return (
@@ -786,12 +917,12 @@ function IngredientRow({
         </Select>
       </div>
       <div className="col-span-3">
-        <Label className="text-xs">Name / label *</Label>
-        <Input
-          value={input.label}
-          onChange={(e) => onChange({ label: e.target.value, additiveName: e.target.value })}
-          placeholder="e.g. Strawberries"
-          className="h-9"
+        <Label className="text-xs">Ingredient *</Label>
+        <IngredientCombobox
+          varieties={additiveOpts.map((v) => ({ id: v.id, name: v.name }))}
+          label={input.label}
+          additiveVarietyId={input.additiveVarietyId ?? null}
+          onPick={(next) => onChange(next)}
         />
       </div>
       <div className="col-span-2">
@@ -825,36 +956,19 @@ function IngredientRow({
           <Trash2 className="w-4 h-4 text-red-500" />
         </Button>
       </div>
-      <div className="col-span-12">
-        <Label className="text-xs">Inventory item (optional — links this ingredient to stock for planning)</Label>
-        <Select
-          value={input.additiveVarietyId ?? "__none__"}
-          onValueChange={(v) => {
-            if (v === "__none__") {
-              onChange({ additiveVarietyId: null });
-              return;
-            }
-            const variety = additiveOpts.find((x) => x.id === v);
-            onChange({
-              additiveVarietyId: v,
-              // Fill the name from the variety if the operator hasn't typed one.
-              ...(input.label.trim()
-                ? {}
-                : { label: variety?.name ?? "", additiveName: variety?.name ?? "" }),
-            });
-          }}
-        >
-          <SelectTrigger className="h-9">
-            <SelectValue placeholder="Not linked (custom ingredient)" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="__none__">Not linked (custom ingredient)</SelectItem>
-            {additiveOpts.map((v) => (
-              <SelectItem key={v.id} value={v.id}>{v.name}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+      {input.label.trim() && (
+        <div className="col-span-12 -mt-1">
+          {input.additiveVarietyId ? (
+            <Badge variant="outline" className="text-[10px] border-green-300 text-green-700">
+              <Check className="w-3 h-3 mr-1" /> Linked to inventory
+            </Badge>
+          ) : (
+            <Badge variant="outline" className="text-[10px] border-gray-300 text-gray-600">
+              Custom — not linked to inventory
+            </Badge>
+          )}
+        </div>
+      )}
       <div className="col-span-12">
         <Input
           value={input.notes ?? ""}
