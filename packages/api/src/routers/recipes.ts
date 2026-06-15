@@ -434,6 +434,8 @@ export const recipesRouter = router({
                 actionData: s.actionData,
                 estimatedDurationHours: s.estimatedDurationHours?.toString() ?? null,
                 notes: s.notes ?? null,
+                packagingPath: s.packagingPath,
+                isOptional: s.isOptional,
               })),
             );
           }
