@@ -103,7 +103,7 @@ describe("computeRecipeBOM", () => {
       actionData: { containerVarietyId: null, containerVarietyName: "19L Keg", sizeML: 19000 },
     };
 
-    it("routes each package step to its portion and does not label kegs", () => {
+    it("packages only the bottled portion; kegs are vessels, not BOM lines", () => {
       const bom = computeRecipeBOM({
         ingredients: [],
         steps: [bottlePackageStep, kegPackageStep, labelStep],
@@ -113,8 +113,10 @@ describe("computeRecipeBOM", () => {
       });
       // bottles: 400 L / 0.75 = 533.3 → 534
       expect(bom.packaging.find((p) => p.name === "750ml Glass Bottles")?.quantity).toBe(534);
-      // kegs: 600 L / 19 L = 31.6 → 32
-      expect(bom.packaging.find((p) => p.name === "19L Keg")?.quantity).toBe(32);
+      // kegs are returnable vessels (keg tracker), never a BOM/buy-list line
+      expect(bom.packaging.find((p) => p.name === "19L Keg")).toBeUndefined();
+      // and a keg-path package step produces no "no container size" warning
+      expect(bom.warnings.some((w) => w.includes("19L Keg") || w.includes("Package into kegs"))).toBe(false);
       // labels apply to bottles only → 534, not 534 + kegs
       expect(bom.packaging.find((p) => p.name === "Heritage Label")?.quantity).toBe(534);
     });

@@ -3,8 +3,10 @@
  *
  * Resolves a recipe + a target finished volume + a bottle/keg split into the
  * exact inventory it consumes: additive amounts (rate × volume) and packaging
- * unit counts (⌈volume ÷ container size⌉), respecting each step's packaging
- * path so a split batch (e.g. 600 L kegged, 400 L bottled) is handled.
+ * unit counts (⌈volume ÷ container size⌉). Only consumables count: bottles,
+ * caps, and labels. Kegs are returnable reusable vessels (tracked like a
+ * fermentation tank in the keg tracker), so keg-path package steps are
+ * excluded from the BOM — only the bottled portion drives packaging.
  *
  * Every line carries a `varietyId` + numeric `quantity` + `unit`, so the
  * annual planner can SUM lines across many batches by (varietyId, unit).
@@ -133,9 +135,13 @@ export function computeRecipeBOM(input: RecipeBomInput): RecipeBom {
   let bottleUnits = 0;
   for (const s of input.steps) {
     if (s.kind !== "package") continue;
-    const d = (s.actionData ?? {}) as Record<string, unknown>;
     const path = s.packagingPath ?? "all";
-    const portionL = path === "keg" ? kegL : path === "bottle" ? bottleL : bottleL + kegL;
+    // Kegs are returnable, reusable vessels — tracked like a fermentation tank
+    // in the keg tracker, not a consumable. They never belong in the BOM; keg
+    // counts are a capacity/keg-tracker concern, not a purchasing one.
+    if (path === "keg") continue;
+    const d = (s.actionData ?? {}) as Record<string, unknown>;
+    const portionL = path === "bottle" ? bottleL : bottleL + kegL;
     const sizeML = typeof d.sizeML === "number" ? d.sizeML : null;
     if (!sizeML || sizeML <= 0) {
       warnings.push(`Package step "${s.label ?? "package"}" has no container size; can't count units.`);
