@@ -57,6 +57,7 @@ import { toast } from "@/hooks/use-toast";
 import { canWithOverrides } from "lib/src/rbac/roles";
 import { computeScaledAmount } from "lib/src/recipes/scaling";
 import { computeRecipeBOM, recipeRowsToBomInput } from "lib/src/recipes/bom";
+import { computeRecipeLabor } from "lib/src/recipes/labor";
 import { computeCumulativeOffsets, summarizeStepTrigger } from "lib/src/recipes/triggers";
 
 // Color helpers (mirrored from the list page)
@@ -126,7 +127,6 @@ export default function RecipeDetailPage() {
   );
 
   const [previewVolumeL, setPreviewVolumeL] = useState<number>(120);
-  const [kegPortionL, setKegPortionL] = useState<number>(0);
   const [versionsOpen, setVersionsOpen] = useState(false);
   const [cloneDialogOpen, setCloneDialogOpen] = useState(false);
   const [cloneName, setCloneName] = useState("");
@@ -195,15 +195,16 @@ export default function RecipeDetailPage() {
   const ingredients = inputs.filter((i) => i.kind === "ingredient");
   const parentBatchInputs = inputs.filter((i) => i.kind === "parent_batch_requirement");
 
-  // Bill of materials for the previewed batch size + bottle/keg split.
-  const kegL = Math.min(Math.max(0, kegPortionL), previewVolumeL);
+  // Bill of materials for the previewed batch size. Kegs are returnable
+  // vessels (keg tracker), not consumables, so the BOM previews the full batch
+  // as bottled; the real bottle/keg split is set per planned batch in Planning.
   const bom = computeRecipeBOM(
-    recipeRowsToBomInput(inputs, steps, {
-      targetVolumeL: previewVolumeL,
-      bottleL: previewVolumeL - kegL,
-      kegL,
-    }),
+    recipeRowsToBomInput(inputs, steps, { targetVolumeL: previewVolumeL }),
   );
+  // Labor rollup — sum of per-task estimates, grouped by packaging path.
+  const labor = computeRecipeLabor(steps);
+  const fmtHours = (h: number) =>
+    h === 0 ? "0 h" : `${h.toFixed(h < 10 ? 2 : 1).replace(/\.0+$/, "")} h`;
   const fmtQty = (q: number, unit: string) => {
     if (unit === "g" && q >= 1000) return `${(q / 1000).toFixed(2)} kg`;
     if (unit === "mL" && q >= 1000) return `${(q / 1000).toFixed(2)} L`;
@@ -496,29 +497,12 @@ export default function RecipeDetailPage() {
           <CardHeader>
             <CardTitle className="text-base">Bill of materials</CardTitle>
             <CardDescription>
-              Inventory consumed for a {previewVolumeL}L batch. Adjust the batch size
-              above; set the keg portion to split bottle vs keg.
+              Consumables for a {previewVolumeL}L batch, previewed as fully bottled.
+              Adjust the batch size above. Kegs are returnable vessels, not
+              consumables — the bottle/keg split is set per planned batch in Planning.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="flex items-end gap-3 flex-wrap">
-              <div>
-                <Label className="text-xs">Keg portion (L)</Label>
-                <Input
-                  type="number"
-                  min="0"
-                  max={previewVolumeL}
-                  step="1"
-                  value={kegPortionL}
-                  onChange={(e) => setKegPortionL(e.target.value === "" ? 0 : Number(e.target.value))}
-                  className="h-9 w-28"
-                />
-              </div>
-              <div className="text-sm text-muted-foreground pb-2">
-                → {previewVolumeL - kegL}L bottled · {kegL}L kegged
-              </div>
-            </div>
-
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <h4 className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">
@@ -582,6 +566,44 @@ export default function RecipeDetailPage() {
                   </p>
                 ))}
               </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Labor estimate */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Labor</CardTitle>
+            <CardDescription>
+              Sum of the per-task labor estimates entered on the steps. Per-task
+              hours only — these don&apos;t yet scale with batch size.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex items-baseline gap-2">
+              <span className="text-2xl font-semibold">{fmtHours(labor.totalHours)}</span>
+              <span className="text-sm text-muted-foreground">estimated per batch</span>
+            </div>
+            <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm">
+              <span className="flex justify-between gap-2">
+                <span className="text-gray-500">Shared</span>
+                <span className="font-mono">{fmtHours(labor.byPath.all)}</span>
+              </span>
+              <span className="flex justify-between gap-2">
+                <span className="text-gray-500">Bottle path</span>
+                <span className="font-mono">{fmtHours(labor.byPath.bottle)}</span>
+              </span>
+              <span className="flex justify-between gap-2">
+                <span className="text-gray-500">Keg path</span>
+                <span className="font-mono">{fmtHours(labor.byPath.keg)}</span>
+              </span>
+            </div>
+            {labor.stepsMissingEstimate > 0 && (
+              <p className="text-xs text-amber-700 flex items-start gap-1.5">
+                <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                {labor.stepsMissingEstimate} step{labor.stepsMissingEstimate === 1 ? "" : "s"} have
+                no labor estimate yet — add one on each step to complete the total.
+              </p>
             )}
           </CardContent>
         </Card>
