@@ -1954,6 +1954,9 @@ export const batchRecipeExecutions = pgTable(
     recipeVersion: integer("recipe_version").notNull(),
     mode: text("mode").notNull(), // 'new' | 'attach'
     startDate: timestamp("start_date", { withTimezone: true }).notNull(),
+    // Chosen starting liquid for 'new' mode: { parentBatchIds: [], pressRunId, juicePurchaseItemId }.
+    // Used to seed the batch and (in M3) pre-fill the first transfer/blend action.
+    sourceRefs: jsonb("source_refs"),
     bottleVolumeL: decimal("bottle_volume_l", { precision: 12, scale: 3 }),
     kegVolumeL: decimal("keg_volume_l", { precision: 12, scale: 3 }),
     status: text("status").notNull().default("active"), // active | completed | abandoned

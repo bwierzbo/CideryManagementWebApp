@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS batch_recipe_executions (
   recipe_version  INTEGER NOT NULL,
   mode            TEXT NOT NULL,
   start_date      TIMESTAMPTZ NOT NULL,
+  source_refs     JSONB,
   bottle_volume_l NUMERIC(12, 3),
   keg_volume_l    NUMERIC(12, 3),
   status          TEXT NOT NULL DEFAULT 'active',

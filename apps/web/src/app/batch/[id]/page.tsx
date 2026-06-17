@@ -61,6 +61,7 @@ import {
   XCircle,
   Gauge,
   TrendingDown,
+  ClipboardList,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -77,6 +78,7 @@ import { BatchVolumeTrace } from "@/components/batch/BatchVolumeTrace";
 import { CarbonateModal } from "@/components/batch/CarbonateModal";
 import { CompleteCarbonationModal } from "@/components/batch/CompleteCarbonationModal";
 import { EditCarbonationModal } from "@/components/batch/EditCarbonationModal";
+import { BatchRecipeChecklist } from "@/components/recipes/BatchRecipeChecklist";
 import { toast } from "@/hooks/use-toast";
 import {
   WeightDisplay,
@@ -738,6 +740,10 @@ export default function BatchDetailsPage() {
       >
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="recipe">
+            <ClipboardList className="w-4 h-4 mr-2" />
+            Recipe
+          </TabsTrigger>
           <TabsTrigger value="activity">
             <Activity className="w-4 h-4 mr-2" />
             Activity History
@@ -760,6 +766,11 @@ export default function BatchDetailsPage() {
             Volume Trace
           </TabsTrigger>
         </TabsList>
+
+        {/* Recipe Tab */}
+        <TabsContent value="recipe" className="space-y-6">
+          <BatchRecipeChecklist batchId={batchId} />
+        </TabsContent>
 
         {/* Overview Tab */}
         <TabsContent value="overview" className="space-y-6">
