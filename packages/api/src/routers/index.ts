@@ -40,6 +40,7 @@ import { customProductTypesRouter } from "./customProductTypes";
 import { distillationRouter } from "./distillation";
 import { productionReportsRouter } from "./productionReports";
 import { recipesRouter } from "./recipes";
+import { recipeExecutionRouter } from "./recipeExecution";
 import { planningRouter } from "./planning";
 import { MIN_WORKING_VOLUME_L } from "lib";
 import { writeLedgerEntry } from "../lib/volume-ledger";
@@ -6914,6 +6915,9 @@ export const appRouter = router({
 
   // Recipes
   recipes: recipesRouter,
+
+  // Recipe execution (instantiate → scheduled work queue)
+  recipeExecution: recipeExecutionRouter,
 
   // Production planning (plans, planned batches, requirements)
   planning: planningRouter,

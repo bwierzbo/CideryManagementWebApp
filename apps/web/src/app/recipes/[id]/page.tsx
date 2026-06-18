@@ -58,6 +58,7 @@ import { canWithOverrides } from "lib/src/rbac/roles";
 import { computeScaledAmount } from "lib/src/recipes/scaling";
 import { computeRecipeBOM, recipeRowsToBomInput } from "lib/src/recipes/bom";
 import { computeRecipeLabor } from "lib/src/recipes/labor";
+import { RecipeInstantiateWizard } from "@/components/recipes/RecipeInstantiateWizard";
 import { computeCumulativeOffsets, summarizeStepTrigger } from "lib/src/recipes/triggers";
 
 // Color helpers (mirrored from the list page)
@@ -128,6 +129,7 @@ export default function RecipeDetailPage() {
 
   const [previewVolumeL, setPreviewVolumeL] = useState<number>(120);
   const [versionsOpen, setVersionsOpen] = useState(false);
+  const [wizardOpen, setWizardOpen] = useState(false);
   const [cloneDialogOpen, setCloneDialogOpen] = useState(false);
   const [cloneName, setCloneName] = useState("");
 
@@ -266,11 +268,21 @@ export default function RecipeDetailPage() {
                 <RotateCcw className="w-4 h-4 mr-1" /> Restore
               </Button>
             )}
-            <Button size="sm" disabled title="Coming in Phase 2 (batch wizard)">
-              <Play className="w-4 h-4 mr-1" /> Use this recipe
-            </Button>
+            {!isArchived && (
+              <Button size="sm" onClick={() => setWizardOpen(true)}>
+                <Play className="w-4 h-4 mr-1" /> Use this recipe
+              </Button>
+            )}
           </div>
         </div>
+
+        <RecipeInstantiateWizard
+          open={wizardOpen}
+          onClose={() => setWizardOpen(false)}
+          recipe={{ id: recipe.id, name: recipe.name, productType: recipe.productType }}
+          inputs={inputs}
+          steps={steps}
+        />
 
         {/* Recipe header */}
         <Card>

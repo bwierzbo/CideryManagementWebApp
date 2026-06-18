@@ -1934,6 +1934,86 @@ export const recipeVersions = pgTable(
 );
 
 // ============================================
+// RECIPE EXECUTION (Phase 5 — work queue)
+// ============================================
+
+// Links a batch to the recipe version it is running. One active execution per
+// batch (one batch per recipe). `mode` records how it was instantiated: 'new'
+// (a batch created from a source) or 'attach' (an existing batch). The
+// bottle/keg split is the per-batch input the BOM/scheduling needs.
+export const batchRecipeExecutions = pgTable(
+  "batch_recipe_executions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    batchId: uuid("batch_id")
+      .notNull()
+      .references(() => batches.id, { onDelete: "cascade" }),
+    recipeId: uuid("recipe_id")
+      .notNull()
+      .references(() => recipes.id),
+    recipeVersion: integer("recipe_version").notNull(),
+    mode: text("mode").notNull(), // 'new' | 'attach'
+    startDate: timestamp("start_date", { withTimezone: true }).notNull(),
+    // Chosen starting liquid for 'new' mode: { parentBatchIds: [], pressRunId, juicePurchaseItemId }.
+    // Used to seed the batch and (in M3) pre-fill the first transfer/blend action.
+    sourceRefs: jsonb("source_refs"),
+    bottleVolumeL: decimal("bottle_volume_l", { precision: 12, scale: 3 }),
+    kegVolumeL: decimal("keg_volume_l", { precision: 12, scale: 3 }),
+    status: text("status").notNull().default("active"), // active | completed | abandoned
+    createdBy: uuid("created_by").references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    // One active recipe execution per batch.
+    batchUnique: uniqueIndex("batch_recipe_executions_batch_unique").on(table.batchId),
+  }),
+);
+
+// The work-queue items: a SNAPSHOT of each recipe step at instantiation, so
+// later edits to the recipe template never disrupt an in-flight batch. Status +
+// scheduled_date drive the cross-batch work queue; result_ref links the
+// operation row created when the task's action runs (M3).
+export const batchStepTasks = pgTable(
+  "batch_step_tasks",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    executionId: uuid("execution_id")
+      .notNull()
+      .references(() => batchRecipeExecutions.id, { onDelete: "cascade" }),
+    batchId: uuid("batch_id")
+      .notNull()
+      .references(() => batches.id, { onDelete: "cascade" }),
+    sequence: integer("sequence").notNull(),
+    kind: text("kind").notNull(),
+    label: text("label").notNull(),
+    description: text("description"),
+    packagingPath: text("packaging_path").notNull().default("all"),
+    isOptional: boolean("is_optional").notNull().default(false),
+    triggerKind: text("trigger_kind").notNull().default("manual"),
+    triggerData: jsonb("trigger_data").notNull().default({}),
+    actionData: jsonb("action_data").notNull().default({}),
+    // Computed calendar due-date; null when the trigger is SG-based / indeterminate.
+    scheduledDate: timestamp("scheduled_date", { withTimezone: true }),
+    status: text("status").notNull().default("pending"), // pending | in_progress | done | skipped
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    assignedWorkerId: uuid("assigned_worker_id").references(() => workers.id),
+    // {type, id} of the operation row created when this task ran (e.g. batchAdditive).
+    resultRef: jsonb("result_ref"),
+    estimatedHours: decimal("estimated_hours", { precision: 6, scale: 2 }),
+    actualHours: decimal("actual_hours", { precision: 6, scale: 2 }),
+    notes: text("notes"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    execSeqIdx: index("batch_step_tasks_exec_seq_idx").on(table.executionId, table.sequence),
+    batchIdx: index("batch_step_tasks_batch_idx").on(table.batchId),
+    statusSchedIdx: index("batch_step_tasks_status_sched_idx").on(table.status, table.scheduledDate),
+  }),
+);
+
+// ============================================
 // BATCH VOLUME LEDGER
 // ============================================
 

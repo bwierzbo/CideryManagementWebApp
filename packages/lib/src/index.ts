@@ -23,6 +23,7 @@ export * from "./calculations/so2";
 // Re-export recipe domain logic (client-safe)
 export * from "./recipes/bom";
 export * from "./recipes/labor";
+export * from "./recipes/schedule";
 
 // Re-export apple-related constants and utilities (client-safe)
 export * from "./apples";
