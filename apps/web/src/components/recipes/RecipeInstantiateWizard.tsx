@@ -26,7 +26,71 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Badge } from "@/components/ui/badge";
-import { X } from "lucide-react";
+import { X, Check } from "lucide-react";
+
+/**
+ * Inline, scrollable, searchable batch list. Lives directly in the dialog flow
+ * (not a nested popover) so it scrolls reliably and shows every match.
+ */
+function InlineBatchList({
+  options,
+  selectedIds,
+  onPick,
+}: {
+  options: { value: string; label: string; description?: string }[];
+  selectedIds: string[];
+  onPick: (id: string) => void;
+}) {
+  const [q, setQ] = useState("");
+  const ql = q.trim().toLowerCase();
+  const filtered = ql
+    ? options.filter(
+        (o) =>
+          o.label.toLowerCase().includes(ql) ||
+          (o.description ?? "").toLowerCase().includes(ql),
+      )
+    : options;
+  return (
+    <div>
+      <Input
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+        placeholder="Search batches…"
+        className="h-9 mb-1.5"
+      />
+      <div className="max-h-48 overflow-y-auto border rounded-md divide-y">
+        {filtered.length === 0 ? (
+          <p className="text-sm text-muted-foreground px-2.5 py-3">No batches found.</p>
+        ) : (
+          filtered.map((o) => {
+            const selected = selectedIds.includes(o.value);
+            return (
+              <button
+                key={o.value}
+                type="button"
+                onClick={() => onPick(o.value)}
+                className={`w-full text-left px-2.5 py-1.5 text-sm hover:bg-gray-50 flex items-center justify-between gap-2 ${
+                  selected ? "bg-green-50" : ""
+                }`}
+              >
+                <span className="min-w-0">
+                  <span className="block truncate">{o.label}</span>
+                  {o.description && (
+                    <span className="block text-xs text-muted-foreground truncate">
+                      {o.description}
+                    </span>
+                  )}
+                </span>
+                {selected && <Check className="w-4 h-4 text-green-600 shrink-0" />}
+              </button>
+            );
+          })
+        )}
+      </div>
+      <p className="text-[11px] text-muted-foreground mt-1">{filtered.length} shown</p>
+    </div>
+  );
+}
 
 interface RecipeInput {
   id: string;
@@ -87,11 +151,31 @@ export function RecipeInstantiateWizard({ open, onClose, recipe, inputs, steps }
   const activeBatches = (batchesQuery.data?.batches ?? []).filter(
     (b) => b.status !== "completed" && b.status !== "discarded",
   );
+  // Attach mode: any active batch.
   const batchOptions = activeBatches.map((b) => ({
     value: b.id,
     label: b.customName || b.name,
-    description: `${b.productType} · ${b.currentVolume ?? "?"} ${b.currentVolumeUnit ?? "L"} · ${b.status}`,
+    description: `${b.vesselName ?? "no vessel"} · ${b.currentVolume ?? "?"} ${b.currentVolumeUnit ?? "L"} · ${b.status}`,
   }));
+
+  // "Start from cider": only batches sitting in a cellar vessel with liquid in
+  // them (ready to use), filtered to the product type(s) the recipe declares.
+  const parentReqTypes = inputs
+    .filter((i) => i.kind === "parent_batch_requirement")
+    .map((i) => i.sourceProductType)
+    .filter((t): t is string => !!t);
+  const parentCiderOptions = activeBatches
+    .filter(
+      (b) =>
+        !!b.vesselName &&
+        Number(b.currentVolume ?? 0) > 0 &&
+        (parentReqTypes.length === 0 || parentReqTypes.includes(b.productType)),
+    )
+    .map((b) => ({
+      value: b.id,
+      label: `${b.customName || b.name} — ${b.vesselName}`,
+      description: `${b.currentVolume ?? "?"} ${b.currentVolumeUnit ?? "L"} · ${b.productType} · ${b.status}`,
+    }));
 
   const bottleVolumeL = Math.max(0, totalVolumeL - kegVolumeL);
 
@@ -133,10 +217,6 @@ export function RecipeInstantiateWizard({ open, onClose, recipe, inputs, steps }
       existingBatchId: existingBatchId ?? undefined,
       skippedStepIds: Array.from(skippedStepIds),
     });
-  };
-
-  const addParentBatch = (id: string) => {
-    setParentBatchIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
   };
 
   return (
@@ -185,7 +265,7 @@ export function RecipeInstantiateWizard({ open, onClose, recipe, inputs, steps }
                         const b = activeBatches.find((x) => x.id === id);
                         return (
                           <Badge key={id} variant="secondary" className="gap-1">
-                            {b?.customName || b?.name || id.slice(0, 8)}
+                            {b ? `${b.customName || b.name} — ${b.vesselName ?? "?"}` : id.slice(0, 8)}
                             <button
                               type="button"
                               onClick={() =>
@@ -199,16 +279,18 @@ export function RecipeInstantiateWizard({ open, onClose, recipe, inputs, steps }
                       })}
                     </div>
                   )}
-                  <SearchableSelect
-                    options={batchOptions.filter((o) => !parentBatchIds.includes(o.value))}
-                    value=""
-                    onValueChange={addParentBatch}
-                    placeholder="Add a base cider…"
-                    searchPlaceholder="Search batches…"
-                    emptyText="No batches available."
+                  <InlineBatchList
+                    options={parentCiderOptions}
+                    selectedIds={parentBatchIds}
+                    onPick={(id) =>
+                      setParentBatchIds((p) =>
+                        p.includes(id) ? p.filter((x) => x !== id) : [...p, id],
+                      )
+                    }
                   />
                   <p className="text-[11px] text-muted-foreground mt-1">
-                    Pick one for a single varietal, or several to blend.
+                    Ciders currently in a cellar vessel. Pick one for a single varietal,
+                    or several to blend. Click again to remove.
                   </p>
                 </div>
               )}
@@ -258,12 +340,10 @@ export function RecipeInstantiateWizard({ open, onClose, recipe, inputs, steps }
           {mode === "attach" && (
             <div>
               <Label className="text-xs">Attach to batch</Label>
-              <SearchableSelect
+              <InlineBatchList
                 options={batchOptions}
-                value={existingBatchId ?? ""}
-                onValueChange={(v) => setExistingBatchId(v || null)}
-                placeholder="Select a batch…"
-                searchPlaceholder="Search batches…"
+                selectedIds={existingBatchId ? [existingBatchId] : []}
+                onPick={(id) => setExistingBatchId((cur) => (cur === id ? null : id))}
               />
             </div>
           )}

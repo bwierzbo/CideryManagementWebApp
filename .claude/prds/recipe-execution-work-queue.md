@@ -119,6 +119,14 @@ work-queue surface, and wiring into the existing action modals.
 - **M3 — Action wiring (the payoff).** Task → pre-filled modal for the kinds that
   already have mutations (add_additive, measurement, rack, filter, transfer, carbonate,
   package). Record operation + link `result_ref` + BOM-prefilled quantities.
+  - **Partial draw from a base cider (user, 2026-06-18).** When a new batch starts
+    from an existing cider, the first transfer step must move just the chosen
+    portion (e.g. 120 L out of a 1000 L base) into a target vessel — exactly the
+    existing split-transfer/rack mechanism (`batchTransfers` + partial volume +
+    new vessel) used to make fruited cider today. The wizard's "Total volume" is
+    that portion; M3's transfer step needs a TARGET VESSEL input and reuses
+    `rackBatch`/transfer to draw the portion and seed the working batch. New-mode
+    M1 batches are shells (no vessel/liquid) until this transfer runs.
 - **M4 — Fill the gaps.** Pasteurize + label mutations; qa_gate sign-off; inventory
   drawdown pre-fill + soft shortfall warnings; per-task labor capture.
 - **M5 — Later.** Due-date notifications; role-scoped queue views (ties to
@@ -134,6 +142,11 @@ work-queue surface, and wiring into the existing action modals.
   (`parent_batch_requirement` vs `press_run_requirement` vs `juice_purchase_requirement`).
 - Where labor `actual_hours` is entered — in the action modal, or a quick prompt on
   complete.
+- **Editable volume + bottle/keg split after instantiation (user, 2026-06-18).** M1
+  sets total volume + keg split once at start. Make them editable later (M2): updating
+  the split must reconcile packaging-path tasks (add keg/bottle tasks when a side goes
+  >0, remove/skip when it goes to 0); changing total volume just re-derives BOM
+  quantities (not stored). Edit lives on the execution / checklist header.
 
 ## References
 
