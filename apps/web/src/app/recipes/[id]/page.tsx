@@ -59,7 +59,7 @@ import { computeScaledAmount } from "lib/src/recipes/scaling";
 import { computeRecipeBOM, recipeRowsToBomInput } from "lib/src/recipes/bom";
 import { computeRecipeLabor } from "lib/src/recipes/labor";
 import { RecipeInstantiateWizard } from "@/components/recipes/RecipeInstantiateWizard";
-import { computeCumulativeOffsets, summarizeStepTrigger } from "lib/src/recipes/triggers";
+import { computeBranchAwareOffsets, summarizeStepTrigger } from "lib/src/recipes/triggers";
 
 // Color helpers (mirrored from the list page)
 function productTypeBadgeClass(productType: string): string {
@@ -190,8 +190,12 @@ export default function RecipeDetailPage() {
   if (!data) return null;
 
   const { recipe, inputs, steps } = data;
-  const stepCumulativeHours = computeCumulativeOffsets(
-    steps.map((s) => ({ triggerKind: s.triggerKind, triggerData: s.triggerData as Record<string, unknown> })),
+  const stepCumulativeHours = computeBranchAwareOffsets(
+    steps.map((s) => ({
+      triggerKind: s.triggerKind,
+      triggerData: s.triggerData as Record<string, unknown>,
+      packagingPath: s.packagingPath,
+    })),
   );
   const isArchived = !!recipe.archivedAt;
   const ingredients = inputs.filter((i) => i.kind === "ingredient");

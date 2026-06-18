@@ -18,7 +18,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { calculatePU } from "lib";
-import { computeCumulativeOffsets, summarizeStepTrigger } from "lib/src/recipes/triggers";
+import { computeBranchAwareOffsets, summarizeStepTrigger } from "lib/src/recipes/triggers";
 import { trpc } from "@/utils/trpc";
 import { cn } from "@/lib/utils";
 import { useOrganizationSettings } from "@/contexts/SettingsContext";
@@ -247,7 +247,7 @@ export function RecipeBuilder({
   // Cumulative hours-from-start per step, so each step summary can show the
   // running total (e.g. "day 5 from start"), not just the per-step offset.
   const stepCumulativeHours = useMemo(
-    () => computeCumulativeOffsets(draft.steps),
+    () => computeBranchAwareOffsets(draft.steps),
     [draft.steps],
   );
 
