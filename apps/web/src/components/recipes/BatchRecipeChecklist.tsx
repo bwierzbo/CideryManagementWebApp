@@ -138,17 +138,15 @@ export function BatchRecipeChecklist({ batchId }: { batchId: string }) {
             {sorted.map((t) => {
               const terminal = t.status === "done" || t.status === "skipped";
               return (
-                <TableRow key={t.id} className={terminal ? "opacity-60" : ""}>
+                <TableRow
+                  key={t.id}
+                  onClick={() => setOpenTask(t)}
+                  className={`cursor-pointer hover:bg-gray-50 ${terminal ? "opacity-60" : ""}`}
+                >
                   <TableCell className="text-muted-foreground">{t.sequence + 1}</TableCell>
                   <TableCell>
                     <div className="flex items-center gap-1.5 flex-wrap">
-                      <button
-                        type="button"
-                        onClick={() => setOpenTask(t)}
-                        className={`text-left hover:underline ${t.status === "done" ? "line-through" : ""}`}
-                      >
-                        {t.label}
-                      </button>
+                      <span className={t.status === "done" ? "line-through" : ""}>{t.label}</span>
                       {t.packagingPath !== "all" && (
                         <Badge variant="outline" className="text-[10px]">
                           {t.packagingPath === "bottle" ? "Bottle only" : "Keg only"}
@@ -170,7 +168,7 @@ export function BatchRecipeChecklist({ batchId }: { batchId: string }) {
                       {t.status.replace("_", " ")}
                     </Badge>
                   </TableCell>
-                  <TableCell className="text-right whitespace-nowrap">
+                  <TableCell className="text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                     {terminal ? (
                       <Button
                         size="sm"
