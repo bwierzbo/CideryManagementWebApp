@@ -22,6 +22,13 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Check, SkipForward, ListChecks } from "lucide-react";
 
 type QueueTask = {
@@ -34,7 +41,10 @@ type QueueTask = {
   isOptional: boolean;
   scheduledDate: string | null;
   status: string;
+  assignedWorkerId: string | null;
 };
+
+const UNASSIGNED = "__none__";
 
 type Bucket = "overdue" | "today" | "week" | "upcoming" | "none";
 
@@ -49,9 +59,12 @@ const BUCKETS: { key: Bucket; title: string; tone: string }[] = [
 export default function WorkQueuePage() {
   const utils = trpc.useUtils();
   const { data, isLoading } = trpc.recipeExecution.listOpenTasks.useQuery();
+  const { data: workersData } = trpc.workers.list.useQuery();
+  const workers = workersData?.workers ?? [];
   const refresh = () => utils.recipeExecution.listOpenTasks.invalidate();
   const complete = trpc.recipeExecution.completeTask.useMutation({ onSuccess: refresh });
   const skip = trpc.recipeExecution.skipTask.useMutation({ onSuccess: refresh });
+  const assign = trpc.recipeExecution.assignTask.useMutation({ onSuccess: refresh });
   const busy = complete.isPending || skip.isPending;
 
   const grouped = useMemo(() => {
@@ -133,7 +146,23 @@ export default function WorkQueuePage() {
                         · due {fmtDate(t.scheduledDate)}
                       </p>
                     </div>
-                    <div className="flex gap-1 shrink-0">
+                    <div className="flex items-center gap-1 shrink-0">
+                      <Select
+                        value={t.assignedWorkerId ?? UNASSIGNED}
+                        onValueChange={(v) =>
+                          assign.mutate({ taskId: t.id, workerId: v === UNASSIGNED ? null : v })
+                        }
+                      >
+                        <SelectTrigger className="h-8 w-32 text-xs">
+                          <SelectValue placeholder="Unassigned" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={UNASSIGNED}>Unassigned</SelectItem>
+                          {workers.map((w) => (
+                            <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                       <Button
                         size="sm"
                         variant="outline"
