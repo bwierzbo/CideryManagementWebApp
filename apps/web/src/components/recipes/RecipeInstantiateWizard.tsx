@@ -120,8 +120,10 @@ export function RecipeInstantiateWizard({ open, onClose, recipe, inputs, steps }
 
   const [mode, setMode] = useState<"new" | "attach">("new");
   const [startDate, setStartDate] = useState(todayStr());
-  const [totalVolumeL, setTotalVolumeL] = useState<number>(120);
-  const [kegVolumeL, setKegVolumeL] = useState<number>(0);
+  // String-backed so the field can be cleared/retyped freely (a numeric state
+  // would coerce an empty field back to 0, making the 0 impossible to delete).
+  const [totalVolumeStr, setTotalVolumeStr] = useState("120");
+  const [kegVolumeStr, setKegVolumeStr] = useState("0");
   const [newBatchName, setNewBatchName] = useState("");
   const [parentBatchIds, setParentBatchIds] = useState<string[]>([]);
   const [pressRunId, setPressRunId] = useState<string | null>(null);
@@ -177,6 +179,8 @@ export function RecipeInstantiateWizard({ open, onClose, recipe, inputs, steps }
       description: `${b.currentVolume ?? "?"} ${b.currentVolumeUnit ?? "L"} · ${b.productType} · ${b.status}`,
     }));
 
+  const totalVolumeL = Number(totalVolumeStr) || 0;
+  const kegVolumeL = Number(kegVolumeStr) || 0;
   const bottleVolumeL = Math.max(0, totalVolumeL - kegVolumeL);
 
   const mutation = trpc.recipeExecution.instantiate.useMutation({
@@ -329,9 +333,13 @@ export function RecipeInstantiateWizard({ open, onClose, recipe, inputs, steps }
                 <Input
                   value={newBatchName}
                   onChange={(e) => setNewBatchName(e.target.value)}
-                  placeholder="Auto-generated if blank"
+                  placeholder={`${recipe.name} ${startDate.slice(0, 4)}-NNN`}
                   className="h-9"
                 />
+                <p className="text-[11px] text-muted-foreground mt-1">
+                  Leave blank to auto-name “{recipe.name} {startDate.slice(0, 4)}-NNN”,
+                  where NNN is the next batch number for the year.
+                </p>
               </div>
             </div>
           )}
@@ -365,8 +373,8 @@ export function RecipeInstantiateWizard({ open, onClose, recipe, inputs, steps }
                 type="number"
                 min="0"
                 step="1"
-                value={totalVolumeL}
-                onChange={(e) => setTotalVolumeL(e.target.value === "" ? 0 : Number(e.target.value))}
+                value={totalVolumeStr}
+                onChange={(e) => setTotalVolumeStr(e.target.value)}
                 className="h-9"
               />
             </div>
@@ -377,8 +385,8 @@ export function RecipeInstantiateWizard({ open, onClose, recipe, inputs, steps }
                 min="0"
                 max={totalVolumeL}
                 step="1"
-                value={kegVolumeL}
-                onChange={(e) => setKegVolumeL(e.target.value === "" ? 0 : Number(e.target.value))}
+                value={kegVolumeStr}
+                onChange={(e) => setKegVolumeStr(e.target.value)}
                 className="h-9"
               />
             </div>
