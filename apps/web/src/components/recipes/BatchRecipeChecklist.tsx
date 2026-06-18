@@ -214,6 +214,9 @@ export function BatchRecipeChecklist({ batchId }: { batchId: string }) {
       batchId={batchId}
       task={openTask}
       sources={data.sources ?? []}
+      plannedVolumeL={
+        Number(execution.bottleVolumeL ?? 0) + Number(execution.kegVolumeL ?? 0)
+      }
     />
     </>
   );

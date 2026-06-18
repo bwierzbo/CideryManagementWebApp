@@ -56,12 +56,14 @@ export function StepDetailModal({
   batchId,
   task,
   sources,
+  plannedVolumeL,
 }: {
   open: boolean;
   onClose: () => void;
   batchId: string;
   task: Task | null;
   sources: Source[];
+  plannedVolumeL: number;
 }) {
   const utils = trpc.useUtils();
   const ad = (task?.actualData ?? {}) as Record<string, unknown>;
@@ -69,6 +71,9 @@ export function StepDetailModal({
     (ad.destinationVesselId as string) ?? null,
   );
   const [vesselSearch, setVesselSearch] = useState("");
+  const [transferVolume, setTransferVolume] = useState(
+    String(ad.volumeL ?? (plannedVolumeL || "")),
+  );
   const [notes, setNotes] = useState(task?.notes ?? "");
 
   const vesselsQuery = trpc.vessel.list.useQuery({}, { enabled: open && task?.kind === "transfer" });
@@ -88,6 +93,15 @@ export function StepDetailModal({
   });
   const reopen = trpc.recipeExecution.reopenTask.useMutation({
     onSuccess: () => { refresh(); onClose(); },
+  });
+  const transfer = trpc.recipeExecution.performTransfer.useMutation({
+    onSuccess: () => {
+      toast({ title: "Transfer recorded" });
+      refresh();
+      utils.batch.get.invalidate({ batchId });
+      onClose();
+    },
+    onError: (e) => toast({ title: "Couldn't transfer", description: e.message, variant: "destructive" }),
   });
 
   if (!task) return null;
@@ -197,6 +211,22 @@ export function StepDetailModal({
                     )}
                   </div>
                 </div>
+                <div>
+                  <Label className="text-xs">Volume to transfer (L)</Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={transferVolume}
+                    onChange={(e) => setTransferVolume(e.target.value)}
+                    className="h-9 w-32"
+                    disabled={isDone}
+                  />
+                  <p className="text-[11px] text-muted-foreground mt-1">
+                    Drawn from the source cider into the destination vessel, and this
+                    batch is assigned to that vessel.
+                  </p>
+                </div>
               </>
             )}
 
@@ -224,6 +254,20 @@ export function StepDetailModal({
                   onClick={() => reopen.mutate({ taskId: task.id })}
                 >
                   Reopen
+                </Button>
+              ) : task.kind === "transfer" ? (
+                <Button
+                  size="sm"
+                  disabled={transfer.isPending || !destVesselId || !(Number(transferVolume) > 0)}
+                  onClick={() =>
+                    transfer.mutate({
+                      taskId: task.id,
+                      destinationVesselId: destVesselId!,
+                      volumeL: Number(transferVolume),
+                    })
+                  }
+                >
+                  <Check className="w-4 h-4 mr-1" /> Perform transfer
                 </Button>
               ) : (
                 <Button size="sm" disabled={complete.isPending} onClick={onMarkDone}>

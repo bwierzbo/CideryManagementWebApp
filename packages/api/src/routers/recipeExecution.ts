@@ -27,6 +27,8 @@ import {
   recipeSteps,
   batchRecipeExecutions,
   batchStepTasks,
+  batchMergeHistory,
+  batchTransfers,
 } from "db";
 import { buildStepSchedule, rescheduleWithActuals } from "lib";
 import { router, createRbacProcedure } from "../trpc";
@@ -359,6 +361,129 @@ export const recipeExecutionRouter = router({
             actualHours: input.actualHours != null ? input.actualHours.toString() : task.actualHours,
             notes: input.notes ?? task.notes,
             actualData: input.actualData ?? task.actualData,
+            updatedAt: new Date(),
+          })
+          .where(eq(batchStepTasks.id, task.id));
+        await recomputeSchedule(tx, task.executionId);
+        return { tasks: await tasksForExecution(tx, task.executionId) };
+      });
+    }),
+
+  /**
+   * Perform the "transfer base cider into the mixing vessel" step: move the
+   * chosen volume from the source cider into the destination vessel, assign that
+   * vessel to this batch, debit the source, record lineage, and mark the task
+   * done. Custom because the recipe batch is a pre-created shell (the manual
+   * rack/transfer flow creates its own destination batch).
+   *
+   * v1: pulls from the first source cider. Multi-source blends and the TTB
+   * volume ledger entry are follow-ups.
+   */
+  performTransfer: createRbacProcedure("update", "batch")
+    .input(
+      z.object({
+        taskId: z.string().uuid(),
+        destinationVesselId: z.string().uuid(),
+        volumeL: z.number().positive(),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      return await db.transaction(async (tx) => {
+        const task = await loadTask(tx, input.taskId);
+        const [exec] = await tx
+          .select()
+          .from(batchRecipeExecutions)
+          .where(eq(batchRecipeExecutions.id, task.executionId))
+          .limit(1);
+        const refs = (exec?.sourceRefs ?? {}) as { parentBatchIds?: string[] };
+        const sourceBatchId = refs.parentBatchIds?.[0];
+        if (!sourceBatchId) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "No source cider recorded for this batch." });
+        }
+        const [source] = await tx.select().from(batches).where(eq(batches.id, sourceBatchId)).limit(1);
+        if (!source) throw new TRPCError({ code: "NOT_FOUND", message: "Source batch not found." });
+        if (!source.vesselId) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Source cider isn't in a vessel." });
+        }
+        const sourceVesselId = source.vesselId;
+
+        const sourceVol = parseFloat(source.currentVolumeLiters || source.currentVolume || "0");
+        if (input.volumeL > sourceVol + 0.001) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: `Source cider only has ${sourceVol.toFixed(1)} L; can't transfer ${input.volumeL} L.`,
+          });
+        }
+        const [destVessel] = await tx.select().from(vessels).where(eq(vessels.id, input.destinationVesselId)).limit(1);
+        if (!destVessel) throw new TRPCError({ code: "NOT_FOUND", message: "Destination vessel not found." });
+
+        // Debit the source.
+        const newSourceVol = sourceVol - input.volumeL;
+        await tx
+          .update(batches)
+          .set({
+            currentVolume: newSourceVol.toString(),
+            currentVolumeLiters: newSourceVol.toString(),
+            currentVolumeUnit: "L",
+            updatedAt: new Date(),
+          })
+          .where(eq(batches.id, source.id));
+
+        // Fill this batch + assign the destination vessel.
+        await tx
+          .update(batches)
+          .set({
+            vesselId: input.destinationVesselId,
+            currentVolume: input.volumeL.toString(),
+            currentVolumeLiters: input.volumeL.toString(),
+            currentVolumeUnit: "L",
+            updatedAt: new Date(),
+          })
+          .where(eq(batches.id, task.batchId));
+
+        // Lineage: merge history (before treated as empty) + transfer record.
+        await tx.insert(batchMergeHistory).values({
+          targetBatchId: task.batchId,
+          sourceBatchId: source.id,
+          sourceType: "batch_transfer",
+          volumeAdded: input.volumeL.toString(),
+          volumeAddedUnit: "L",
+          targetVolumeBefore: "0",
+          targetVolumeBeforeUnit: "L",
+          targetVolumeAfter: input.volumeL.toString(),
+          targetVolumeAfterUnit: "L",
+          mergedAt: new Date(),
+          mergedBy: ctx.user.id,
+          createdAt: new Date(),
+        });
+        await tx.insert(batchTransfers).values({
+          sourceBatchId: source.id,
+          sourceVesselId,
+          destinationBatchId: task.batchId,
+          destinationVesselId: input.destinationVesselId,
+          volumeTransferred: input.volumeL.toString(),
+          volumeTransferredUnit: "L",
+          totalVolumeProcessed: input.volumeL.toString(),
+          totalVolumeProcessedUnit: "L",
+          loss: "0",
+          lossUnit: "L",
+          transferredAt: new Date(),
+          transferredBy: ctx.user.id,
+          notes: `Recipe transfer: ${input.volumeL} L from ${source.customName || source.name} → ${destVessel.name}`,
+          createdAt: new Date(),
+        });
+
+        // Mark the task done + record actuals, then reschedule.
+        await tx
+          .update(batchStepTasks)
+          .set({
+            status: "done",
+            completedAt: new Date(),
+            actualData: {
+              sourceBatchId: source.id,
+              destinationVesselId: input.destinationVesselId,
+              volumeL: input.volumeL,
+            },
             updatedAt: new Date(),
           })
           .where(eq(batchStepTasks.id, task.id));
