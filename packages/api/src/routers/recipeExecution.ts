@@ -91,6 +91,7 @@ export const recipeExecutionRouter = router({
         runSteps.map((s) => ({
           triggerKind: s.triggerKind,
           triggerData: (s.triggerData ?? {}) as Record<string, unknown>,
+          packagingPath: s.packagingPath ?? "all",
         })),
         input.startDate,
       );

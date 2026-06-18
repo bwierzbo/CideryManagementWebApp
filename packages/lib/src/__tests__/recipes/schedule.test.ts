@@ -58,4 +58,25 @@ describe("buildStepSchedule", () => {
   it("returns an empty array for no steps", () => {
     expect(buildStepSchedule([], START)).toEqual([]);
   });
+
+  it("schedules bottle and keg branches in parallel off the shared trunk", () => {
+    // Trunk: start (day 0) → filter (day 5). Then bottle and keg branches.
+    const dates = buildStepSchedule(
+      [
+        { triggerKind: "date_offset_from_start", triggerData: { days: 0 }, packagingPath: "all" },
+        { triggerKind: "date_offset_from_previous", triggerData: { days: 5 }, packagingPath: "all" }, // filter, day 5
+        { triggerKind: "after_previous", triggerData: {}, packagingPath: "bottle" }, // bottle carbonate
+        { triggerKind: "date_offset_from_previous", triggerData: { days: 2 }, packagingPath: "bottle" }, // pasteurize, day 7
+        { triggerKind: "after_previous", triggerData: {}, packagingPath: "keg" }, // keg package — follows FILTER, not pasteurize
+        { triggerKind: "after_previous", triggerData: {}, packagingPath: "keg" }, // keg measure
+      ],
+      START,
+    );
+    expect(iso(dates[1])).toBe("2026-06-06T00:00:00.000Z"); // filter, day 5
+    expect(iso(dates[2])).toBe("2026-06-06T00:00:00.000Z"); // bottle carbonate, day 5
+    expect(iso(dates[3])).toBe("2026-06-08T00:00:00.000Z"); // pasteurize, day 7
+    // Keg branch ties to the end of the trunk (filter, day 5), NOT the bottle tail (day 7).
+    expect(iso(dates[4])).toBe("2026-06-06T00:00:00.000Z");
+    expect(iso(dates[5])).toBe("2026-06-06T00:00:00.000Z");
+  });
 });

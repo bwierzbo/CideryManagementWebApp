@@ -218,6 +218,8 @@ function parseOffset(data: Record<string, unknown>): number | null {
 export interface ScheduleStep {
   triggerKind: string;
   triggerData: Record<string, unknown>;
+  /** "all" | "bottle" | "keg" — for branch-aware scheduling. Defaults "all". */
+  packagingPath?: string | null;
 }
 
 /** Pull a date-offset trigger's {days}|{hours} as hours. Null when absent. */
@@ -271,6 +273,33 @@ export function computeCumulativeOffsets(steps: ScheduleStep[]): (number | null)
         out.push(null);
         break;
     }
+  }
+  return out;
+}
+
+/**
+ * Branch-aware cumulative offsets. Bottle-path and keg-path steps each chain
+ * along their OWN lineage (the shared "all" steps + that path's steps), not the
+ * flat list. So a keg step's "after previous" follows the last *shared* step
+ * (e.g. filtering) rather than the end of the bottle tail — letting bottle and
+ * keg packaging run in parallel.
+ *
+ * "all" steps belong to both lineages and take the trunk offset.
+ */
+export function computeBranchAwareOffsets(steps: ScheduleStep[]): (number | null)[] {
+  const out: (number | null)[] = new Array(steps.length).fill(null);
+  for (const path of ["bottle", "keg"] as const) {
+    const idxs = steps
+      .map((_, i) => i)
+      .filter((i) => {
+        const p = steps[i].packagingPath ?? "all";
+        return p === "all" || p === path;
+      });
+    if (idxs.length === 0) continue;
+    const lineageOffsets = computeCumulativeOffsets(idxs.map((i) => steps[i]));
+    idxs.forEach((origIdx, k) => {
+      out[origIdx] = lineageOffsets[k];
+    });
   }
   return out;
 }
