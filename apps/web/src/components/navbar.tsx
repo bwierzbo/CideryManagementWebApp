@@ -25,6 +25,7 @@ import {
   Apple,
   History,
   Calendar,
+  ListChecks,
 } from "lucide-react";
 import { useState, useMemo } from "react";
 import {
@@ -115,6 +116,12 @@ export function Navbar() {
       href: "/planning",
       icon: Calendar,
       description: "Production Planning",
+    },
+    {
+      name: "Work",
+      href: "/work",
+      icon: ListChecks,
+      description: "Cross-batch work queue",
     },
     {
       name: "Admin",

@@ -1,11 +1,13 @@
 "use client";
 
 /**
- * Read-only recipe checklist for a batch (Phase 5, M1).
+ * Recipe checklist for a batch (Phase 5, M2).
  *
- * Shows the scheduled per-step task list for a batch that was instantiated from
- * a recipe. M1 is read-only — completing/skipping tasks and the cross-batch
- * work queue come in M2/M3.
+ * Shows the scheduled task list sorted by due-date (so parallel bottle/keg work
+ * sits together) and lets the operator complete / skip / undo tasks. Soft
+ * warnings only: completing out of order or skipping a non-optional step asks
+ * for confirmation but never blocks. Completing a task reschedules the rest from
+ * the actual completion time (server-side).
  */
 
 import { trpc } from "@/utils/trpc";
@@ -17,6 +19,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -25,6 +28,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Check, SkipForward, RotateCcw } from "lucide-react";
 
 const STATUS_STYLE: Record<string, string> = {
   pending: "border-gray-300 text-gray-600",
@@ -36,8 +40,25 @@ const STATUS_STYLE: Record<string, string> = {
 const fmtDate = (d: string | Date | null) =>
   d ? new Date(d).toLocaleDateString() : "—";
 
+type Task = {
+  id: string;
+  sequence: number;
+  label: string;
+  description: string | null;
+  packagingPath: string;
+  isOptional: boolean;
+  scheduledDate: string | Date | null;
+  status: string;
+};
+
 export function BatchRecipeChecklist({ batchId }: { batchId: string }) {
+  const utils = trpc.useUtils();
   const { data, isLoading } = trpc.recipeExecution.getForBatch.useQuery({ batchId });
+
+  const refresh = () => utils.recipeExecution.getForBatch.invalidate({ batchId });
+  const complete = trpc.recipeExecution.completeTask.useMutation({ onSuccess: refresh });
+  const skip = trpc.recipeExecution.skipTask.useMutation({ onSuccess: refresh });
+  const reopen = trpc.recipeExecution.reopenTask.useMutation({ onSuccess: refresh });
 
   if (isLoading) {
     return (
@@ -61,8 +82,29 @@ export function BatchRecipeChecklist({ batchId }: { batchId: string }) {
     );
   }
 
-  const { execution, tasks } = data;
+  const { execution } = data;
+  const tasks = data.tasks as Task[];
   const done = tasks.filter((t) => t.status === "done").length;
+  const openBySeq = tasks.filter((t) => t.status === "pending" || t.status === "in_progress");
+
+  // Sorted by due-date (nulls last), tie-break by sequence — parallel work groups.
+  const sorted = [...tasks].sort((a, b) => {
+    const da = a.scheduledDate ? new Date(a.scheduledDate).getTime() : Infinity;
+    const db_ = b.scheduledDate ? new Date(b.scheduledDate).getTime() : Infinity;
+    return da - db_ || a.sequence - b.sequence;
+  });
+
+  const onComplete = (t: Task) => {
+    const earlierOpen = openBySeq.some((o) => o.sequence < t.sequence);
+    if (earlierOpen && !confirm("Earlier steps aren't done yet. Complete this one anyway?")) return;
+    complete.mutate({ taskId: t.id });
+  };
+  const onSkip = (t: Task) => {
+    if (!t.isOptional && !confirm("This step isn't marked optional. Skip it anyway?")) return;
+    skip.mutate({ taskId: t.id });
+  };
+
+  const busy = complete.isPending || skip.isPending || reopen.isPending;
 
   return (
     <Card>
@@ -71,7 +113,7 @@ export function BatchRecipeChecklist({ batchId }: { batchId: string }) {
         <CardDescription>
           Recipe v{execution.recipeVersion} · started {fmtDate(execution.startDate)} ·{" "}
           {execution.bottleVolumeL ?? 0} L bottled / {execution.kegVolumeL ?? 0} L kegged ·{" "}
-          {done}/{tasks.length} done
+          {done}/{tasks.length} done · sorted by due date
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -82,41 +124,75 @@ export function BatchRecipeChecklist({ batchId }: { batchId: string }) {
               <TableHead>Step</TableHead>
               <TableHead>Due</TableHead>
               <TableHead>Status</TableHead>
+              <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {tasks.map((t) => (
-              <TableRow key={t.id}>
-                <TableCell className="text-muted-foreground">{t.sequence + 1}</TableCell>
-                <TableCell>
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <span>{t.label}</span>
-                    {t.packagingPath !== "all" && (
-                      <Badge variant="outline" className="text-[10px]">
-                        {t.packagingPath === "bottle" ? "Bottle only" : "Keg only"}
-                      </Badge>
+            {sorted.map((t) => {
+              const terminal = t.status === "done" || t.status === "skipped";
+              return (
+                <TableRow key={t.id} className={terminal ? "opacity-60" : ""}>
+                  <TableCell className="text-muted-foreground">{t.sequence + 1}</TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className={t.status === "done" ? "line-through" : ""}>{t.label}</span>
+                      {t.packagingPath !== "all" && (
+                        <Badge variant="outline" className="text-[10px]">
+                          {t.packagingPath === "bottle" ? "Bottle only" : "Keg only"}
+                        </Badge>
+                      )}
+                      {t.isOptional && (
+                        <Badge variant="outline" className="text-[10px] text-gray-500">
+                          Optional
+                        </Badge>
+                      )}
+                    </div>
+                    {t.description && (
+                      <p className="text-xs text-muted-foreground mt-0.5">{t.description}</p>
                     )}
-                    {t.isOptional && (
-                      <Badge variant="outline" className="text-[10px] text-gray-500">
-                        Optional
-                      </Badge>
+                  </TableCell>
+                  <TableCell className="text-sm">{fmtDate(t.scheduledDate)}</TableCell>
+                  <TableCell>
+                    <Badge variant="outline" className={`text-[10px] ${STATUS_STYLE[t.status] ?? ""}`}>
+                      {t.status.replace("_", " ")}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-right whitespace-nowrap">
+                    {terminal ? (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        disabled={busy}
+                        onClick={() => reopen.mutate({ taskId: t.id })}
+                        title="Undo"
+                      >
+                        <RotateCcw className="w-4 h-4" />
+                      </Button>
+                    ) : (
+                      <div className="flex justify-end gap-1">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={busy}
+                          onClick={() => onComplete(t)}
+                        >
+                          <Check className="w-4 h-4 mr-1" /> Done
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          disabled={busy}
+                          onClick={() => onSkip(t)}
+                          title="Skip"
+                        >
+                          <SkipForward className="w-4 h-4" />
+                        </Button>
+                      </div>
                     )}
-                  </div>
-                  {t.description && (
-                    <p className="text-xs text-muted-foreground mt-0.5">{t.description}</p>
-                  )}
-                </TableCell>
-                <TableCell className="text-sm">{fmtDate(t.scheduledDate)}</TableCell>
-                <TableCell>
-                  <Badge
-                    variant="outline"
-                    className={`text-[10px] ${STATUS_STYLE[t.status] ?? ""}`}
-                  >
-                    {t.status.replace("_", " ")}
-                  </Badge>
-                </TableCell>
-              </TableRow>
-            ))}
+                  </TableCell>
+                </TableRow>
+              );
+            })}
           </TableBody>
         </Table>
       </CardContent>

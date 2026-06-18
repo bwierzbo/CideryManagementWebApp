@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildStepSchedule } from "../../recipes/schedule";
+import { buildStepSchedule, rescheduleWithActuals } from "../../recipes/schedule";
 
 const START = new Date("2026-06-01T00:00:00Z");
 const iso = (d: Date | null) => (d === null ? null : d.toISOString());
@@ -78,5 +78,56 @@ describe("buildStepSchedule", () => {
     // Keg branch ties to the end of the trunk (filter, day 5), NOT the bottle tail (day 7).
     expect(iso(dates[4])).toBe("2026-06-06T00:00:00.000Z");
     expect(iso(dates[5])).toBe("2026-06-06T00:00:00.000Z");
+  });
+});
+
+describe("rescheduleWithActuals", () => {
+  const STEPS = [
+    { triggerKind: "date_offset_from_start", triggerData: { days: 0 }, packagingPath: "all" },
+    { triggerKind: "date_offset_from_previous", triggerData: { days: 3 }, packagingPath: "all" },
+    { triggerKind: "date_offset_from_previous", triggerData: { days: 2 }, packagingPath: "all" },
+  ];
+
+  it("matches buildStepSchedule when nothing is done yet", () => {
+    const a = buildStepSchedule(STEPS, START).map(iso);
+    const b = rescheduleWithActuals(STEPS, START).map(iso);
+    expect(b).toEqual(a);
+  });
+
+  it("re-anchors downstream steps to a step's actual completion", () => {
+    // Step 1 (planned day 3) actually finished day 5 → step 2 (+2d) shifts to day 7.
+    const dates = rescheduleWithActuals(
+      [
+        { ...STEPS[0], status: "done", completedAt: new Date("2026-06-01T00:00:00Z") },
+        { ...STEPS[1], status: "done", completedAt: new Date("2026-06-06T00:00:00Z") },
+        STEPS[2],
+      ],
+      START,
+    );
+    expect(iso(dates[2])).toBe("2026-06-08T00:00:00.000Z"); // day-5 completion + 2 days
+  });
+
+  it("treats a skipped step as pass-through (no delay)", () => {
+    const dates = rescheduleWithActuals(
+      [
+        { ...STEPS[0], status: "done", completedAt: new Date("2026-06-01T00:00:00Z") },
+        { ...STEPS[1], status: "skipped" },
+        { triggerKind: "after_previous", triggerData: {}, packagingPath: "all" },
+      ],
+      START,
+    );
+    // Skipped step contributes nothing → after_previous follows step 0 (day 0).
+    expect(iso(dates[2])).toBe("2026-06-01T00:00:00.000Z");
+  });
+
+  it("keeps date_offset_from_start anchored to batch start, not actuals", () => {
+    const dates = rescheduleWithActuals(
+      [
+        { ...STEPS[0], status: "done", completedAt: new Date("2026-06-03T00:00:00Z") },
+        { triggerKind: "date_offset_from_start", triggerData: { days: 10 }, packagingPath: "all" },
+      ],
+      START,
+    );
+    expect(iso(dates[1])).toBe("2026-06-11T00:00:00.000Z"); // start + 10d, regardless of the late step 0
   });
 });

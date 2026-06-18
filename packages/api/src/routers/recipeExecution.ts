@@ -18,7 +18,7 @@
 
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { and, asc, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import {
   db,
   batches,
@@ -27,8 +27,63 @@ import {
   batchRecipeExecutions,
   batchStepTasks,
 } from "db";
-import { buildStepSchedule } from "lib";
+import { buildStepSchedule, rescheduleWithActuals } from "lib";
 import { router, createRbacProcedure } from "../trpc";
+
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+/**
+ * Recompute pending task due-dates from actual progress (done/skipped anchors).
+ * Done tasks keep their own dates; everything else is re-derived.
+ */
+async function recomputeSchedule(tx: Tx, executionId: string) {
+  const [exec] = await tx
+    .select()
+    .from(batchRecipeExecutions)
+    .where(eq(batchRecipeExecutions.id, executionId))
+    .limit(1);
+  if (!exec) return;
+  const tasks = await tx
+    .select()
+    .from(batchStepTasks)
+    .where(eq(batchStepTasks.executionId, executionId))
+    .orderBy(asc(batchStepTasks.sequence));
+  const dates = rescheduleWithActuals(
+    tasks.map((t) => ({
+      triggerKind: t.triggerKind,
+      triggerData: (t.triggerData ?? {}) as Record<string, unknown>,
+      packagingPath: t.packagingPath ?? "all",
+      status: t.status,
+      completedAt: t.completedAt,
+    })),
+    exec.startDate,
+  );
+  for (let i = 0; i < tasks.length; i++) {
+    if (tasks[i].status === "done") continue;
+    await tx
+      .update(batchStepTasks)
+      .set({ scheduledDate: dates[i], updatedAt: new Date() })
+      .where(eq(batchStepTasks.id, tasks[i].id));
+  }
+}
+
+async function loadTask(tx: Tx, taskId: string) {
+  const [task] = await tx
+    .select()
+    .from(batchStepTasks)
+    .where(eq(batchStepTasks.id, taskId))
+    .limit(1);
+  if (!task) throw new TRPCError({ code: "NOT_FOUND", message: "Task not found" });
+  return task;
+}
+
+async function tasksForExecution(tx: Tx, executionId: string) {
+  return tx
+    .select()
+    .from(batchStepTasks)
+    .where(eq(batchStepTasks.executionId, executionId))
+    .orderBy(asc(batchStepTasks.sequence));
+}
 
 const instantiateSchema = z
   .object({
@@ -226,5 +281,119 @@ export const recipeExecutionRouter = router({
         .orderBy(asc(batchStepTasks.sequence));
 
       return { execution, tasks };
+    }),
+
+  /** Cross-batch work queue: every open task across all active executions. */
+  listOpenTasks: createRbacProcedure("read", "batch")
+    .query(async () => {
+      const tasks = await db
+        .select({
+          id: batchStepTasks.id,
+          batchId: batchStepTasks.batchId,
+          batchName: batches.name,
+          batchCustomName: batches.customName,
+          label: batchStepTasks.label,
+          kind: batchStepTasks.kind,
+          packagingPath: batchStepTasks.packagingPath,
+          isOptional: batchStepTasks.isOptional,
+          sequence: batchStepTasks.sequence,
+          scheduledDate: batchStepTasks.scheduledDate,
+          status: batchStepTasks.status,
+          assignedWorkerId: batchStepTasks.assignedWorkerId,
+        })
+        .from(batchStepTasks)
+        .innerJoin(
+          batchRecipeExecutions,
+          eq(batchStepTasks.executionId, batchRecipeExecutions.id),
+        )
+        .innerJoin(batches, eq(batchStepTasks.batchId, batches.id))
+        .where(
+          and(
+            inArray(batchStepTasks.status, ["pending", "in_progress"]),
+            eq(batchRecipeExecutions.status, "active"),
+          ),
+        )
+        .orderBy(asc(batchStepTasks.scheduledDate));
+      return { tasks };
+    }),
+
+  /** Mark a task done (records completion time + optional labor), then reschedule. */
+  completeTask: createRbacProcedure("update", "batch")
+    .input(
+      z.object({
+        taskId: z.string().uuid(),
+        completedAt: z.coerce.date().optional(),
+        actualHours: z.number().nonnegative().nullish(),
+        notes: z.string().nullish(),
+      }),
+    )
+    .mutation(async ({ input }) => {
+      return await db.transaction(async (tx) => {
+        const task = await loadTask(tx, input.taskId);
+        await tx
+          .update(batchStepTasks)
+          .set({
+            status: "done",
+            completedAt: input.completedAt ?? new Date(),
+            actualHours: input.actualHours != null ? input.actualHours.toString() : task.actualHours,
+            notes: input.notes ?? task.notes,
+            updatedAt: new Date(),
+          })
+          .where(eq(batchStepTasks.id, task.id));
+        await recomputeSchedule(tx, task.executionId);
+        return { tasks: await tasksForExecution(tx, task.executionId) };
+      });
+    }),
+
+  /** Skip a task (pass-through; doesn't delay the rest), then reschedule. */
+  skipTask: createRbacProcedure("update", "batch")
+    .input(z.object({ taskId: z.string().uuid() }))
+    .mutation(async ({ input }) => {
+      return await db.transaction(async (tx) => {
+        const task = await loadTask(tx, input.taskId);
+        await tx
+          .update(batchStepTasks)
+          .set({ status: "skipped", completedAt: new Date(), updatedAt: new Date() })
+          .where(eq(batchStepTasks.id, task.id));
+        await recomputeSchedule(tx, task.executionId);
+        return { tasks: await tasksForExecution(tx, task.executionId) };
+      });
+    }),
+
+  /** Undo a completed/skipped task back to pending, then reschedule. */
+  reopenTask: createRbacProcedure("update", "batch")
+    .input(z.object({ taskId: z.string().uuid() }))
+    .mutation(async ({ input }) => {
+      return await db.transaction(async (tx) => {
+        const task = await loadTask(tx, input.taskId);
+        await tx
+          .update(batchStepTasks)
+          .set({ status: "pending", completedAt: null, actualHours: null, updatedAt: new Date() })
+          .where(eq(batchStepTasks.id, task.id));
+        await recomputeSchedule(tx, task.executionId);
+        return { tasks: await tasksForExecution(tx, task.executionId) };
+      });
+    }),
+
+  /** Assign (or unassign) a worker to a task. */
+  assignTask: createRbacProcedure("update", "batch")
+    .input(z.object({ taskId: z.string().uuid(), workerId: z.string().uuid().nullable() }))
+    .mutation(async ({ input }) => {
+      const [task] = await db
+        .select({ executionId: batchStepTasks.executionId })
+        .from(batchStepTasks)
+        .where(eq(batchStepTasks.id, input.taskId))
+        .limit(1);
+      if (!task) throw new TRPCError({ code: "NOT_FOUND", message: "Task not found" });
+      await db
+        .update(batchStepTasks)
+        .set({ assignedWorkerId: input.workerId, updatedAt: new Date() })
+        .where(eq(batchStepTasks.id, input.taskId));
+      const tasks = await db
+        .select()
+        .from(batchStepTasks)
+        .where(eq(batchStepTasks.executionId, task.executionId))
+        .orderBy(asc(batchStepTasks.sequence));
+      return { tasks };
     }),
 });
