@@ -10,7 +10,9 @@
  * the actual completion time (server-side).
  */
 
+import { useState } from "react";
 import { trpc } from "@/utils/trpc";
+import { StepDetailModal } from "@/components/recipes/StepDetailModal";
 import {
   Card,
   CardContent,
@@ -43,17 +45,21 @@ const fmtDate = (d: string | Date | null) =>
 type Task = {
   id: string;
   sequence: number;
+  kind: string;
   label: string;
   description: string | null;
   packagingPath: string;
   isOptional: boolean;
   scheduledDate: string | Date | null;
   status: string;
+  notes: string | null;
+  actualData: Record<string, unknown> | null;
 };
 
 export function BatchRecipeChecklist({ batchId }: { batchId: string }) {
   const utils = trpc.useUtils();
   const { data, isLoading } = trpc.recipeExecution.getForBatch.useQuery({ batchId });
+  const [openTask, setOpenTask] = useState<Task | null>(null);
 
   const refresh = () => utils.recipeExecution.getForBatch.invalidate({ batchId });
   const complete = trpc.recipeExecution.completeTask.useMutation({ onSuccess: refresh });
@@ -107,6 +113,7 @@ export function BatchRecipeChecklist({ batchId }: { batchId: string }) {
   const busy = complete.isPending || skip.isPending || reopen.isPending;
 
   return (
+    <>
     <Card>
       <CardHeader>
         <CardTitle className="text-base">Recipe checklist</CardTitle>
@@ -135,7 +142,13 @@ export function BatchRecipeChecklist({ batchId }: { batchId: string }) {
                   <TableCell className="text-muted-foreground">{t.sequence + 1}</TableCell>
                   <TableCell>
                     <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className={t.status === "done" ? "line-through" : ""}>{t.label}</span>
+                      <button
+                        type="button"
+                        onClick={() => setOpenTask(t)}
+                        className={`text-left hover:underline ${t.status === "done" ? "line-through" : ""}`}
+                      >
+                        {t.label}
+                      </button>
                       {t.packagingPath !== "all" && (
                         <Badge variant="outline" className="text-[10px]">
                           {t.packagingPath === "bottle" ? "Bottle only" : "Keg only"}
@@ -197,5 +210,13 @@ export function BatchRecipeChecklist({ batchId }: { batchId: string }) {
         </Table>
       </CardContent>
     </Card>
+    <StepDetailModal
+      open={!!openTask}
+      onClose={() => setOpenTask(null)}
+      batchId={batchId}
+      task={openTask}
+      sources={data.sources ?? []}
+    />
+    </>
   );
 }

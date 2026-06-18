@@ -22,6 +22,7 @@ import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import {
   db,
   batches,
+  vessels,
   recipes,
   recipeSteps,
   batchRecipeExecutions,
@@ -280,7 +281,26 @@ export const recipeExecutionRouter = router({
         .where(eq(batchStepTasks.executionId, execution.id))
         .orderBy(asc(batchStepTasks.sequence));
 
-      return { execution, tasks };
+      // Resolve the source cider batch(es) + their vessel, so a transfer step
+      // can show "the base cider is in TANK-X".
+      const refs = (execution.sourceRefs ?? {}) as { parentBatchIds?: string[] };
+      const parentIds = refs.parentBatchIds ?? [];
+      const sources = parentIds.length
+        ? await db
+            .select({
+              id: batches.id,
+              name: batches.name,
+              customName: batches.customName,
+              vesselName: vessels.name,
+              currentVolume: batches.currentVolume,
+              currentVolumeUnit: batches.currentVolumeUnit,
+            })
+            .from(batches)
+            .leftJoin(vessels, eq(batches.vesselId, vessels.id))
+            .where(inArray(batches.id, parentIds))
+        : [];
+
+      return { execution, tasks, sources };
     }),
 
   /** Cross-batch work queue: every open task across all active executions. */
@@ -325,6 +345,7 @@ export const recipeExecutionRouter = router({
         completedAt: z.coerce.date().optional(),
         actualHours: z.number().nonnegative().nullish(),
         notes: z.string().nullish(),
+        actualData: z.record(z.string(), z.unknown()).nullish(),
       }),
     )
     .mutation(async ({ input }) => {
@@ -337,6 +358,7 @@ export const recipeExecutionRouter = router({
             completedAt: input.completedAt ?? new Date(),
             actualHours: input.actualHours != null ? input.actualHours.toString() : task.actualHours,
             notes: input.notes ?? task.notes,
+            actualData: input.actualData ?? task.actualData,
             updatedAt: new Date(),
           })
           .where(eq(batchStepTasks.id, task.id));
