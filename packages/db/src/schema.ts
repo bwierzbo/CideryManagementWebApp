@@ -2000,6 +2000,10 @@ export const batchStepTasks = pgTable(
     assignedWorkerId: uuid("assigned_worker_id").references(() => workers.id),
     // {type, id} of the operation row created when this task ran (e.g. batchAdditive).
     resultRef: jsonb("result_ref"),
+    // Captured actuals when the step was performed — what the operator actually
+    // did vs the plan (e.g. { actualAmount, actualUnit, destinationVesselId,
+    // readings }). Drives deviation tracking; real operations wired in later.
+    actualData: jsonb("actual_data"),
     estimatedHours: decimal("estimated_hours", { precision: 6, scale: 2 }),
     actualHours: decimal("actual_hours", { precision: 6, scale: 2 }),
     notes: text("notes"),

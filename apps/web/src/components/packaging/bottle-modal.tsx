@@ -72,6 +72,7 @@ interface BottleModalProps {
   showTypeSelector?: boolean; // Show package type selector (bottles vs kegs)
   onTypeChange?: (type: "bottles" | "kegs") => void; // Callback when type changes
   preBottling?: PreBottlingData;
+  onSuccess?: () => void; // Called after a packaging run is created
 }
 
 type InputMode = "volume" | "units";
@@ -87,6 +88,7 @@ export function BottleModal({
   showTypeSelector = false,
   onTypeChange,
   preBottling,
+  onSuccess,
 }: BottleModalProps) {
   const { formatDateTimeForInput, parseDateTimeFromInput } = useDateFormat();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -434,6 +436,7 @@ export function BottleModal({
 
       console.log("Packaging run created:", result);
       onClose();
+      onSuccess?.();
     } catch (error) {
       console.error("Failed to create packaging run:", error);
 

@@ -126,6 +126,7 @@ export function RecipeInstantiateWizard({ open, onClose, recipe, inputs, steps }
   const [kegVolumeStr, setKegVolumeStr] = useState("0");
   const [newBatchName, setNewBatchName] = useState("");
   const [parentBatchIds, setParentBatchIds] = useState<string[]>([]);
+  const [parentVolumes, setParentVolumes] = useState<Record<string, string>>({});
   const [pressRunId, setPressRunId] = useState<string | null>(null);
   const [juicePurchaseItemId, setJuicePurchaseItemId] = useState<string | null>(null);
   const [existingBatchId, setExistingBatchId] = useState<string | null>(null);
@@ -183,6 +184,35 @@ export function RecipeInstantiateWizard({ open, onClose, recipe, inputs, steps }
   const kegVolumeL = Number(kegVolumeStr) || 0;
   const bottleVolumeL = Math.max(0, totalVolumeL - kegVolumeL);
 
+  // Blend draws: each selected cider's volume must total the batch volume and
+  // can't exceed what's on hand.
+  const parentSumL = parentBatchIds.reduce((s, id) => s + (Number(parentVolumes[id]) || 0), 0);
+  const blendMismatch =
+    mode === "new" && hasParentReq && parentBatchIds.length > 0 && Math.abs(parentSumL - totalVolumeL) > 0.5;
+  const parentOverdraw = parentBatchIds.some((id) => {
+    const b = activeBatches.find((x) => x.id === id);
+    return (Number(parentVolumes[id]) || 0) > Number(b?.currentVolume ?? 0) + 0.001;
+  });
+  // Every selected cider needs a positive draw — the server requires volumeL > 0
+  // per cider, so a blank field would otherwise fail validation on submit.
+  const parentBlank =
+    mode === "new" && hasParentReq && parentBatchIds.some((id) => !(Number(parentVolumes[id]) > 0));
+
+  const toggleParent = (id: string) =>
+    setParentBatchIds((prev) => {
+      if (prev.includes(id)) {
+        setParentVolumes((v) => {
+          const next = { ...v };
+          delete next[id];
+          return next;
+        });
+        return prev.filter((x) => x !== id);
+      }
+      // First cider added → default it to the whole batch volume; others blank.
+      setParentVolumes((v) => ({ ...v, [id]: prev.length === 0 ? String(totalVolumeL || "") : "" }));
+      return [...prev, id];
+    });
+
   const mutation = trpc.recipeExecution.instantiate.useMutation({
     onSuccess: (res) => {
       toast({ title: "Recipe started", description: `${res.taskCount} steps scheduled.` });
@@ -205,6 +235,9 @@ export function RecipeInstantiateWizard({ open, onClose, recipe, inputs, steps }
     kegVolumeL >= 0 &&
     kegVolumeL <= totalVolumeL &&
     (mode === "attach" ? !!existingBatchId : !sourceMissing) &&
+    !blendMismatch &&
+    !parentOverdraw &&
+    !parentBlank &&
     !mutation.isPending;
 
   const submit = () => {
@@ -214,7 +247,9 @@ export function RecipeInstantiateWizard({ open, onClose, recipe, inputs, steps }
       startDate,
       totalVolumeL,
       kegVolumeL,
-      parentBatchIds,
+      parentBatches: parentBatchIds
+        .map((id) => ({ batchId: id, volumeL: Number(parentVolumes[id]) || 0 }))
+        .filter((p) => p.volumeL > 0),
       pressRunId: pressRunId ?? undefined,
       juicePurchaseItemId: juicePurchaseItemId ?? undefined,
       newBatchName: newBatchName.trim() || undefined,
@@ -264,37 +299,48 @@ export function RecipeInstantiateWizard({ open, onClose, recipe, inputs, steps }
                     Start from cider {parentBatchIds.length > 1 ? "(blend)" : ""}
                   </Label>
                   {parentBatchIds.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5 my-1.5">
+                    <div className="space-y-1.5 my-1.5">
                       {parentBatchIds.map((id) => {
                         const b = activeBatches.find((x) => x.id === id);
+                        const avail = Number(b?.currentVolume ?? 0);
+                        const over = (Number(parentVolumes[id]) || 0) > avail + 0.001;
                         return (
-                          <Badge key={id} variant="secondary" className="gap-1">
-                            {b ? `${b.customName || b.name} — ${b.vesselName ?? "?"}` : id.slice(0, 8)}
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setParentBatchIds((p) => p.filter((x) => x !== id))
-                              }
-                            >
-                              <X className="w-3 h-3" />
+                          <div key={id} className="flex items-center gap-2 text-sm">
+                            <span className="min-w-0 flex-1 truncate">
+                              {b ? `${b.customName || b.name} — ${b.vesselName ?? "?"}` : id.slice(0, 8)}
+                              <span className="text-xs text-muted-foreground ml-1">({avail.toFixed(0)} L avail)</span>
+                            </span>
+                            <Input
+                              type="number"
+                              min="0"
+                              step="1"
+                              value={parentVolumes[id] ?? ""}
+                              onChange={(e) => setParentVolumes((v) => ({ ...v, [id]: e.target.value }))}
+                              className={`h-8 w-20 ${over ? "border-red-400" : ""}`}
+                              placeholder="L"
+                            />
+                            <span className="text-xs text-muted-foreground">L</span>
+                            <button type="button" onClick={() => toggleParent(id)}>
+                              <X className="w-3.5 h-3.5 text-gray-400" />
                             </button>
-                          </Badge>
+                          </div>
                         );
                       })}
+                      <p className={`text-[11px] ${blendMismatch ? "text-red-600" : "text-muted-foreground"}`}>
+                        Blend total: {parentSumL.toFixed(0)} L of {totalVolumeL} L batch
+                        {blendMismatch ? " — must equal the batch volume" : ""}
+                        {parentOverdraw ? " · a draw exceeds what's on hand" : ""}
+                      </p>
                     </div>
                   )}
                   <InlineBatchList
                     options={parentCiderOptions}
                     selectedIds={parentBatchIds}
-                    onPick={(id) =>
-                      setParentBatchIds((p) =>
-                        p.includes(id) ? p.filter((x) => x !== id) : [...p, id],
-                      )
-                    }
+                    onPick={toggleParent}
                   />
                   <p className="text-[11px] text-muted-foreground mt-1">
-                    Ciders currently in a cellar vessel. Pick one for a single varietal,
-                    or several to blend. Click again to remove.
+                    Ciders currently in a cellar vessel. Pick one for a single varietal, or
+                    several to blend (set how much from each). Click again to remove.
                   </p>
                 </div>
               )}

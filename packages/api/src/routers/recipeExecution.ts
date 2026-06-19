@@ -22,10 +22,14 @@ import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import {
   db,
   batches,
+  vessels,
   recipes,
   recipeSteps,
+  recipeInputs,
   batchRecipeExecutions,
   batchStepTasks,
+  batchMergeHistory,
+  batchTransfers,
 } from "db";
 import { buildStepSchedule, rescheduleWithActuals } from "lib";
 import { router, createRbacProcedure } from "../trpc";
@@ -92,7 +96,12 @@ const instantiateSchema = z
     startDate: z.coerce.date(),
     totalVolumeL: z.number().positive(),
     kegVolumeL: z.number().min(0).default(0),
-    // "new" mode source selection (only the ones the recipe declares are used)
+    // "new" mode source selection (only the ones the recipe declares are used).
+    // parentBatches carries the per-cider draw for blends; parentBatchIds is the
+    // legacy id-only form (still accepted).
+    parentBatches: z
+      .array(z.object({ batchId: z.string().uuid(), volumeL: z.number().positive() }))
+      .default([]),
     parentBatchIds: z.array(z.string().uuid()).default([]),
     pressRunId: z.string().uuid().nullish(),
     juicePurchaseItemId: z.string().uuid().nullish(),
@@ -131,6 +140,11 @@ export const recipeExecutionRouter = router({
 
       const bottleVolumeL = Math.max(0, input.totalVolumeL - input.kegVolumeL);
       const kegVolumeL = input.kegVolumeL;
+      // Per-cider draw for blends (parentBatches) falls back to the id-only form.
+      const parentBatches = input.parentBatches.length
+        ? input.parentBatches
+        : input.parentBatchIds.map((batchId) => ({ batchId, volumeL: input.totalVolumeL }));
+      const parentBatchIds = parentBatches.map((p) => p.batchId);
 
       // Which steps actually run: respect the split + skipped optional steps.
       const skipped = new Set(input.skippedStepIds);
@@ -178,7 +192,7 @@ export const recipeExecutionRouter = router({
           const batchNumber = `${year}-${String(Number(count) + 1).padStart(3, "0")}`;
           const name = input.newBatchName?.trim() || `${recipe.name} ${batchNumber}`;
           const status =
-            input.parentBatchIds.length > 0
+            parentBatchIds.length > 0
               ? "conditioning"
               : recipe.productType === "brandy" || recipe.productType === "pommeau"
                 ? "aging"
@@ -197,7 +211,7 @@ export const recipeExecutionRouter = router({
               productType: recipe.productType,
               status,
               startDate: input.startDate,
-              parentBatchId: input.parentBatchIds[0] ?? null,
+              parentBatchId: parentBatchIds[0] ?? null,
               originPressRunId: input.pressRunId ?? null,
               originJuicePurchaseItemId: input.juicePurchaseItemId ?? null,
             })
@@ -227,7 +241,8 @@ export const recipeExecutionRouter = router({
             mode: input.mode,
             startDate: input.startDate,
             sourceRefs: {
-              parentBatchIds: input.parentBatchIds,
+              parentBatchIds,
+              parentBatches,
               pressRunId: input.pressRunId ?? null,
               juicePurchaseItemId: input.juicePurchaseItemId ?? null,
             },
@@ -280,7 +295,54 @@ export const recipeExecutionRouter = router({
         .where(eq(batchStepTasks.executionId, execution.id))
         .orderBy(asc(batchStepTasks.sequence));
 
-      return { execution, tasks };
+      // Resolve the source cider batch(es) + their vessel, so a transfer step
+      // can show "the base cider is in TANK-X" and the planned draw per cider.
+      const refs = (execution.sourceRefs ?? {}) as {
+        parentBatchIds?: string[];
+        parentBatches?: { batchId: string; volumeL: number }[];
+      };
+      const parentBatches = refs.parentBatches ?? [];
+      const parentIds = parentBatches.length
+        ? parentBatches.map((p) => p.batchId)
+        : refs.parentBatchIds ?? [];
+      const sourceRows = parentIds.length
+        ? await db
+            .select({
+              id: batches.id,
+              name: batches.name,
+              customName: batches.customName,
+              vesselName: vessels.name,
+              currentVolume: batches.currentVolume,
+              currentVolumeUnit: batches.currentVolumeUnit,
+            })
+            .from(batches)
+            .leftJoin(vessels, eq(batches.vesselId, vessels.id))
+            .where(inArray(batches.id, parentIds))
+        : [];
+      const sources = sourceRows.map((s) => ({
+        ...s,
+        plannedVolumeL: parentBatches.find((p) => p.batchId === s.id)?.volumeL ?? null,
+      }));
+
+      // Recipe ingredients (for prefilling the add-additive form per step).
+      const ingredients = await db
+        .select({
+          label: recipeInputs.label,
+          additiveType: recipeInputs.additiveType,
+          additiveName: recipeInputs.additiveName,
+          additiveVarietyId: recipeInputs.additiveVarietyId,
+          rateValue: recipeInputs.rateValue,
+          rateUnit: recipeInputs.rateUnit,
+        })
+        .from(recipeInputs)
+        .where(
+          and(
+            eq(recipeInputs.recipeId, execution.recipeId),
+            eq(recipeInputs.kind, "ingredient"),
+          ),
+        );
+
+      return { execution, tasks, sources, ingredients };
     }),
 
   /** Cross-batch work queue: every open task across all active executions. */
@@ -325,6 +387,7 @@ export const recipeExecutionRouter = router({
         completedAt: z.coerce.date().optional(),
         actualHours: z.number().nonnegative().nullish(),
         notes: z.string().nullish(),
+        actualData: z.record(z.string(), z.unknown()).nullish(),
       }),
     )
     .mutation(async ({ input }) => {
@@ -337,6 +400,163 @@ export const recipeExecutionRouter = router({
             completedAt: input.completedAt ?? new Date(),
             actualHours: input.actualHours != null ? input.actualHours.toString() : task.actualHours,
             notes: input.notes ?? task.notes,
+            actualData: input.actualData ?? task.actualData,
+            updatedAt: new Date(),
+          })
+          .where(eq(batchStepTasks.id, task.id));
+        await recomputeSchedule(tx, task.executionId);
+        return { tasks: await tasksForExecution(tx, task.executionId) };
+      });
+    }),
+
+  /**
+   * Perform the "transfer base cider into the mixing vessel" step. Moves each
+   * source cider's planned draw (recorded at instantiation) into the chosen
+   * destination vessel, assigns that vessel to this batch, debits each source,
+   * blends ABV/OG volume-weighted, records per-source lineage, and marks the
+   * task done. Custom because the recipe batch is a pre-created shell.
+   *
+   * Follow-up: TTB volume-ledger entries.
+   */
+  performTransfer: createRbacProcedure("update", "batch")
+    .input(z.object({ taskId: z.string().uuid(), destinationVesselId: z.string().uuid() }))
+    .mutation(async ({ input, ctx }) => {
+      return await db.transaction(async (tx) => {
+        const task = await loadTask(tx, input.taskId);
+        const [exec] = await tx
+          .select()
+          .from(batchRecipeExecutions)
+          .where(eq(batchRecipeExecutions.id, task.executionId))
+          .limit(1);
+        const refs = (exec?.sourceRefs ?? {}) as {
+          parentBatches?: { batchId: string; volumeL: number }[];
+          parentBatchIds?: string[];
+        };
+        // Legacy executions (pre per-cider amounts) split the planned batch
+        // volume evenly across their source ciders.
+        const legacyIds = refs.parentBatchIds ?? [];
+        const plannedTotal =
+          parseFloat(exec?.bottleVolumeL || "0") + parseFloat(exec?.kegVolumeL || "0");
+        const draws = refs.parentBatches?.length
+          ? refs.parentBatches
+          : legacyIds.map((batchId) => ({ batchId, volumeL: plannedTotal / (legacyIds.length || 1) }));
+        if (draws.length === 0) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "No source cider recorded for this batch." });
+        }
+        const totalL = draws.reduce((s, d) => s + d.volumeL, 0);
+        if (totalL <= 0) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "No transfer volume recorded for the source cider(s)." });
+        }
+
+        // Destination room: capacity − what's already in it.
+        const [destVessel] = await tx.select().from(vessels).where(eq(vessels.id, input.destinationVesselId)).limit(1);
+        if (!destVessel) throw new TRPCError({ code: "NOT_FOUND", message: "Destination vessel not found." });
+        const destCapacityL =
+          (destVessel.capacityUnit === "gal" ? 3.785411784 : 1) * parseFloat(destVessel.capacity || "0");
+        const [{ used }] = await tx
+          .select({
+            used: sql<string>`COALESCE(SUM(COALESCE(CAST(${batches.currentVolumeLiters} AS DECIMAL), CAST(${batches.currentVolume} AS DECIMAL), 0)), 0)`,
+          })
+          .from(batches)
+          .where(and(eq(batches.vesselId, destVessel.id), isNull(batches.deletedAt)));
+        const spaceL = destCapacityL - (parseFloat(used) || 0);
+        if (totalL > spaceL + 0.001) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: `${destVessel.name} only has ${spaceL.toFixed(1)} L of space; the blend is ${totalL.toFixed(1)} L.`,
+          });
+        }
+
+        // Validate, debit, and record lineage for each source. Blend ABV/OG —
+        // each weighted only over the sources that actually have that value, so
+        // a source missing ABV/OG doesn't dilute the result.
+        let abvWeighted = 0;
+        let abvWeight = 0;
+        let ogWeighted = 0;
+        let ogWeight = 0;
+        for (const draw of draws) {
+          const [src] = await tx.select().from(batches).where(eq(batches.id, draw.batchId)).limit(1);
+          if (!src) throw new TRPCError({ code: "NOT_FOUND", message: "Source batch not found." });
+          if (!src.vesselId) {
+            throw new TRPCError({ code: "BAD_REQUEST", message: `${src.customName || src.name} isn't in a vessel.` });
+          }
+          const srcVol = parseFloat(src.currentVolumeLiters || src.currentVolume || "0");
+          if (draw.volumeL > srcVol + 0.001) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: `${src.customName || src.name} only has ${srcVol.toFixed(1)} L; can't draw ${draw.volumeL} L.`,
+            });
+          }
+          const srcAbv = parseFloat(src.actualAbv || src.estimatedAbv || "0");
+          if (srcAbv > 0) {
+            abvWeighted += srcAbv * draw.volumeL;
+            abvWeight += draw.volumeL;
+          }
+          if (src.originalGravity) {
+            ogWeighted += parseFloat(src.originalGravity) * draw.volumeL;
+            ogWeight += draw.volumeL;
+          }
+          const newSrcVol = srcVol - draw.volumeL;
+          await tx
+            .update(batches)
+            .set({
+              currentVolume: newSrcVol.toString(),
+              currentVolumeLiters: newSrcVol.toString(),
+              currentVolumeUnit: "L",
+              updatedAt: new Date(),
+            })
+            .where(eq(batches.id, src.id));
+          await tx.insert(batchMergeHistory).values({
+            targetBatchId: task.batchId,
+            sourceBatchId: src.id,
+            sourceType: "batch_transfer",
+            volumeAdded: draw.volumeL.toString(),
+            volumeAddedUnit: "L",
+            targetVolumeBefore: "0",
+            targetVolumeBeforeUnit: "L",
+            targetVolumeAfter: totalL.toString(),
+            targetVolumeAfterUnit: "L",
+            mergedAt: new Date(),
+            mergedBy: ctx.user.id,
+            createdAt: new Date(),
+          });
+          await tx.insert(batchTransfers).values({
+            sourceBatchId: src.id,
+            sourceVesselId: src.vesselId,
+            destinationBatchId: task.batchId,
+            destinationVesselId: input.destinationVesselId,
+            volumeTransferred: draw.volumeL.toString(),
+            volumeTransferredUnit: "L",
+            totalVolumeProcessed: draw.volumeL.toString(),
+            totalVolumeProcessedUnit: "L",
+            loss: "0",
+            lossUnit: "L",
+            transferredAt: new Date(),
+            transferredBy: ctx.user.id,
+            notes: `Recipe blend: ${draw.volumeL} L from ${src.customName || src.name} → ${destVessel.name}`,
+            createdAt: new Date(),
+          });
+        }
+
+        // Fill this batch + assign vessel + blended ABV/OG.
+        const fill: Record<string, unknown> = {
+          vesselId: input.destinationVesselId,
+          currentVolume: totalL.toString(),
+          currentVolumeLiters: totalL.toString(),
+          currentVolumeUnit: "L",
+          updatedAt: new Date(),
+        };
+        if (abvWeight > 0) fill.estimatedAbv = (abvWeighted / abvWeight).toFixed(2);
+        if (ogWeight > 0) fill.originalGravity = (ogWeighted / ogWeight).toFixed(4);
+        await tx.update(batches).set(fill).where(eq(batches.id, task.batchId));
+
+        // Mark done + reschedule.
+        await tx
+          .update(batchStepTasks)
+          .set({
+            status: "done",
+            completedAt: new Date(),
+            actualData: { destinationVesselId: input.destinationVesselId, sources: draws, totalL },
             updatedAt: new Date(),
           })
           .where(eq(batchStepTasks.id, task.id));

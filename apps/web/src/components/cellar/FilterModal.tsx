@@ -53,6 +53,10 @@ interface FilterModalProps {
   vesselName: string;
   batchId: string;
   currentVolumeL: number;
+  /** Called after a filter operation succeeds (e.g. to complete a recipe task). */
+  onSuccess?: () => void;
+  /** Recipe-planned filter type to prefill. */
+  prefillFilterType?: "coarse" | "fine" | "sterile";
 }
 
 export function FilterModal({
@@ -62,6 +66,8 @@ export function FilterModal({
   vesselName,
   batchId,
   currentVolumeL,
+  onSuccess,
+  prefillFilterType,
 }: FilterModalProps) {
   const utils = trpc.useUtils();
   const { formatDateTimeForInput, parseDateTimeFromInput } = useDateFormat();
@@ -130,7 +136,7 @@ export function FilterModal({
   useEffect(() => {
     if (open) {
       reset({
-        filterType: "fine" as const,
+        filterType: prefillFilterType ?? ("fine" as const),
         volumeBefore: currentVolumeL,
         volumeAfter: currentVolumeL,
         volumeBeforeUnit: "L",
@@ -140,7 +146,7 @@ export function FilterModal({
       });
       setLaborAssignments([]);
     }
-  }, [open, currentVolumeL, reset]);
+  }, [open, currentVolumeL, reset, prefillFilterType]);
 
   const filterMutation = trpc.batch.filter.useMutation({
     onSuccess: (data) => {
@@ -154,6 +160,7 @@ export function FilterModal({
       utils.batch.list.invalidate();
       onClose();
       reset();
+      onSuccess?.();
     },
     onError: (error) => {
       toast({

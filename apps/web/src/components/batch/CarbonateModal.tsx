@@ -104,6 +104,9 @@ interface CarbonateModalProps {
     maxPressure: number;
   } | null;
   onSuccess?: () => void;
+  /** Recipe-planned values to prefill (method uses recipe terms forced|natural). */
+  prefillTargetCo2Volumes?: number;
+  prefillMethod?: "forced" | "natural";
 }
 
 export function CarbonateModal({
@@ -112,6 +115,8 @@ export function CarbonateModal({
   batch,
   vessel,
   onSuccess,
+  prefillTargetCo2Volumes,
+  prefillMethod,
 }: CarbonateModalProps) {
   const utils = trpc.useUtils();
   const { formatDateTimeForInput, parseDateTimeFromInput } = useDateFormat();
@@ -253,7 +258,14 @@ export function CarbonateModal({
   // Reset form when modal opens
   useEffect(() => {
     if (open) {
-      const defaultMethod = vessel?.isPressureVessel === "yes" ? "forced" : "bottle_conditioning";
+      const recipeMethod =
+        prefillMethod === "natural"
+          ? "bottle_conditioning"
+          : prefillMethod === "forced"
+            ? "forced"
+            : undefined;
+      const defaultMethod =
+        recipeMethod ?? (vessel?.isPressureVessel === "yes" ? "forced" : "bottle_conditioning");
       reset({
         carbonationMethod: defaultMethod,
         startedAt: formatDateTimeForInput(new Date()) as any,
@@ -261,7 +273,7 @@ export function CarbonateModal({
         startingVolumeUnit: (batch.currentVolumeUnit as "L" | "gal") || "L",
         startingTemperature: 10,
         residualCo2Volumes: 0.7,
-        targetCo2Volumes: 2.0,
+        targetCo2Volumes: prefillTargetCo2Volumes ?? 2.0,
         pressureApplied: 0,
         sugarPerLiter: undefined,
       } as any);
@@ -274,7 +286,7 @@ export function CarbonateModal({
       setDateWarning(null);
       setLaborAssignments([]);
     }
-  }, [open, reset, batch.currentVolume, batch.currentVolumeUnit, vessel?.isPressureVessel]);
+  }, [open, reset, batch.currentVolume, batch.currentVolumeUnit, vessel?.isPressureVessel, prefillMethod, prefillTargetCo2Volumes]);
 
   // Convert volume to liters for calculations
   const volumeInLiters = useMemo(() => {
