@@ -193,6 +193,10 @@ export function RecipeInstantiateWizard({ open, onClose, recipe, inputs, steps }
     const b = activeBatches.find((x) => x.id === id);
     return (Number(parentVolumes[id]) || 0) > Number(b?.currentVolume ?? 0) + 0.001;
   });
+  // Every selected cider needs a positive draw — the server requires volumeL > 0
+  // per cider, so a blank field would otherwise fail validation on submit.
+  const parentBlank =
+    mode === "new" && hasParentReq && parentBatchIds.some((id) => !(Number(parentVolumes[id]) > 0));
 
   const toggleParent = (id: string) =>
     setParentBatchIds((prev) => {
@@ -233,6 +237,7 @@ export function RecipeInstantiateWizard({ open, onClose, recipe, inputs, steps }
     (mode === "attach" ? !!existingBatchId : !sourceMissing) &&
     !blendMismatch &&
     !parentOverdraw &&
+    !parentBlank &&
     !mutation.isPending;
 
   const submit = () => {
@@ -242,10 +247,9 @@ export function RecipeInstantiateWizard({ open, onClose, recipe, inputs, steps }
       startDate,
       totalVolumeL,
       kegVolumeL,
-      parentBatches: parentBatchIds.map((id) => ({
-        batchId: id,
-        volumeL: Number(parentVolumes[id]) || 0,
-      })),
+      parentBatches: parentBatchIds
+        .map((id) => ({ batchId: id, volumeL: Number(parentVolumes[id]) || 0 }))
+        .filter((p) => p.volumeL > 0),
       pressRunId: pressRunId ?? undefined,
       juicePurchaseItemId: juicePurchaseItemId ?? undefined,
       newBatchName: newBatchName.trim() || undefined,

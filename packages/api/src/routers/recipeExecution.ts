@@ -454,7 +454,9 @@ export const recipeExecutionRouter = router({
         const destCapacityL =
           (destVessel.capacityUnit === "gal" ? 3.785411784 : 1) * parseFloat(destVessel.capacity || "0");
         const [{ used }] = await tx
-          .select({ used: sql<string>`COALESCE(SUM(CAST(${batches.currentVolumeLiters} AS DECIMAL)), 0)` })
+          .select({
+            used: sql<string>`COALESCE(SUM(COALESCE(CAST(${batches.currentVolumeLiters} AS DECIMAL), CAST(${batches.currentVolume} AS DECIMAL), 0)), 0)`,
+          })
           .from(batches)
           .where(and(eq(batches.vesselId, destVessel.id), isNull(batches.deletedAt)));
         const spaceL = destCapacityL - (parseFloat(used) || 0);
@@ -465,8 +467,11 @@ export const recipeExecutionRouter = router({
           });
         }
 
-        // Validate, debit, and record lineage for each source. Blend ABV/OG.
+        // Validate, debit, and record lineage for each source. Blend ABV/OG —
+        // each weighted only over the sources that actually have that value, so
+        // a source missing ABV/OG doesn't dilute the result.
         let abvWeighted = 0;
+        let abvWeight = 0;
         let ogWeighted = 0;
         let ogWeight = 0;
         for (const draw of draws) {
@@ -483,7 +488,10 @@ export const recipeExecutionRouter = router({
             });
           }
           const srcAbv = parseFloat(src.actualAbv || src.estimatedAbv || "0");
-          abvWeighted += srcAbv * draw.volumeL;
+          if (srcAbv > 0) {
+            abvWeighted += srcAbv * draw.volumeL;
+            abvWeight += draw.volumeL;
+          }
           if (src.originalGravity) {
             ogWeighted += parseFloat(src.originalGravity) * draw.volumeL;
             ogWeight += draw.volumeL;
@@ -538,7 +546,7 @@ export const recipeExecutionRouter = router({
           currentVolumeUnit: "L",
           updatedAt: new Date(),
         };
-        if (abvWeighted > 0) fill.estimatedAbv = (abvWeighted / totalL).toFixed(2);
+        if (abvWeight > 0) fill.estimatedAbv = (abvWeighted / abvWeight).toFixed(2);
         if (ogWeight > 0) fill.originalGravity = (ogWeighted / ogWeight).toFixed(4);
         await tx.update(batches).set(fill).where(eq(batches.id, task.batchId));
 
