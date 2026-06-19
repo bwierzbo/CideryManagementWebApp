@@ -417,6 +417,24 @@ export const recipeExecutionRouter = router({
         const [destVessel] = await tx.select().from(vessels).where(eq(vessels.id, input.destinationVesselId)).limit(1);
         if (!destVessel) throw new TRPCError({ code: "NOT_FOUND", message: "Destination vessel not found." });
 
+        // Destination must have room: capacity − what's already in it.
+        const destCapacityL =
+          (destVessel.capacityUnit === "gal" ? 3.785411784 : 1) * parseFloat(destVessel.capacity || "0");
+        const [{ used }] = await tx
+          .select({ used: sql<string>`COALESCE(SUM(CAST(${batches.currentVolumeLiters} AS DECIMAL)), 0)` })
+          .from(batches)
+          .where(and(eq(batches.vesselId, destVessel.id), isNull(batches.deletedAt)));
+        const usedL = parseFloat(used) || 0;
+        const spaceL = destCapacityL - usedL;
+        if (input.volumeL > spaceL + 0.001) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: `${destVessel.name} only has ${spaceL.toFixed(1)} L of space (capacity ${destCapacityL.toFixed(
+              0,
+            )} L, ${usedL.toFixed(1)} L in use).`,
+          });
+        }
+
         // Debit the source.
         const newSourceVol = sourceVol - input.volumeL;
         await tx

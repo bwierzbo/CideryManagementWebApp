@@ -76,8 +76,9 @@ export function StepDetailModal({
   );
   const [notes, setNotes] = useState(task?.notes ?? "");
 
-  const vesselsQuery = trpc.vessel.list.useQuery({}, { enabled: open && task?.kind === "transfer" });
-  const vessels = vesselsQuery.data?.vessels ?? [];
+  const vesselsQuery = trpc.vessel.listWithBatches.useQuery(undefined, {
+    enabled: open && task?.kind === "transfer",
+  });
 
   const refresh = () => {
     utils.recipeExecution.getForBatch.invalidate({ batchId });
@@ -121,10 +122,27 @@ export function StepDetailModal({
     });
   };
 
+  const transferVolNum = Number(transferVolume) || 0;
   const q = vesselSearch.trim().toLowerCase();
-  const filteredVessels = q
-    ? vessels.filter((v) => (v.name ?? "").toLowerCase().includes(q))
-    : vessels;
+  const vesselOptions = (vesselsQuery.data?.vessels ?? [])
+    .map((v) => {
+      const capacityL = (v.capacityUnit === "gal" ? 3.785411784 : 1) * Number(v.capacity ?? 0);
+      const contentsL = v.currentBatch ? Number(v.currentBatch.currentVolume ?? 0) : 0;
+      const spaceL = capacityL - contentsL;
+      return {
+        id: v.id,
+        name: v.name ?? "",
+        capacityL,
+        contentsL,
+        spaceL,
+        isEmpty: !v.currentBatch || contentsL < 0.1,
+        batchName: v.currentBatch?.name ?? null,
+        fits: spaceL + 0.001 >= transferVolNum,
+      };
+    })
+    .filter((v) => !q || v.name.toLowerCase().includes(q))
+    // Empty vessels first, then most free space.
+    .sort((a, b) => Number(b.isEmpty) - Number(a.isEmpty) || b.spaceL - a.spaceL);
 
   // Measurement + additive steps open the SAME forms as the manual cellar flow;
   // completing one records the real operation and marks the step done.
@@ -182,26 +200,39 @@ export function StepDetailModal({
                     className="h-9 mb-1.5"
                     disabled={isDone}
                   />
-                  <div className="max-h-40 overflow-y-auto border rounded-md divide-y">
-                    {filteredVessels.length === 0 ? (
+                  <div className="max-h-48 overflow-y-auto border rounded-md divide-y">
+                    {vesselOptions.length === 0 ? (
                       <p className="text-sm text-muted-foreground px-2.5 py-3">No vessels found.</p>
                     ) : (
-                      filteredVessels.map((v) => {
+                      vesselOptions.map((v) => {
                         const selected = destVesselId === v.id;
+                        const disabled = isDone || !v.fits;
                         return (
                           <button
                             key={v.id}
                             type="button"
-                            disabled={isDone}
+                            disabled={disabled}
                             onClick={() => setDestVesselId(selected ? null : v.id)}
-                            className={`w-full text-left px-2.5 py-1.5 text-sm hover:bg-gray-50 flex items-center justify-between gap-2 ${
-                              selected ? "bg-green-50" : ""
-                            }`}
+                            className={`w-full text-left px-2.5 py-1.5 text-sm flex items-center justify-between gap-2 ${
+                              selected ? "bg-green-50" : "hover:bg-gray-50"
+                            } ${disabled ? "opacity-40 cursor-not-allowed" : ""}`}
                           >
-                            <span className="truncate">
-                              {v.name}
-                              <span className="text-xs text-muted-foreground ml-1">
-                                {v.capacity} {v.capacityUnit} · {v.status}
+                            <span className="min-w-0">
+                              <span className="flex items-center gap-1.5">
+                                <span className="font-medium truncate">{v.name}</span>
+                                {v.isEmpty ? (
+                                  <Badge variant="outline" className="text-[10px] border-green-400 text-green-700">
+                                    Empty
+                                  </Badge>
+                                ) : (
+                                  <span className="text-xs text-muted-foreground truncate">
+                                    {v.contentsL.toFixed(0)} L · {v.batchName}
+                                  </span>
+                                )}
+                              </span>
+                              <span className="block text-xs text-muted-foreground">
+                                {v.spaceL.toFixed(0)} L free of {v.capacityL.toFixed(0)} L
+                                {!v.fits && transferVolNum > 0 ? " · not enough space" : ""}
                               </span>
                             </span>
                             {selected && <Check className="w-4 h-4 text-green-600 shrink-0" />}
