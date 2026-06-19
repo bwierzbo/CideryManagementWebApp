@@ -48,6 +48,7 @@ interface Source {
   vesselName: string | null;
   currentVolume: string | null;
   currentVolumeUnit: string | null;
+  plannedVolumeL: number | null;
 }
 
 export function StepDetailModal({
@@ -71,10 +72,12 @@ export function StepDetailModal({
     (ad.destinationVesselId as string) ?? null,
   );
   const [vesselSearch, setVesselSearch] = useState("");
-  const [transferVolume, setTransferVolume] = useState(
-    String(ad.volumeL ?? (plannedVolumeL || "")),
-  );
   const [notes, setNotes] = useState(task?.notes ?? "");
+
+  // Total to transfer = sum of each source cider's planned draw (set at
+  // instantiation); falls back to the batch's planned volume.
+  const plannedTotalL =
+    sources.reduce((s, x) => s + (x.plannedVolumeL ?? 0), 0) || plannedVolumeL;
 
   const vesselsQuery = trpc.vessel.listWithBatches.useQuery(undefined, {
     enabled: open && task?.kind === "transfer",
@@ -122,7 +125,6 @@ export function StepDetailModal({
     });
   };
 
-  const transferVolNum = Number(transferVolume) || 0;
   const q = vesselSearch.trim().toLowerCase();
   const vesselOptions = (vesselsQuery.data?.vessels ?? [])
     .map((v) => {
@@ -137,7 +139,7 @@ export function StepDetailModal({
         spaceL,
         isEmpty: !v.currentBatch || contentsL < 0.1,
         batchName: v.currentBatch?.name ?? null,
-        fits: spaceL + 0.001 >= transferVolNum,
+        fits: spaceL + 0.001 >= plannedTotalL,
       };
     })
     .filter((v) => !q || v.name.toLowerCase().includes(q))
@@ -178,17 +180,29 @@ export function StepDetailModal({
             {task.kind === "transfer" && (
               <>
                 <div className="rounded-md bg-gray-50 border p-2.5 text-sm">
-                  <p className="text-xs font-medium text-gray-500 mb-1">Source cider</p>
+                  <p className="text-xs font-medium text-gray-500 mb-1">
+                    {sources.length > 1 ? "Blend — drawn from:" : "Source cider"}
+                  </p>
                   {sources.length === 0 ? (
                     <p className="text-muted-foreground">No source recorded.</p>
                   ) : (
                     sources.map((s) => (
-                      <p key={s.id}>
-                        {s.customName || s.name}
-                        {s.vesselName ? ` — ${s.vesselName}` : ""}
-                        {s.currentVolume ? ` (${s.currentVolume} ${s.currentVolumeUnit ?? "L"})` : ""}
+                      <p key={s.id} className="flex justify-between gap-2">
+                        <span className="truncate">
+                          {s.customName || s.name}
+                          {s.vesselName ? ` — ${s.vesselName}` : ""}
+                        </span>
+                        {s.plannedVolumeL != null && (
+                          <span className="font-mono shrink-0">{s.plannedVolumeL} L</span>
+                        )}
                       </p>
                     ))
+                  )}
+                  {sources.length > 1 && (
+                    <p className="flex justify-between gap-2 border-t mt-1 pt-1 font-medium">
+                      <span>Total</span>
+                      <span className="font-mono">{plannedTotalL.toFixed(0)} L</span>
+                    </p>
                   )}
                 </div>
                 <div>
@@ -232,7 +246,7 @@ export function StepDetailModal({
                               </span>
                               <span className="block text-xs text-muted-foreground">
                                 {v.spaceL.toFixed(0)} L free of {v.capacityL.toFixed(0)} L
-                                {!v.fits && transferVolNum > 0 ? " · not enough space" : ""}
+                                {!v.fits && plannedTotalL > 0 ? " · not enough space" : ""}
                               </span>
                             </span>
                             {selected && <Check className="w-4 h-4 text-green-600 shrink-0" />}
@@ -241,21 +255,9 @@ export function StepDetailModal({
                       })
                     )}
                   </div>
-                </div>
-                <div>
-                  <Label className="text-xs">Volume to transfer (L)</Label>
-                  <Input
-                    type="number"
-                    min="0"
-                    step="1"
-                    value={transferVolume}
-                    onChange={(e) => setTransferVolume(e.target.value)}
-                    className="h-9 w-32"
-                    disabled={isDone}
-                  />
                   <p className="text-[11px] text-muted-foreground mt-1">
-                    Drawn from the source cider into the destination vessel, and this
-                    batch is assigned to that vessel.
+                    {plannedTotalL.toFixed(0)} L is drawn into this vessel and the batch is
+                    assigned to it. Vessels without room are disabled.
                   </p>
                 </div>
               </>
@@ -289,13 +291,9 @@ export function StepDetailModal({
               ) : task.kind === "transfer" ? (
                 <Button
                   size="sm"
-                  disabled={transfer.isPending || !destVesselId || !(Number(transferVolume) > 0)}
+                  disabled={transfer.isPending || !destVesselId || !(plannedTotalL > 0)}
                   onClick={() =>
-                    transfer.mutate({
-                      taskId: task.id,
-                      destinationVesselId: destVesselId!,
-                      volumeL: Number(transferVolume),
-                    })
+                    transfer.mutate({ taskId: task.id, destinationVesselId: destVesselId! })
                   }
                 >
                   <Check className="w-4 h-4 mr-1" /> Perform transfer
