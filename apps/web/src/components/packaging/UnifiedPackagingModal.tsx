@@ -20,6 +20,7 @@ interface UnifiedPackagingModalProps {
   currentVolumeL: number;
   initialType?: PackagingType;
   preBottling?: PreBottlingData;
+  onSuccess?: () => void;
 }
 
 /**
@@ -37,6 +38,7 @@ export function UnifiedPackagingModal({
   currentVolumeL,
   initialType = "bottles",
   preBottling,
+  onSuccess,
 }: UnifiedPackagingModalProps) {
   const [packagingType, setPackagingType] = useState<PackagingType>(initialType);
 
@@ -60,6 +62,7 @@ export function UnifiedPackagingModal({
         showTypeSelector={true}
         onTypeChange={setPackagingType}
         preBottling={preBottling}
+        onSuccess={onSuccess}
       />
     );
   }
@@ -75,6 +78,7 @@ export function UnifiedPackagingModal({
       showTypeSelector={true}
       onTypeChange={setPackagingType}
       preBottling={preBottling}
+      onSuccess={onSuccess}
     />
   );
 }

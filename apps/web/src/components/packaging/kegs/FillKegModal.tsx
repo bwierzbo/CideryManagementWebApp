@@ -52,6 +52,7 @@ interface FillKegModalProps {
   showTypeSelector?: boolean; // Show package type selector (bottles vs kegs)
   onTypeChange?: (type: "bottles" | "kegs") => void; // Callback when type changes
   preBottling?: PreBottlingData;
+  onSuccess?: () => void; // Called after kegs are filled
 }
 
 // Memoized keg item component to prevent re-renders
@@ -112,6 +113,7 @@ export function FillKegModal({
   showTypeSelector = false,
   onTypeChange,
   preBottling,
+  onSuccess,
 }: FillKegModalProps) {
   const { formatDateTimeForInput, parseDateTimeFromInput } = useDateFormat();
   const [selectedKegIds, setSelectedKegIds] = useState<string[]>([]);
@@ -163,6 +165,7 @@ export function FillKegModal({
       setSelectedKegIds([]);
       setKegVolumes({});
       onClose();
+      onSuccess?.();
     },
     onError: (error) => {
       toast({

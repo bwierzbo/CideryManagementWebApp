@@ -53,6 +53,8 @@ interface FilterModalProps {
   vesselName: string;
   batchId: string;
   currentVolumeL: number;
+  /** Called after a filter operation succeeds (e.g. to complete a recipe task). */
+  onSuccess?: () => void;
 }
 
 export function FilterModal({
@@ -62,6 +64,7 @@ export function FilterModal({
   vesselName,
   batchId,
   currentVolumeL,
+  onSuccess,
 }: FilterModalProps) {
   const utils = trpc.useUtils();
   const { formatDateTimeForInput, parseDateTimeFromInput } = useDateFormat();
@@ -154,6 +157,7 @@ export function FilterModal({
       utils.batch.list.invalidate();
       onClose();
       reset();
+      onSuccess?.();
     },
     onError: (error) => {
       toast({

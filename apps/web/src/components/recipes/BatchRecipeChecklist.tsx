@@ -12,7 +12,11 @@
 
 import { useState } from "react";
 import { trpc } from "@/utils/trpc";
+import { toast } from "@/hooks/use-toast";
 import { StepDetailModal } from "@/components/recipes/StepDetailModal";
+import { FilterModal } from "@/components/cellar/FilterModal";
+import { CarbonateModal } from "@/components/batch/CarbonateModal";
+import { UnifiedPackagingModal } from "@/components/packaging/UnifiedPackagingModal";
 import {
   Card,
   CardContent,
@@ -59,12 +63,34 @@ type Task = {
 export function BatchRecipeChecklist({ batchId }: { batchId: string }) {
   const utils = trpc.useUtils();
   const { data, isLoading } = trpc.recipeExecution.getForBatch.useQuery({ batchId });
+  const { data: batchData } = trpc.batch.get.useQuery({ batchId });
   const [openTask, setOpenTask] = useState<Task | null>(null);
+  // filter/carbonate/package open the real cellar modals (need a vessel).
+  const [actionTask, setActionTask] = useState<Task | null>(null);
 
-  const refresh = () => utils.recipeExecution.getForBatch.invalidate({ batchId });
+  const refresh = () => {
+    utils.recipeExecution.getForBatch.invalidate({ batchId });
+    utils.recipeExecution.listOpenTasks.invalidate();
+  };
   const complete = trpc.recipeExecution.completeTask.useMutation({ onSuccess: refresh });
   const skip = trpc.recipeExecution.skipTask.useMutation({ onSuccess: refresh });
   const reopen = trpc.recipeExecution.reopenTask.useMutation({ onSuccess: refresh });
+
+  const ACTION_KINDS = new Set(["filter", "carbonate", "package"]);
+  const currentVolumeL = batchData
+    ? (batchData.currentVolumeUnit === "gal" ? 3.785411784 : 1) * Number(batchData.currentVolume ?? 0)
+    : 0;
+  const openStep = (t: Task) => {
+    if (ACTION_KINDS.has(t.kind) && !batchData?.vesselId) {
+      toast({
+        title: "No vessel yet",
+        description: "Do the Transfer step first — this action needs the batch in a vessel.",
+      });
+      return;
+    }
+    if (ACTION_KINDS.has(t.kind)) setActionTask(t);
+    else setOpenTask(t);
+  };
 
   if (isLoading) {
     return (
@@ -140,7 +166,7 @@ export function BatchRecipeChecklist({ batchId }: { batchId: string }) {
               return (
                 <TableRow
                   key={t.id}
-                  onClick={() => setOpenTask(t)}
+                  onClick={() => openStep(t)}
                   className={`cursor-pointer hover:bg-gray-50 ${terminal ? "opacity-60" : ""}`}
                 >
                   <TableCell className="text-muted-foreground">{t.sequence + 1}</TableCell>
@@ -218,6 +244,50 @@ export function BatchRecipeChecklist({ batchId }: { batchId: string }) {
         Number(execution.bottleVolumeL ?? 0) + Number(execution.kegVolumeL ?? 0)
       }
     />
+
+    {/* Real cellar action modals — completing one marks the recipe step done. */}
+    {batchData?.vesselId && (
+      <>
+        <FilterModal
+          open={actionTask?.kind === "filter"}
+          onClose={() => setActionTask(null)}
+          vesselId={batchData.vesselId}
+          vesselName={batchData.vesselName ?? ""}
+          batchId={batchId}
+          currentVolumeL={currentVolumeL}
+          onSuccess={() => actionTask && complete.mutate({ taskId: actionTask.id })}
+        />
+        <CarbonateModal
+          open={actionTask?.kind === "carbonate"}
+          onOpenChange={(o) => !o && setActionTask(null)}
+          batch={{
+            id: batchId,
+            name: batchData.name ?? "",
+            vesselId: batchData.vesselId,
+            currentVolume: Number(batchData.currentVolume ?? 0),
+            currentVolumeUnit: batchData.currentVolumeUnit ?? "L",
+            status: batchData.status ?? "",
+          }}
+          vessel={{
+            id: batchData.vesselId,
+            name: batchData.vesselName ?? "",
+            isPressureVessel: batchData.vesselIsPressureVessel === "yes" ? "yes" : "no",
+            maxPressure: Number(batchData.vesselMaxPressure ?? 30),
+          }}
+          onSuccess={() => actionTask && complete.mutate({ taskId: actionTask.id })}
+        />
+        <UnifiedPackagingModal
+          open={actionTask?.kind === "package"}
+          onClose={() => setActionTask(null)}
+          vesselId={batchData.vesselId}
+          vesselName={batchData.vesselName ?? ""}
+          batchId={batchId}
+          currentVolumeL={currentVolumeL}
+          initialType={actionTask?.packagingPath === "keg" ? "kegs" : "bottles"}
+          onSuccess={() => actionTask && complete.mutate({ taskId: actionTask.id })}
+        />
+      </>
+    )}
     </>
   );
 }
