@@ -39,7 +39,16 @@ interface Task {
   isOptional: boolean;
   status: string;
   notes: string | null;
+  actionData: Record<string, unknown> | null;
   actualData: Record<string, unknown> | null;
+}
+interface Ingredient {
+  label: string;
+  additiveType: string | null;
+  additiveName: string | null;
+  additiveVarietyId: string | null;
+  rateValue: string | number | null;
+  rateUnit: string | null;
 }
 interface Source {
   id: string;
@@ -58,6 +67,7 @@ export function StepDetailModal({
   task,
   sources,
   plannedVolumeL,
+  ingredients,
 }: {
   open: boolean;
   onClose: () => void;
@@ -65,6 +75,7 @@ export function StepDetailModal({
   task: Task | null;
   sources: Source[];
   plannedVolumeL: number;
+  ingredients: Ingredient[];
 }) {
   const utils = trpc.useUtils();
   const ad = (task?.actualData ?? {}) as Record<string, unknown>;
@@ -153,6 +164,32 @@ export function StepDetailModal({
     (task.kind === "measurement" || task.kind === "add_additive" || task.kind === "pitch_yeast");
   const onRealSuccess = () => complete.mutate({ taskId: task.id });
 
+  // Prefill the add-additive form from the recipe ingredient this step references.
+  const additivePrefill = (() => {
+    if (task.kind !== "add_additive" && task.kind !== "pitch_yeast") return null;
+    const ingLabel = (task.actionData?.ingredientLabel as string) ?? task.label ?? "";
+    const ing =
+      ingredients.find((i) => i.label === ingLabel || i.additiveName === ingLabel) ??
+      ingredients.find((i) => ingLabel.includes(i.label));
+    if (!ing) return null;
+    const rate = ing.rateValue != null ? Number(ing.rateValue) : undefined;
+    const rateUnit = ing.rateUnit ?? undefined;
+    let amount: number | undefined;
+    let unit: string | undefined;
+    if (rate != null && rateUnit?.endsWith("/L") && plannedTotalL > 0) {
+      amount = Number((rate * plannedTotalL).toFixed(2));
+      unit = rateUnit.replace("/L", "");
+    }
+    return {
+      additiveType: ing.additiveType ?? undefined,
+      varietyName: ing.additiveName ?? ing.label,
+      dosageRate: rate,
+      dosageRateUnit: rateUnit,
+      amount,
+      unit,
+    };
+  })();
+
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className={`${useRealForm ? "max-w-2xl" : "max-w-lg"} max-h-[85vh] overflow-y-auto`}>
@@ -172,7 +209,17 @@ export function StepDetailModal({
           task.kind === "measurement" ? (
             <AddBatchMeasurementForm batchId={batchId} onSuccess={onRealSuccess} onCancel={onClose} />
           ) : (
-            <AddBatchAdditiveForm batchId={batchId} onSuccess={onRealSuccess} onCancel={onClose} />
+            <AddBatchAdditiveForm
+              batchId={batchId}
+              onSuccess={onRealSuccess}
+              onCancel={onClose}
+              prefillAdditiveType={additivePrefill?.additiveType}
+              prefillVarietyName={additivePrefill?.varietyName}
+              prefillDosageRate={additivePrefill?.dosageRate}
+              prefillDosageRateUnit={additivePrefill?.dosageRateUnit}
+              prefillAmount={additivePrefill?.amount}
+              prefillUnit={additivePrefill?.unit}
+            />
           )
         ) : (
           <div className="space-y-4">

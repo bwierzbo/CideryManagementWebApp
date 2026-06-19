@@ -25,6 +25,7 @@ import {
   vessels,
   recipes,
   recipeSteps,
+  recipeInputs,
   batchRecipeExecutions,
   batchStepTasks,
   batchMergeHistory,
@@ -323,7 +324,25 @@ export const recipeExecutionRouter = router({
         plannedVolumeL: parentBatches.find((p) => p.batchId === s.id)?.volumeL ?? null,
       }));
 
-      return { execution, tasks, sources };
+      // Recipe ingredients (for prefilling the add-additive form per step).
+      const ingredients = await db
+        .select({
+          label: recipeInputs.label,
+          additiveType: recipeInputs.additiveType,
+          additiveName: recipeInputs.additiveName,
+          additiveVarietyId: recipeInputs.additiveVarietyId,
+          rateValue: recipeInputs.rateValue,
+          rateUnit: recipeInputs.rateUnit,
+        })
+        .from(recipeInputs)
+        .where(
+          and(
+            eq(recipeInputs.recipeId, execution.recipeId),
+            eq(recipeInputs.kind, "ingredient"),
+          ),
+        );
+
+      return { execution, tasks, sources, ingredients };
     }),
 
   /** Cross-batch work queue: every open task across all active executions. */

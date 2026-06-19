@@ -45,6 +45,13 @@ interface AddBatchAdditiveFormProps {
   batchId: string;
   onSuccess: () => void;
   onCancel: () => void;
+  /** Recipe-planned values to prefill (e.g. Cascade Hops @ 1.5 g/L = 180 g). */
+  prefillAdditiveType?: string | null;
+  prefillVarietyName?: string | null;
+  prefillDosageRate?: number | null;
+  prefillDosageRateUnit?: string | null;
+  prefillAmount?: number | null;
+  prefillUnit?: string | null;
 }
 
 // Grouped so absolute amounts and concentrations can be visually separated
@@ -155,6 +162,12 @@ export function AddBatchAdditiveForm({
   batchId,
   onSuccess,
   onCancel,
+  prefillAdditiveType,
+  prefillVarietyName,
+  prefillDosageRate,
+  prefillDosageRateUnit,
+  prefillAmount,
+  prefillUnit,
 }: AddBatchAdditiveFormProps) {
   const { formatDateTimeForInput, parseDateTimeFromInput } = useDateFormat();
   const [selectedAdditiveType, setSelectedAdditiveType] = useState("");
@@ -212,6 +225,28 @@ export function AddBatchAdditiveForm({
         enabled: !!selectedAdditiveType,
       },
     );
+
+  // Prefill from a recipe step (run once on mount): planned type, dosage rate,
+  // and computed amount. The operator confirms or adjusts.
+  React.useEffect(() => {
+    if (prefillAdditiveType) setSelectedAdditiveType(prefillAdditiveType);
+    if (prefillDosageRate != null) setDosageRate(String(prefillDosageRate));
+    if (prefillDosageRateUnit) setDosageRateUnit(prefillDosageRateUnit);
+    if (prefillAmount != null) setAmount(String(prefillAmount));
+    if (prefillUnit) setUnit(prefillUnit);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Once the type's inventory loads, auto-select the lot matching the recipe
+  // variety — only when there's exactly one, to avoid guessing.
+  React.useEffect(() => {
+    if (!prefillVarietyName || selectedInventoryItem) return;
+    const items = inventoryData?.items ?? [];
+    const matches = items.filter(
+      (i: any) => (i.varietyName || i.productName) === prefillVarietyName,
+    );
+    if (matches.length === 1) setSelectedInventoryItem(matches[0]);
+  }, [inventoryData, prefillVarietyName, selectedInventoryItem]);
 
   // Detect if the selected inventory item is a sulfite product (KMS)
   const isSulfiteProduct = useMemo(() => {
