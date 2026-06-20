@@ -68,6 +68,7 @@ export function StepDetailModal({
   sources,
   plannedVolumeL,
   ingredients,
+  kegLabel,
 }: {
   open: boolean;
   onClose: () => void;
@@ -76,6 +77,7 @@ export function StepDetailModal({
   sources: Source[];
   plannedVolumeL: number;
   ingredients: Ingredient[];
+  kegLabel?: { batchName: string; abv: string | null; kegSizeL: number | null } | null;
 }) {
   const utils = trpc.useUtils();
   const ad = (task?.actualData ?? {}) as Record<string, unknown>;
@@ -121,6 +123,7 @@ export function StepDetailModal({
 
   if (!task) return null;
   const isDone = task.status === "done" || task.status === "skipped";
+  const isKegLabel = task.packagingPath === "keg" && /label/i.test(task.label);
 
   const buildActualData = () => {
     const out: Record<string, unknown> = {};
@@ -309,6 +312,26 @@ export function StepDetailModal({
                   </p>
                 </div>
               </>
+            )}
+
+            {/* Keg label — the details to write on each keg. */}
+            {isKegLabel && (
+              <div className="rounded-md border bg-amber-50 border-amber-200 p-3 text-sm">
+                <p className="text-xs font-semibold text-amber-800 mb-1.5">Keg label — write on each keg:</p>
+                <dl className="grid grid-cols-[5rem_1fr] gap-x-2 gap-y-0.5">
+                  <dt className="text-muted-foreground">Name</dt>
+                  <dd className="font-medium">{kegLabel?.batchName ?? "—"}</dd>
+                  <dt className="text-muted-foreground">Date</dt>
+                  <dd>{new Date().toLocaleDateString()}</dd>
+                  <dt className="text-muted-foreground">ABV</dt>
+                  <dd>{kegLabel?.abv != null ? `${Number(kegLabel.abv).toFixed(1)}%` : "—"}</dd>
+                  <dt className="text-muted-foreground">Keg size</dt>
+                  <dd>{kegLabel?.kegSizeL != null ? `${kegLabel.kegSizeL} L` : "—"}</dd>
+                </dl>
+                <p className="text-[11px] text-muted-foreground mt-2">
+                  Printing keg labels from here is coming soon.
+                </p>
+              </div>
             )}
 
             {/* Notes — every capture-first kind */}
