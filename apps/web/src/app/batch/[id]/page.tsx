@@ -1389,6 +1389,7 @@ export default function BatchDetailsPage() {
                       <TableHead className="text-right">pH</TableHead>
                       <TableHead className="text-right">TA</TableHead>
                       <TableHead className="text-right">Temp °C</TableHead>
+                      <TableHead className="text-right">CO₂ vol</TableHead>
                       <TableHead className="text-right">Volume L</TableHead>
                       <TableHead>Sensory</TableHead>
                       <TableHead>Notes</TableHead>
@@ -1414,6 +1415,11 @@ export default function BatchDetailsPage() {
                         </TableCell>
                         <TableCell className="text-right">
                           {measurement.temperature?.toFixed(1) || "-"}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {(measurement as any).dissolvedCo2 != null
+                            ? Number((measurement as any).dissolvedCo2).toFixed(1)
+                            : "-"}
                         </TableCell>
                         <TableCell className="text-right">
                           {measurement.volume?.toFixed(1) || "-"}

@@ -921,6 +921,8 @@ export const batchMeasurements = pgTable(
     ph: decimal("ph", { precision: 3, scale: 2 }),
     totalAcidity: decimal("total_acidity", { precision: 4, scale: 2 }),
     temperature: decimal("temperature", { precision: 4, scale: 1 }),
+    // Dissolved CO2 in volumes (e.g. 2.50 vol), for carbonation checks.
+    dissolvedCo2: decimal("dissolved_co2", { precision: 4, scale: 2 }),
     volume: decimal("volume", { precision: 10, scale: 3 }),
     volumeUnit: unitEnum("volume_unit").notNull().default("L"),
     volumeLiters: decimal("volume_liters", { precision: 10, scale: 3 }), // Normalized volume in liters (auto-maintained by trigger)

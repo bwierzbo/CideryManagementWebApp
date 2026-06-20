@@ -51,6 +51,7 @@ export function AddBatchMeasurementForm({
   const [abv, setAbv] = useState("");
   const [ph, setPh] = useState("");
   const [totalAcidity, setTotalAcidity] = useState("");
+  const [dissolvedCo2, setDissolvedCo2] = useState("");
   const [temperature, setTemperature] = useState("10");
   const [notes, setNotes] = useState("");
   const [sensoryNotes, setSensoryNotes] = useState("");
@@ -167,6 +168,7 @@ export function AddBatchMeasurementForm({
     if (abv) measurementData.abv = parseFloat(abv);
     if (ph) measurementData.ph = parseFloat(ph);
     if (totalAcidity) measurementData.totalAcidity = parseFloat(totalAcidity);
+    if (dissolvedCo2) measurementData.dissolvedCo2 = parseFloat(dissolvedCo2);
     if (temperature) measurementData.temperature = parseFloat(temperature);
     if (notes) measurementData.notes = notes;
     if (sensoryNotes) measurementData.sensoryNotes = sensoryNotes;
@@ -467,6 +469,19 @@ export function AddBatchMeasurementForm({
             onChange={(e) => setTotalAcidity(e.target.value)}
           />
           <p className="text-xs text-muted-foreground">Range: 0–20 g/L</p>
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="dissolvedCo2">CO₂ (volumes)</Label>
+          <Input
+            id="dissolvedCo2"
+            type="number"
+            step="0.1"
+            placeholder="2.5"
+            value={dissolvedCo2}
+            onChange={(e) => setDissolvedCo2(e.target.value)}
+          />
+          <p className="text-xs text-muted-foreground">Dissolved CO₂, e.g. 2.5 vol</p>
         </div>
       </div>
 

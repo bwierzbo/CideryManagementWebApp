@@ -152,6 +152,15 @@ export function BatchRecipeChecklist({ batchId }: { batchId: string }) {
 
   const { execution } = data;
   const tasks = data.tasks as Task[];
+  // Keg-label details (shown on the "Label Kegs" step). Keg size comes from the
+  // keg Package step's planned container size.
+  const kegSizeML = tasks.find((t) => t.kind === "package" && t.packagingPath === "keg")
+    ?.actionData?.sizeML;
+  const kegLabel = {
+    batchName: batchData?.customName || batchData?.name || "",
+    abv: (batchData?.actualAbv ?? batchData?.estimatedAbv) ?? null,
+    kegSizeL: typeof kegSizeML === "number" ? kegSizeML / 1000 : null,
+  };
   const done = tasks.filter((t) => t.status === "done").length;
   const openBySeq = tasks.filter((t) => t.status === "pending" || t.status === "in_progress");
 
@@ -285,6 +294,7 @@ export function BatchRecipeChecklist({ batchId }: { batchId: string }) {
         Number(execution.bottleVolumeL ?? 0) + Number(execution.kegVolumeL ?? 0)
       }
       ingredients={data.ingredients ?? []}
+      kegLabel={kegLabel}
     />
 
     {/* Real cellar action modals — completing one marks the recipe step done. */}
