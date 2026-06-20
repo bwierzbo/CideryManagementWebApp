@@ -97,6 +97,8 @@ interface RecipeInput {
   kind: string;
   label: string;
   sourceProductType?: string | null;
+  rateValue?: string | number | null;
+  rateUnit?: string | null;
 }
 interface RecipeStep {
   id: string;
@@ -184,6 +186,24 @@ export function RecipeInstantiateWizard({ open, onClose, recipe, inputs, steps }
   const kegVolumeL = Number(kegVolumeStr) || 0;
   const bottleVolumeL = Math.max(0, totalVolumeL - kegVolumeL);
 
+  // Recipe blend ratio → per-component target volumes (in recipe order). A
+  // component declares its share in "parts" (e.g. 60/40/20, normalized) or "%".
+  // The actual ciders are the user's choice, but their draws pre-fill from the
+  // ratio as ciders are picked, so the saved blend carries through here.
+  const ratioComponents = inputs
+    .filter(
+      (i) =>
+        i.kind === "parent_batch_requirement" &&
+        (i.rateUnit === "parts" || i.rateUnit === "%"),
+    )
+    .map((i) => ({ label: i.label, value: Number(i.rateValue) || 0 }))
+    .filter((c) => c.value > 0);
+  const ratioTotal = ratioComponents.reduce((s, c) => s + c.value, 0);
+  const blendTargets =
+    ratioTotal > 0
+      ? ratioComponents.map((c) => Math.round((c.value / ratioTotal) * totalVolumeL))
+      : [];
+
   // Blend draws: each selected cider's volume must total the batch volume and
   // can't exceed what's on hand.
   const parentSumL = parentBatchIds.reduce((s, id) => s + (Number(parentVolumes[id]) || 0), 0);
@@ -208,8 +228,21 @@ export function RecipeInstantiateWizard({ open, onClose, recipe, inputs, steps }
         });
         return prev.filter((x) => x !== id);
       }
-      // First cider added → default it to the whole batch volume; others blank.
-      setParentVolumes((v) => ({ ...v, [id]: prev.length === 0 ? String(totalVolumeL || "") : "" }));
+      // When the recipe declares a blend ratio, the Nth cider picked pre-fills
+      // with the Nth ratio target (60/36/24…). Otherwise the first cider defaults
+      // to the whole batch volume and the rest start blank.
+      const ratioDraw = blendTargets[prev.length];
+      setParentVolumes((v) => ({
+        ...v,
+        [id]:
+          blendTargets.length > 0
+            ? ratioDraw != null
+              ? String(ratioDraw)
+              : ""
+            : prev.length === 0
+              ? String(totalVolumeL || "")
+              : "",
+      }));
       return [...prev, id];
     });
 
@@ -298,6 +331,15 @@ export function RecipeInstantiateWizard({ open, onClose, recipe, inputs, steps }
                   <Label className="text-xs">
                     Start from cider {parentBatchIds.length > 1 ? "(blend)" : ""}
                   </Label>
+                  {blendTargets.length > 0 && (
+                    <p className="text-[11px] text-muted-foreground mt-0.5 mb-1">
+                      Recipe blend ({totalVolumeL} L):{" "}
+                      {ratioComponents
+                        .map((c, i) => `${c.label} ${blendTargets[i]} L`)
+                        .join(" · ")}
+                      . Pick ciders in this order to auto-fill each draw.
+                    </p>
+                  )}
                   {parentBatchIds.length > 0 && (
                     <div className="space-y-1.5 my-1.5">
                       {parentBatchIds.map((id) => {
