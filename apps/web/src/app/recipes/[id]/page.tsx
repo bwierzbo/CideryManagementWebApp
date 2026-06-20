@@ -397,7 +397,7 @@ export default function RecipeDetailPage() {
                       {ing.rateValue !== null && ing.rateUnit && (
                         <>
                           <p className="text-sm text-muted-foreground">
-                            {ing.rateValue} {ing.rateUnit}
+                            {Number(ing.rateValue).toFixed(1)} {ing.rateUnit}
                           </p>
                           {scaled && (
                             <p className="text-base font-semibold">
@@ -439,7 +439,7 @@ export default function RecipeDetailPage() {
                     {p.rateValue !== null && p.rateUnit && (
                       <div className="text-right">
                         <p className="text-sm text-muted-foreground">
-                          {p.rateValue} {p.rateUnit}
+                          {Number(p.rateValue).toFixed(1)} {p.rateUnit}
                         </p>
                         {p.rateUnit === "L/L" && (
                           <p className="text-sm font-semibold">
