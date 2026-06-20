@@ -52,6 +52,9 @@ interface AddBatchAdditiveFormProps {
   prefillDosageRateUnit?: string | null;
   prefillAmount?: number | null;
   prefillUnit?: string | null;
+  /** Planned batch volume (L) for the g/L translation when the batch has no
+   *  measurement yet (e.g. a freshly instantiated recipe batch). */
+  prefillBatchVolumeL?: number | null;
 }
 
 // Grouped so absolute amounts and concentrations can be visually separated
@@ -168,6 +171,7 @@ export function AddBatchAdditiveForm({
   prefillDosageRateUnit,
   prefillAmount,
   prefillUnit,
+  prefillBatchVolumeL,
 }: AddBatchAdditiveFormProps) {
   const { formatDateTimeForInput, parseDateTimeFromInput } = useDateFormat();
   // Seed initial state from recipe prefill (more robust than a post-mount
@@ -215,6 +219,35 @@ export function AddBatchAdditiveForm({
     // Volume unit in measurements is typically L (liters)
     return volume;
   }, [batchHistory]);
+
+  // Volume to use for the g/L translation: the batch's measured volume, or the
+  // recipe-planned volume when the batch has no measurement yet.
+  const effectiveBatchVolumeL =
+    batchVolumeLiters ??
+    (prefillBatchVolumeL && prefillBatchVolumeL > 0 ? prefillBatchVolumeL : null);
+
+  // Live concentration translation: turns the entered amount + unit into g/L
+  // (or mL/L) of the batch, so "32500 g" reads as "= 100.0 g/L of 325 L". It
+  // recomputes as the operator edits the amount.
+  const concentration = useMemo(() => {
+    const n = parseFloat(amount);
+    const vol = effectiveBatchVolumeL;
+    if (!Number.isFinite(n) || n <= 0 || !vol || vol <= 0 || !unit) return null;
+    const u = unit.toLowerCase();
+    let grams: number | null = null;
+    if (u === "g") grams = n;
+    else if (u === "kg") grams = n * 1000;
+    else if (u === "oz") grams = n * 28.3495;
+    else if (u === "lbs" || u === "lb") grams = n * 453.592;
+    if (grams != null) return { value: grams / vol, label: "g/L", vol };
+    let ml: number | null = null;
+    if (u === "ml") ml = n;
+    else if (u === "l") ml = n * 1000;
+    if (ml != null) return { value: ml / vol, label: "mL/L", vol };
+    if (u === "g/l") return { value: n, label: "g/L", vol };
+    if (u === "ppm") return { value: n, label: "ppm", vol };
+    return null;
+  }, [amount, unit, effectiveBatchVolumeL]);
 
   // Fetch available additive inventory items, filtered by type
   const { data: inventoryData, isLoading: isLoadingInventory } =
@@ -892,6 +925,16 @@ export function AddBatchAdditiveForm({
           </Select>
         </div>
       </div>
+
+      {concentration && (
+        <p className="text-xs text-muted-foreground -mt-2">
+          ={" "}
+          <span className="font-medium text-foreground">
+            {concentration.value.toFixed(1)} {concentration.label}
+          </span>{" "}
+          across {concentration.vol.toLocaleString()} L batch
+        </p>
+      )}
 
       {/* Volume contribution — only shown when the selected ingredient has a
           known density AND we can convert the amount into a volume without
