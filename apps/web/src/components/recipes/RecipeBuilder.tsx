@@ -309,8 +309,8 @@ export function RecipeBuilder({
           kind: "parent_batch_requirement",
           label: "Base batch",
           sourceProductType: "cider",
-          rateValue: null,
-          rateUnit: "L/L",
+          rateValue: 1,
+          rateUnit: "parts",
           notes: null,
         },
       ],
@@ -1042,27 +1042,30 @@ function ParentBatchRow({
         </Select>
       </div>
       <div className="col-span-2">
-        <Label className="text-xs">Volume rate</Label>
+        <Label className="text-xs">
+          {input.rateUnit === "parts" ? "Parts" : input.rateUnit === "%" ? "Percent" : "Volume rate"}
+        </Label>
         <Input
           type="number"
           step="0.01"
           min="0"
           value={input.rateValue ?? ""}
           onChange={(e) => onChange({ rateValue: e.target.value === "" ? null : Number(e.target.value) })}
-          placeholder="1.0"
+          placeholder={input.rateUnit === "%" ? "50" : input.rateUnit === "parts" ? "1" : "1.0"}
           className="h-9"
         />
       </div>
       <div className="col-span-2">
         <Label className="text-xs">Unit</Label>
         <Select
-          value={input.rateUnit ?? "L/L"}
+          value={input.rateUnit ?? "parts"}
           onValueChange={(v) => onChange({ rateUnit: v })}
         >
           <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
           <SelectContent>
+            <SelectItem value="parts">parts (blend ratio)</SelectItem>
+            <SelectItem value="%">% (share of batch)</SelectItem>
             <SelectItem value="L/L">L per L (volume ratio)</SelectItem>
-            <SelectItem value="%v/v">% v/v</SelectItem>
           </SelectContent>
         </Select>
       </div>
