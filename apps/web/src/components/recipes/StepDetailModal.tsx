@@ -207,9 +207,10 @@ export function StepDetailModal({
 
         {useRealForm ? (
           task.kind === "measurement" ? (
-            <AddBatchMeasurementForm batchId={batchId} onSuccess={onRealSuccess} onCancel={onClose} />
+            <AddBatchMeasurementForm key={task.id} batchId={batchId} onSuccess={onRealSuccess} onCancel={onClose} />
           ) : (
             <AddBatchAdditiveForm
+              key={task.id}
               batchId={batchId}
               onSuccess={onRealSuccess}
               onCancel={onClose}

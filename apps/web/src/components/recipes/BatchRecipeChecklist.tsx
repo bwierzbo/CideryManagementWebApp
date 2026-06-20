@@ -36,7 +36,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Check, SkipForward, RotateCcw } from "lucide-react";
+import { Check, SkipForward, RotateCcw, Lock } from "lucide-react";
 
 const STATUS_STYLE: Record<string, string> = {
   pending: "border-gray-300 text-gray-600",
@@ -120,6 +120,13 @@ export function BatchRecipeChecklist({ batchId }: { batchId: string }) {
     }
     setOpenTask(t);
   };
+  // Why a step can't run yet (shown as a lock on the row).
+  const blockedReason = (t: Task): string | null => {
+    if (t.status === "done" || t.status === "skipped") return null;
+    if (VESSEL_KINDS.has(t.kind) && !batchData?.vesselId) return "needs Transfer first";
+    if (RUN_KINDS.has(t.kind) && !latestRun) return "needs Package first";
+    return null;
+  };
 
   if (isLoading) {
     return (
@@ -202,6 +209,11 @@ export function BatchRecipeChecklist({ batchId }: { batchId: string }) {
                   <TableCell>
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <span className={t.status === "done" ? "line-through" : ""}>{t.label}</span>
+                      {blockedReason(t) && (
+                        <span className="inline-flex items-center gap-1 text-[11px] text-amber-600" title={blockedReason(t)!}>
+                          <Lock className="w-3 h-3" /> {blockedReason(t)}
+                        </span>
+                      )}
                       {t.packagingPath !== "all" && (
                         <Badge variant="outline" className="text-[10px]">
                           {t.packagingPath === "bottle" ? "Bottle only" : "Keg only"}

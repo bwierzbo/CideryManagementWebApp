@@ -170,10 +170,12 @@ export function AddBatchAdditiveForm({
   prefillUnit,
 }: AddBatchAdditiveFormProps) {
   const { formatDateTimeForInput, parseDateTimeFromInput } = useDateFormat();
-  const [selectedAdditiveType, setSelectedAdditiveType] = useState("");
+  // Seed initial state from recipe prefill (more robust than a post-mount
+  // effect, which races with the form's own type/inventory logic on a Select).
+  const [selectedAdditiveType, setSelectedAdditiveType] = useState(prefillAdditiveType ?? "");
   const [selectedInventoryItem, setSelectedInventoryItem] = useState<any>(null);
-  const [amount, setAmount] = useState("");
-  const [unit, setUnit] = useState("");
+  const [amount, setAmount] = useState(prefillAmount != null ? String(prefillAmount) : "");
+  const [unit, setUnit] = useState(prefillUnit ?? "");
   const [notes, setNotes] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [open, setOpen] = useState(false);
@@ -181,8 +183,8 @@ export function AddBatchAdditiveForm({
     return formatDateTimeForInput(new Date());
   });
   const [dateWarning, setDateWarning] = useState<string | null>(null);
-  const [dosageRate, setDosageRate] = useState("");
-  const [dosageRateUnit, setDosageRateUnit] = useState("mL/L");
+  const [dosageRate, setDosageRate] = useState(prefillDosageRate != null ? String(prefillDosageRate) : "");
+  const [dosageRateUnit, setDosageRateUnit] = useState(prefillDosageRateUnit ?? "mL/L");
   const [isApplePearFruit, setIsApplePearFruit] = useState(false);
   /**
    * Liters this addition contributes to the batch volume. Defaults from the
@@ -225,17 +227,6 @@ export function AddBatchAdditiveForm({
         enabled: !!selectedAdditiveType,
       },
     );
-
-  // Prefill from a recipe step (run once on mount): planned type, dosage rate,
-  // and computed amount. The operator confirms or adjusts.
-  React.useEffect(() => {
-    if (prefillAdditiveType) setSelectedAdditiveType(prefillAdditiveType);
-    if (prefillDosageRate != null) setDosageRate(String(prefillDosageRate));
-    if (prefillDosageRateUnit) setDosageRateUnit(prefillDosageRateUnit);
-    if (prefillAmount != null) setAmount(String(prefillAmount));
-    if (prefillUnit) setUnit(prefillUnit);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   // Once the type's inventory loads, auto-select the lot matching the recipe
   // variety — only when there's exactly one, to avoid guessing.
