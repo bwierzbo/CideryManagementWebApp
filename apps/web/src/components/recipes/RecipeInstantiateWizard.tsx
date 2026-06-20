@@ -182,10 +182,6 @@ export function RecipeInstantiateWizard({ open, onClose, recipe, inputs, steps }
       description: `${b.currentVolume ?? "?"} ${b.currentVolumeUnit ?? "L"} · ${b.productType} · ${b.status}`,
     }));
 
-  const totalVolumeL = Number(totalVolumeStr) || 0;
-  const kegVolumeL = Number(kegVolumeStr) || 0;
-  const bottleVolumeL = Math.max(0, totalVolumeL - kegVolumeL);
-
   // Recipe blend ratio → per-component target volumes (in recipe order). A
   // component declares its share in "parts" (e.g. 60/40/20, normalized) or "%".
   // The actual ciders are the user's choice, but their draws pre-fill from the
@@ -199,16 +195,34 @@ export function RecipeInstantiateWizard({ open, onClose, recipe, inputs, steps }
     .map((i) => ({ label: i.label, value: Number(i.rateValue) || 0 }))
     .filter((c) => c.value > 0);
   const ratioTotal = ratioComponents.reduce((s, c) => s + c.value, 0);
-  const blendTargets =
-    ratioTotal > 0
-      ? ratioComponents.map((c) => Math.round((c.value / ratioTotal) * totalVolumeL))
-      : [];
+  const hasRatio = ratioTotal > 0;
 
-  // Blend draws: each selected cider's volume must total the batch volume and
-  // can't exceed what's on hand.
-  const parentSumL = parentBatchIds.reduce((s, id) => s + (Number(parentVolumes[id]) || 0), 0);
+  // Sum of the per-cider draws.
+  const parentSumL = parentBatchIds.reduce(
+    (s, id) => s + (Number(parentVolumes[id]) || 0),
+    0,
+  );
+
+  // Starting from cider without a declared ratio, the draws ARE the batch
+  // volume — the user enters how much to pull and that anchors everything, so
+  // there's no separate volume to re-type. Ratio blends and press/juice sources
+  // still take a typed total (the ratio needs one to split).
+  const deriveVolumeFromDraws =
+    mode === "new" && hasParentReq && !hasRatio && parentBatchIds.length > 0;
+  const totalVolumeL = deriveVolumeFromDraws ? parentSumL : Number(totalVolumeStr) || 0;
+  const kegVolumeL = Number(kegVolumeStr) || 0;
+  const bottleVolumeL = Math.max(0, totalVolumeL - kegVolumeL);
+  const blendTargets = hasRatio
+    ? ratioComponents.map((c) => Math.round((c.value / ratioTotal) * totalVolumeL))
+    : [];
+
+  // A typed-total recipe (ratio blend) requires the draws to sum to the chosen
+  // batch volume; a derived-volume recipe can't mismatch by construction.
   const blendMismatch =
-    mode === "new" && hasParentReq && parentBatchIds.length > 0 && Math.abs(parentSumL - totalVolumeL) > 0.5;
+    mode === "new" &&
+    hasRatio &&
+    parentBatchIds.length > 0 &&
+    Math.abs(parentSumL - totalVolumeL) > 0.5;
   const parentOverdraw = parentBatchIds.some((id) => {
     const b = activeBatches.find((x) => x.id === id);
     return (Number(parentVolumes[id]) || 0) > Number(b?.currentVolume ?? 0) + 0.001;
@@ -229,19 +243,12 @@ export function RecipeInstantiateWizard({ open, onClose, recipe, inputs, steps }
         return prev.filter((x) => x !== id);
       }
       // When the recipe declares a blend ratio, the Nth cider picked pre-fills
-      // with the Nth ratio target (60/36/24…). Otherwise the first cider defaults
-      // to the whole batch volume and the rest start blank.
+      // with the Nth ratio target (60/36/24…). Without a ratio the draw itself
+      // defines the batch volume, so it starts blank for the user to type.
       const ratioDraw = blendTargets[prev.length];
       setParentVolumes((v) => ({
         ...v,
-        [id]:
-          blendTargets.length > 0
-            ? ratioDraw != null
-              ? String(ratioDraw)
-              : ""
-            : prev.length === 0
-              ? String(totalVolumeL || "")
-              : "",
+        [id]: blendTargets.length > 0 && ratioDraw != null ? String(ratioDraw) : "",
       }));
       return [...prev, id];
     });
@@ -323,6 +330,17 @@ export function RecipeInstantiateWizard({ open, onClose, recipe, inputs, steps }
             </Button>
           </div>
 
+          {/* Start date — first input for both modes */}
+          <div>
+            <Label className="text-xs">Start date</Label>
+            <Input
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              className="h-9"
+            />
+          </div>
+
           {/* Source (new mode) */}
           {mode === "new" && (
             <div className="space-y-3">
@@ -368,9 +386,10 @@ export function RecipeInstantiateWizard({ open, onClose, recipe, inputs, steps }
                           </div>
                         );
                       })}
-                      <p className={`text-[11px] ${blendMismatch ? "text-red-600" : "text-muted-foreground"}`}>
-                        Blend total: {parentSumL.toFixed(0)} L of {totalVolumeL} L batch
-                        {blendMismatch ? " — must equal the batch volume" : ""}
+                      <p className={`text-[11px] ${blendMismatch || parentOverdraw ? "text-red-600" : "text-muted-foreground"}`}>
+                        {hasRatio
+                          ? `Blend total: ${parentSumL.toFixed(0)} L of ${totalVolumeL} L batch${blendMismatch ? " — must equal the batch volume" : ""}`
+                          : `Batch volume: ${parentSumL.toFixed(0)} L (sum of draws)`}
                         {parentOverdraw ? " · a draw exceeds what's on hand" : ""}
                       </p>
                     </div>
@@ -381,8 +400,9 @@ export function RecipeInstantiateWizard({ open, onClose, recipe, inputs, steps }
                     onPick={toggleParent}
                   />
                   <p className="text-[11px] text-muted-foreground mt-1">
-                    Ciders currently in a cellar vessel. Pick one for a single varietal, or
-                    several to blend (set how much from each). Click again to remove.
+                    Ciders currently in a cellar vessel. Enter how much to pull from
+                    each — that sets the batch volume. Pick one for a single varietal
+                    or several to blend. Click again to remove.
                   </p>
                 </div>
               )}
@@ -444,27 +464,27 @@ export function RecipeInstantiateWizard({ open, onClose, recipe, inputs, steps }
             </div>
           )}
 
-          {/* Start date + volume split */}
-          <div className="grid grid-cols-3 gap-2">
+          {/* Volume + bottle/keg split. When starting from cider the draws set
+              the volume, so we show it derived instead of a second input. */}
+          <div className="grid grid-cols-2 gap-2">
             <div>
-              <Label className="text-xs">Start date</Label>
-              <Input
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="h-9"
-              />
-            </div>
-            <div>
-              <Label className="text-xs">Total volume (L)</Label>
-              <Input
-                type="number"
-                min="0"
-                step="1"
-                value={totalVolumeStr}
-                onChange={(e) => setTotalVolumeStr(e.target.value)}
-                className="h-9"
-              />
+              <Label className="text-xs">
+                {deriveVolumeFromDraws ? "Batch volume (from draws)" : "Total volume (L)"}
+              </Label>
+              {deriveVolumeFromDraws ? (
+                <div className="h-9 flex items-center px-3 rounded-md border bg-muted/40 text-sm">
+                  {totalVolumeL} L
+                </div>
+              ) : (
+                <Input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={totalVolumeStr}
+                  onChange={(e) => setTotalVolumeStr(e.target.value)}
+                  className="h-9"
+                />
+              )}
             </div>
             <div>
               <Label className="text-xs">Keg portion (L)</Label>
