@@ -200,6 +200,13 @@ export default function RecipeDetailPage() {
   const isArchived = !!recipe.archivedAt;
   const ingredients = inputs.filter((i) => i.kind === "ingredient");
   const parentBatchInputs = inputs.filter((i) => i.kind === "parent_batch_requirement");
+  // Blend ratio: components measured in "parts" or "%" share the batch volume by
+  // their proportion of the total (works whether parts sum to anything or % sum
+  // to 100).
+  const isRatioUnit = (u: string | null) => u === "parts" || u === "%";
+  const ratioInputs = parentBatchInputs.filter((p) => isRatioUnit(p.rateUnit));
+  const parentRatioTotal = ratioInputs.reduce((s, p) => s + (Number(p.rateValue) || 0), 0);
+  const isBlend = ratioInputs.length > 1;
 
   // Bill of materials for the previewed batch size. Kegs are returnable
   // vessels (keg tracker), not consumables, so the BOM previews the full batch
@@ -418,39 +425,60 @@ export default function RecipeDetailPage() {
         {parentBatchInputs.length > 0 && (
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Parent batch requirements</CardTitle>
+              <CardTitle className="text-base">{isBlend ? "Base cider blend" : "Parent batch requirements"}</CardTitle>
               <CardDescription>
-                This recipe must be instantiated on top of one or more existing batches.
+                {isBlend
+                  ? `Blended from these base ciders by ratio → ${previewVolumeL}L batch.`
+                  : "This recipe must be instantiated on top of one or more existing batches."}
               </CardDescription>
             </CardHeader>
             <CardContent className="divide-y">
-              {parentBatchInputs.map((p) => (
-                <div key={p.id} className="py-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="font-medium text-sm">{p.label}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {p.sourceProductType ?? "any"} batch
-                      </p>
-                      {p.notes && (
-                        <p className="text-xs text-muted-foreground italic mt-1">{p.notes}</p>
-                      )}
-                    </div>
-                    {p.rateValue !== null && p.rateUnit && (
-                      <div className="text-right">
-                        <p className="text-sm text-muted-foreground">
-                          {Number(p.rateValue).toFixed(1)} {p.rateUnit}
+              {parentBatchInputs.map((p) => {
+                const val = Number(p.rateValue) || 0;
+                const isRatio = isRatioUnit(p.rateUnit) && parentRatioTotal > 0;
+                const pct = isRatio ? (val / parentRatioTotal) * 100 : null;
+                const liters = isRatio ? (val / parentRatioTotal) * previewVolumeL : null;
+                return (
+                  <div key={p.id} className="py-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-medium text-sm">{p.label}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {p.sourceProductType ?? "any"} batch
                         </p>
-                        {p.rateUnit === "L/L" && (
-                          <p className="text-sm font-semibold">
-                            → {(Number(p.rateValue) * previewVolumeL).toFixed(1)} L
-                          </p>
+                        {p.notes && (
+                          <p className="text-xs text-muted-foreground italic mt-1">{p.notes}</p>
                         )}
                       </div>
-                    )}
+                      {p.rateValue !== null && p.rateUnit && (
+                        <div className="text-right">
+                          {isRatio ? (
+                            <>
+                              <p className="text-sm text-muted-foreground">
+                                {p.rateUnit === "%"
+                                  ? `${val}%`
+                                  : `${val} ${val === 1 ? "part" : "parts"} · ${pct!.toFixed(0)}%`}
+                              </p>
+                              <p className="text-sm font-semibold">→ {liters!.toFixed(1)} L</p>
+                            </>
+                          ) : (
+                            <>
+                              <p className="text-sm text-muted-foreground">
+                                {Number(p.rateValue).toFixed(1)} {p.rateUnit}
+                              </p>
+                              {p.rateUnit === "L/L" && (
+                                <p className="text-sm font-semibold">
+                                  → {(Number(p.rateValue) * previewVolumeL).toFixed(1)} L
+                                </p>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </CardContent>
           </Card>
         )}
