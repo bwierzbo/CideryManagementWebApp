@@ -506,6 +506,9 @@ export const recipeExecutionRouter = router({
               updatedAt: new Date(),
             })
             .where(eq(batches.id, src.id));
+          // One instant shared by the merge_history and transfer rows for this
+          // source, so the activity timeline can pair and de-duplicate them.
+          const blendedAt = new Date();
           await tx.insert(batchMergeHistory).values({
             targetBatchId: task.batchId,
             sourceBatchId: src.id,
@@ -516,7 +519,7 @@ export const recipeExecutionRouter = router({
             targetVolumeBeforeUnit: "L",
             targetVolumeAfter: totalL.toString(),
             targetVolumeAfterUnit: "L",
-            mergedAt: new Date(),
+            mergedAt: blendedAt,
             mergedBy: ctx.user.id,
             createdAt: new Date(),
           });
@@ -531,7 +534,7 @@ export const recipeExecutionRouter = router({
             totalVolumeProcessedUnit: "L",
             loss: "0",
             lossUnit: "L",
-            transferredAt: new Date(),
+            transferredAt: blendedAt,
             transferredBy: ctx.user.id,
             notes: `Recipe blend: ${draw.volumeL} L from ${src.customName || src.name} → ${destVessel.name}`,
             createdAt: new Date(),
