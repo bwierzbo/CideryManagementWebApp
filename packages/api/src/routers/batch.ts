@@ -3517,6 +3517,7 @@ export const batchRouter = router({
         const ancestorChainResult = await db.execute<{
           batch_id: string;
           batch_name: string;
+          batch_custom_name: string | null;
           split_timestamp: Date;
           start_date: Date | null;
           depth: number;
@@ -3526,6 +3527,7 @@ export const batchRouter = router({
             SELECT
               bt.source_batch_id as batch_id,
               b.name as batch_name,
+              b.custom_name as batch_custom_name,
               bt.transferred_at as split_timestamp,
               b.start_date as start_date,
               1 as depth
@@ -3541,6 +3543,7 @@ export const batchRouter = router({
             SELECT
               bmh.source_batch_id as batch_id,
               b.name as batch_name,
+              b.custom_name as batch_custom_name,
               bmh.merged_at as split_timestamp,
               b.start_date as start_date,
               1 as depth
@@ -3557,6 +3560,7 @@ export const batchRouter = router({
             SELECT
               COALESCE(bt.source_batch_id, bmh.source_batch_id) as batch_id,
               b.name,
+              b.custom_name,
               COALESCE(bt.transferred_at, bmh.merged_at) as split_timestamp,
               b.start_date,
               a.depth + 1
@@ -3579,6 +3583,7 @@ export const batchRouter = router({
         const ancestorChain = (ancestorChainResult.rows || []) as Array<{
           batch_id: string;
           batch_name: string;
+          batch_custom_name: string | null;
           split_timestamp: Date;
           start_date: Date | null;
           depth: number;
@@ -4032,10 +4037,17 @@ export const batchRouter = router({
         if (directParents.length > 1) {
           isBlendedBatch = true;
           creationDescription = `Blend created from ${directParents.length} batches`;
+        } else if (directParents.length === 1) {
+          // Single-source: name the DIRECT parent (the cider this batch was made
+          // from) plus the tank it came from — not a deeper ancestor. The
+          // ancestor query orders by batch_id, so ancestorChain[0] is arbitrary;
+          // the depth=1 row is the real source.
+          const sourceName = directParents[0].batch_custom_name || directParents[0].batch_name;
+          creationDescription = creationVessel
+            ? `Created from ${sourceName} (${creationVessel})`
+            : `Created from ${sourceName}`;
         } else if (ancestorChain.length > 0) {
-          // Single-parent transfer
-          const parentBatch = ancestorChain[0];
-          creationDescription = `Transferred from ${parentBatch.batch_name}`;
+          creationDescription = `Transferred from ${ancestorChain[0].batch_name}`;
         }
 
         activities.push({
@@ -4172,14 +4184,19 @@ export const batchRouter = router({
             };
           }
 
+          // When this blend went into the current batch, name the tank it landed
+          // in ("…into TANK-500-1") so the timeline reads as a move to a vessel.
+          const intoThisBatch = m.targetBatchId === input.batchId;
+          const destSuffix = intoThisBatch && batch[0].vesselName ? ` into ${batch[0].vesselName}` : "";
+
           const inheritedInfo = getInheritedInfo(m.targetBatchId);
           activities.push({
             id: `merge-${m.id}`,
             type: "merge",
             timestamp: m.mergedAt,
             description: isExpandable
-              ? `Blended with ${sourceDescription}`
-              : `Merged with juice from ${sourceDescription}`,
+              ? `Blended with ${sourceDescription}${destSuffix}`
+              : `Merged with juice from ${sourceDescription}${destSuffix}`,
             details: {
               volumeAdded: `${m.volumeAdded}${m.volumeAddedUnit || 'L'}`,
               volumeChange: `${m.targetVolumeBefore}${m.targetVolumeBeforeUnit || 'L'} → ${m.targetVolumeAfter}${m.targetVolumeAfterUnit || 'L'}`,
