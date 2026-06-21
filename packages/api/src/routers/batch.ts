@@ -4193,6 +4193,25 @@ export const batchRouter = router({
           });
         });
 
+        // A blend writes BOTH a batch_merge_history row and a batch_transfers
+        // row for the same action (merge row for lineage, transfer row for
+        // volume tracking). Collect the merge keys so the transfers loop can
+        // drop the duplicate "blended in" event and show the blend just once.
+        // Key on source + volume + second (the two rows share an instant, but
+        // legacy data can be a few ms apart, so we bucket to the second).
+        const blendKey = (sourceId: string, volume: unknown, ts: unknown) =>
+          `${sourceId}|${parseFloat(String(volume ?? "0")).toFixed(2)}|${Math.floor(
+            new Date(ts as any).getTime() / 1000,
+          )}`;
+        const mergeKeys = new Set<string>();
+        merges.forEach((m) => {
+          const isBatchMerge =
+            (m.sourceType === "batch_transfer" || m.sourceType === "batch") && m.sourceBatchId;
+          if (isBatchMerge && m.sourceBatchId) {
+            mergeKeys.add(blendKey(m.sourceBatchId, m.volumeAdded, m.mergedAt));
+          }
+        });
+
         // Process transfers (filter by split timestamp for ancestors)
         // Only include transfers where:
         // 1. This batch is directly involved (source or destination), OR
@@ -4248,6 +4267,15 @@ export const batchRouter = router({
 
             // For incoming blend transfers, show as "blend" type for clarity
             const isBlendIn = thisIsDestination && sourceIsAncestor;
+            // Skip the transfer-derived blend event when a matching merge_history
+            // record already represents this same blend (same source + instant);
+            // otherwise the timeline shows the one blend twice.
+            if (
+              isBlendIn &&
+              mergeKeys.has(blendKey(t.sourceBatchId, t.volumeTransferred, t.transferredAt))
+            ) {
+              return;
+            }
             activities.push({
               id: `transfer-${t.id}`,
               type: isBlendIn ? "merge" : "transfer",
