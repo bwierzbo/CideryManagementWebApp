@@ -223,6 +223,7 @@ export function StepDetailModal({
               prefillDosageRateUnit={additivePrefill?.dosageRateUnit}
               prefillAmount={additivePrefill?.amount}
               prefillUnit={additivePrefill?.unit}
+              prefillBatchVolumeL={plannedTotalL > 0 ? plannedTotalL : null}
             />
           )
         ) : (
