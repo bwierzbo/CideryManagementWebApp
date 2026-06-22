@@ -164,12 +164,10 @@ export function BatchRecipeChecklist({ batchId }: { batchId: string }) {
   const done = tasks.filter((t) => t.status === "done").length;
   const openBySeq = tasks.filter((t) => t.status === "pending" || t.status === "in_progress");
 
-  // Sorted by due-date (nulls last), tie-break by sequence — parallel work groups.
-  const sorted = [...tasks].sort((a, b) => {
-    const da = a.scheduledDate ? new Date(a.scheduledDate).getTime() : Infinity;
-    const db_ = b.scheduledDate ? new Date(b.scheduledDate).getTime() : Infinity;
-    return da - db_ || a.sequence - b.sequence;
-  });
+  // Sorted by recipe step order. The due-date column still shifts as steps are
+  // completed (rescheduleWithActuals), but the rows stay in the recipe's logical
+  // order so finishing steps out of sequence doesn't scramble the list.
+  const sorted = [...tasks].sort((a, b) => a.sequence - b.sequence);
 
   const onComplete = (t: Task) => {
     const earlierOpen = openBySeq.some((o) => o.sequence < t.sequence);
@@ -191,7 +189,7 @@ export function BatchRecipeChecklist({ batchId }: { batchId: string }) {
         <CardDescription>
           Recipe v{execution.recipeVersion} · started {fmtDate(execution.startDate)} ·{" "}
           {execution.bottleVolumeL ?? 0} L bottled / {execution.kegVolumeL ?? 0} L kegged ·{" "}
-          {done}/{tasks.length} done · sorted by due date
+          {done}/{tasks.length} done · in recipe order
         </CardDescription>
       </CardHeader>
       <CardContent>
