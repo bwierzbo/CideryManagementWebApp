@@ -837,11 +837,15 @@ const updateBatchStatusMutation = trpc.batch.update.useMutation({
 
     const batchStatus = liquidMapVessel?.batchStatus;
 
-    // Check if batch is in fermentation or aging status
-    if (batchStatus !== "fermentation" && batchStatus !== "aging") {
+    // Check if batch is in an active status (fermentation, aging, conditioning)
+    if (
+      batchStatus !== "fermentation" &&
+      batchStatus !== "aging" &&
+      batchStatus !== "conditioning"
+    ) {
       toast({
         title: "Cannot Filter",
-        description: "Filtering is only available for batches in fermentation or aging status.",
+        description: "Filtering is only available for batches in fermentation, aging, or conditioning status.",
         variant: "destructive",
       });
       return;
