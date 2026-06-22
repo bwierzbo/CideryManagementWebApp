@@ -26,6 +26,7 @@ import { trpc } from "@/utils/trpc";
 import { toast } from "@/hooks/use-toast";
 import { useBatchDateValidation } from "@/hooks/useBatchDateValidation";
 import { DateWarning } from "@/components/ui/DateWarning";
+import { LastActivityHint } from "@/components/ui/LastActivityHint";
 import { FlaskConical, AlertTriangle, Loader2, Info, Search } from "lucide-react";
 import { VolumeInput, VolumeUnit } from "@/components/ui/volume-input";
 import { convertVolume } from "lib";
@@ -275,6 +276,7 @@ export function RackingModal({
               className="w-full"
             />
             <DateWarning warning={dateWarning} />
+            <LastActivityHint batchId={batchId} date={rackedAt} />
             {errors.rackedAt && (
               <p className="text-sm text-red-500">{errors.rackedAt.message}</p>
             )}

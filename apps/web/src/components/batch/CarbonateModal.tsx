@@ -22,6 +22,7 @@ import { toast } from "@/hooks/use-toast";
 import { useDateFormat } from "@/hooks/useDateFormat";
 import { useBatchDateValidation } from "@/hooks/useBatchDateValidation";
 import { DateWarning } from "@/components/ui/DateWarning";
+import { LastActivityHint } from "@/components/ui/LastActivityHint";
 import {
   Gauge,
   Thermometer,
@@ -556,6 +557,7 @@ export function CarbonateModal({
                 {...register("startedAt" as any)}
               />
               <DateWarning warning={dateWarning} />
+              <LastActivityHint batchId={batch.id} date={startedAt} />
               {(errors as any).startedAt && (
                 <p className="text-sm text-destructive mt-1">
                   {(errors as any).startedAt.message}

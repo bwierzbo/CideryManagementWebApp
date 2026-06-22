@@ -182,10 +182,18 @@ export function useBatchDateValidation(
     return new Date(context.earliestValidDate);
   }, [context]);
 
+  // Most recent dated activity on the batch (date + short label), or null.
+  const lastActivity = useMemo(() => {
+    const la = context && "lastActivity" in context ? context.lastActivity : null;
+    if (!la) return null;
+    return { date: new Date(la.date), label: la.label };
+  }, [context]);
+
   return {
     context,
     isLoading,
     validateDate,
     earliestValidDate,
+    lastActivity,
   };
 }
