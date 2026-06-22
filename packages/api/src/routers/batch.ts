@@ -4185,18 +4185,30 @@ export const batchRouter = router({
           }
 
           // When this blend went into the current batch, name the tank it landed
-          // in ("…into TANK-500-1") so the timeline reads as a move to a vessel.
+          // in so the timeline reads as a move to a vessel. A single-source move
+          // reads as a plain transfer; a true multi-source blend keeps "Blended".
           const intoThisBatch = m.targetBatchId === input.batchId;
-          const destSuffix = intoThisBatch && batch[0].vesselName ? ` into ${batch[0].vesselName}` : "";
+          const destVesselName = intoThisBatch ? batch[0].vesselName : null;
+          const destSuffix = destVesselName ? ` into ${destVesselName}` : "";
+          const mergeVol = `${m.volumeAdded}${m.volumeAddedUnit || 'L'}`;
+          const isSingleSourceMove = directParents.length === 1;
+
+          let mergeDescription: string;
+          if (isExpandable) {
+            mergeDescription =
+              isSingleSourceMove && destVesselName
+                ? `Transferred ${mergeVol} from ${sourceDescription} to ${destVesselName}`
+                : `Blended with ${sourceDescription}${destSuffix}`;
+          } else {
+            mergeDescription = `Merged with juice from ${sourceDescription}${destSuffix}`;
+          }
 
           const inheritedInfo = getInheritedInfo(m.targetBatchId);
           activities.push({
             id: `merge-${m.id}`,
             type: "merge",
             timestamp: m.mergedAt,
-            description: isExpandable
-              ? `Blended with ${sourceDescription}${destSuffix}`
-              : `Merged with juice from ${sourceDescription}${destSuffix}`,
+            description: mergeDescription,
             details: {
               volumeAdded: `${m.volumeAdded}${m.volumeAddedUnit || 'L'}`,
               volumeChange: `${m.targetVolumeBefore}${m.targetVolumeBeforeUnit || 'L'} → ${m.targetVolumeAfter}${m.targetVolumeAfterUnit || 'L'}`,
