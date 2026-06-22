@@ -150,10 +150,13 @@ export function TankTransferForm({
   // Convert current volume to display unit
   const currentVolume = fromLiters(currentVolumeL, displayUnit);
 
-  // Get available destination vessels (include source vessel for rack-to-self)
+  // Available destination vessels. Exclude the source vessel — this form moves
+  // liquid to ANOTHER tank; racking to the same vessel (sediment loss) has its
+  // own dedicated Rack action, and offering it here led to accidental
+  // self-transfers ("rack to self requires a loss amount").
   const availableVessels =
     vesselListQuery.data?.vessels?.filter(
-      (vessel) => vessel.status === "available",
+      (vessel) => vessel.status === "available" && vessel.id !== fromVesselId,
     ) || [];
 
   // Filter vessels based on search query with natural sort
