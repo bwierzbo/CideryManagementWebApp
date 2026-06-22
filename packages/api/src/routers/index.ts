@@ -2528,7 +2528,7 @@ export const appRouter = router({
               .where(
                 and(
                   eq(batches.vesselId, input.newVesselId),
-                  inArray(batches.status, ["fermentation", "aging"]),
+                  inArray(batches.status, ["fermentation", "aging", "conditioning"]),
                   isNull(batches.deletedAt),
                 ),
               )
@@ -3212,7 +3212,7 @@ export const appRouter = router({
           .innerJoin(batches, and(
             eq(batches.vesselId, vessels.id),
             isNull(batches.deletedAt),
-            inArray(batches.status, ["fermentation", "aging"]),
+            inArray(batches.status, ["fermentation", "aging", "conditioning"]),
           ))
           .where(isNull(vessels.deletedAt));
 
@@ -3717,7 +3717,7 @@ export const appRouter = router({
                 .where(
                   and(
                     eq(batches.vesselId, input.fromVesselId),
-                    inArray(batches.status, ["fermentation", "aging"]),
+                    inArray(batches.status, ["fermentation", "aging", "conditioning"]),
                     isNull(batches.deletedAt),
                   ),
                 )
@@ -3840,7 +3840,7 @@ export const appRouter = router({
               .where(
                 and(
                   eq(batches.vesselId, input.toVesselId),
-                  inArray(batches.status, ["fermentation", "aging"]),
+                  inArray(batches.status, ["fermentation", "aging", "conditioning"]),
                   isNull(batches.deletedAt),
                 ),
               )
@@ -3893,7 +3893,7 @@ export const appRouter = router({
               .where(
                 and(
                   eq(batches.vesselId, input.fromVesselId),
-                  inArray(batches.status, ["fermentation", "aging"]),
+                  inArray(batches.status, ["fermentation", "aging", "conditioning"]),
                   isNull(batches.deletedAt),
                 ),
               )
@@ -3902,7 +3902,7 @@ export const appRouter = router({
             if (!sourceBatch.length) {
               throw new TRPCError({
                 code: "NOT_FOUND",
-                message: "No active batch found in source vessel (must be in fermentation or aging status)",
+                message: "No active batch found in source vessel (must be in fermentation, aging, or conditioning status)",
               });
             }
 

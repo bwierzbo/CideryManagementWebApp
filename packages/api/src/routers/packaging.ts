@@ -318,11 +318,16 @@ export const packagingRouter = router({
 
             batch = batchData[0];
 
-            // Check batch status - fermentation or aging batches can be packaged
-            if (batch.status !== "aging" && batch.status !== "fermentation") {
+            // Check batch status - fermentation, aging, or conditioning batches
+            // can be packaged (conditioning is the post-filter/pre-package stage).
+            if (
+              batch.status !== "aging" &&
+              batch.status !== "fermentation" &&
+              batch.status !== "conditioning"
+            ) {
               throw new TRPCError({
                 code: "BAD_REQUEST",
-                message: `Batch must be in fermentation or aging stage to package. Current status: ${batch.status}`,
+                message: `Batch must be in fermentation, aging, or conditioning stage to package. Current status: ${batch.status}`,
               });
             }
             currentVolumeL = parseFloat(
