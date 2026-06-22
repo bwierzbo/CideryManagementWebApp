@@ -20,6 +20,7 @@ import {
 import { toast } from "@/hooks/use-toast";
 import { useBatchDateValidation } from "@/hooks/useBatchDateValidation";
 import { DateWarning } from "@/components/ui/DateWarning";
+import { LastActivityHint } from "@/components/ui/LastActivityHint";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Loader2, Package, AlertTriangle, Calculator } from "lucide-react";
 import { SO2Calculator } from "./SO2Calculator";
@@ -995,6 +996,7 @@ export function AddBatchAdditiveForm({
           required
         />
         <DateWarning warning={dateWarning} />
+        <LastActivityHint batchId={batchId} date={addedDate} />
       </div>
 
       <div className="space-y-2">

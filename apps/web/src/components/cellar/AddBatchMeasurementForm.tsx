@@ -17,6 +17,7 @@ import {
 import { toast } from "@/hooks/use-toast";
 import { useBatchDateValidation } from "@/hooks/useBatchDateValidation";
 import { DateWarning } from "@/components/ui/DateWarning";
+import { LastActivityHint } from "@/components/ui/LastActivityHint";
 import { Loader2, Info, CheckCircle2, AlertTriangle } from "lucide-react";
 import { useDateFormat } from "@/hooks/useDateFormat";
 
@@ -225,6 +226,7 @@ export function AddBatchMeasurementForm({
             className="w-full"
           />
           <DateWarning warning={dateWarning} />
+          <LastActivityHint batchId={batchId} date={measurementDateTime} />
         </div>
 
         {/* Measurement Method - only for SG-focused products */}

@@ -26,6 +26,7 @@ import { trpc } from "@/utils/trpc";
 import { toast } from "@/hooks/use-toast";
 import { useBatchDateValidation } from "@/hooks/useBatchDateValidation";
 import { DateWarning } from "@/components/ui/DateWarning";
+import { LastActivityHint } from "@/components/ui/LastActivityHint";
 import { Filter, AlertTriangle } from "lucide-react";
 import { VolumeInput, VolumeUnit } from "@/components/ui/volume-input";
 import { convertVolume } from "lib";
@@ -238,6 +239,7 @@ export function FilterModal({
               className="w-full mt-1"
             />
             <DateWarning warning={dateWarning} />
+            <LastActivityHint batchId={batchId} date={filteredAt} />
             {errors.filteredAt && (
               <p className="text-sm text-red-600 mt-1">
                 {errors.filteredAt.message}

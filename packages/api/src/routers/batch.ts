@@ -920,6 +920,36 @@ export const batchRouter = router({
           batchNameDate
         );
 
+        // Most recent dated activity on this batch — surfaced next to date
+        // inputs so the operator can tell whether the date they're entering is
+        // after the previous step (important when backdating several at once).
+        const lastActivityResult = await db.execute<{ event_date: Date; label: string }>(sql`
+          SELECT event_date, label FROM (
+            SELECT measurement_date AS event_date, 'Measurement' AS label FROM batch_measurements WHERE batch_id = ${batchId} AND deleted_at IS NULL
+            UNION ALL
+            SELECT added_at, 'Additive' FROM batch_additives WHERE batch_id = ${batchId} AND deleted_at IS NULL
+            UNION ALL
+            SELECT transferred_at, 'Transfer' FROM batch_transfers WHERE (source_batch_id = ${batchId} OR destination_batch_id = ${batchId}) AND deleted_at IS NULL
+            UNION ALL
+            SELECT filtered_at, 'Filter' FROM batch_filter_operations WHERE batch_id = ${batchId} AND deleted_at IS NULL
+            UNION ALL
+            SELECT racked_at, 'Racking' FROM batch_racking_operations WHERE batch_id = ${batchId} AND deleted_at IS NULL
+            UNION ALL
+            SELECT started_at, 'Carbonation' FROM batch_carbonation_operations WHERE batch_id = ${batchId} AND deleted_at IS NULL
+            UNION ALL
+            SELECT packaged_at, 'Packaging' FROM bottle_runs WHERE batch_id = ${batchId}
+          ) AS events
+          WHERE event_date IS NOT NULL
+          ORDER BY event_date DESC
+          LIMIT 1
+        `);
+        const lastRow = ((lastActivityResult as any).rows ?? [])[0] as
+          | { event_date: Date; label: string }
+          | undefined;
+        const lastActivity = lastRow
+          ? { date: lastRow.event_date, label: lastRow.label }
+          : null;
+
         // Base response
         const baseResponse = {
           batchId: batch.id,
@@ -929,6 +959,7 @@ export const batchRouter = router({
           transferDate,
           batchNameDate,
           earliestValidDate,
+          lastActivity,
         };
 
         // If bottleRunId provided, fetch packaging context for phase validation
