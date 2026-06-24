@@ -11,6 +11,7 @@
  */
 
 import { useState } from "react";
+import Link from "next/link";
 import { trpc } from "@/utils/trpc";
 import { toast } from "@/hooks/use-toast";
 import { StepDetailModal } from "@/components/recipes/StepDetailModal";
@@ -142,10 +143,15 @@ export function BatchRecipeChecklist({ batchId }: { batchId: string }) {
         <CardHeader>
           <CardTitle className="text-base">Recipe checklist</CardTitle>
           <CardDescription>
-            No recipe is attached to this batch. Open a recipe and choose “Use this
-            recipe” to generate a scheduled checklist.
+            No recipe is attached to this batch. Pick a recipe to generate a
+            scheduled checklist for it.
           </CardDescription>
         </CardHeader>
+        <CardContent>
+          <Button asChild>
+            <Link href={`/recipes?attachBatchId=${batchId}`}>Attach a recipe</Link>
+          </Button>
+        </CardContent>
       </Card>
     );
   }

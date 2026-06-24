@@ -13,6 +13,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { Navbar } from "@/components/navbar";
 import { Button } from "@/components/ui/button";
@@ -99,6 +100,13 @@ export default function RecipesPage() {
   const canArchive = canWithOverrides(role, "delete", "recipe", overrides);
   const canRestore = canWithOverrides(role, "update", "recipe", overrides);
 
+  // When arriving from a batch's "Attach a recipe" button, carry the batch id
+  // through to the recipe detail page so its wizard opens in attach mode.
+  const searchParams = useSearchParams();
+  const attachBatchId = searchParams.get("attachBatchId");
+  const recipeHref = (id: string) =>
+    attachBatchId ? `/recipes/${id}?attachBatchId=${attachBatchId}` : `/recipes/${id}`;
+
   const [search, setSearch] = useState("");
   const [productType, setProductType] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -165,6 +173,14 @@ export default function RecipesPage() {
             </Button>
           )}
         </div>
+
+        {attachBatchId && (
+          <div className="mb-6 flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            Pick a recipe to attach to this batch — opening it will start the
+            attach wizard with the batch preselected.
+          </div>
+        )}
 
         {/* Summary cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
@@ -287,7 +303,7 @@ export default function RecipesPage() {
                   <CardHeader className="pb-3">
                     <div className="flex items-start justify-between gap-2">
                       <Link
-                        href={`/recipes/${r.id}`}
+                        href={recipeHref(r.id)}
                         className="flex-1 group"
                       >
                         <CardTitle className="text-lg group-hover:text-blue-700 group-hover:underline cursor-pointer">
@@ -333,7 +349,7 @@ export default function RecipesPage() {
                       </span>
                       <div className="flex gap-1">
                         <Button asChild variant="ghost" size="sm">
-                          <Link href={`/recipes/${r.id}`} title="View recipe">
+                          <Link href={recipeHref(r.id)} title="View recipe">
                             <Eye className="w-3.5 h-3.5" />
                           </Link>
                         </Button>
