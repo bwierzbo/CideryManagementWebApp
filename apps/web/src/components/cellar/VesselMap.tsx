@@ -452,7 +452,7 @@ const updateBatchStatusMutation = trpc.batch.update.useMutation({
         case "aging":
           return "border-blue-300 bg-blue-50";
         case "conditioning":
-          return "border-teal-300 bg-teal-50";
+          return "border-pink-300 bg-pink-50";
         case "completed":
           return "border-slate-300 bg-slate-100";
         case "discarded":
@@ -522,7 +522,7 @@ const updateBatchStatusMutation = trpc.batch.update.useMutation({
         switch (batchStatus) {
           case "fermentation": icon = <Beaker className="w-4 h-4 text-purple-600" />; break;
           case "aging":        icon = <Clock className="w-4 h-4 text-blue-600" />; break;
-          case "conditioning": icon = <Sparkles className="w-4 h-4 text-teal-600" />; break;
+          case "conditioning": icon = <Sparkles className="w-4 h-4 text-pink-600" />; break;
           case "completed":    icon = <Archive className="w-4 h-4 text-slate-500" />; break;
           case "discarded":    icon = <AlertTriangle className="w-4 h-4 text-gray-600" />; break;
           default:             icon = <AlertTriangle className="w-4 h-4 text-amber-600" />;
