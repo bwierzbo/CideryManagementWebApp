@@ -247,7 +247,36 @@ Required for development:
 - Don't worry about port availability - user hosts in separate terminal
 - Database schema is in `public` schema (neon_auth was cleaned up in Oct 2025)
 - no more commenting out code if somethings not working, ask me if you should implement whatever unfinished feature or remove it but do not commend out code to fix build errors
-- always manually run the migration for me
+- always manually run the migration for me (I do NOT run them — you apply them via the apply-migration runner below, then tell me it's done)
+
+## Session Learnings (audit — July 2026)
+
+These codify recurring friction from past sessions. Follow them to avoid re-hitting the same walls.
+
+### DB access & scripts — DON'T hand-roll throwaway scripts
+- **`psql`, `neonctl`, and `timeout` are NOT installed.** Bare `tsx` is not on PATH either. Available: `npx tsx`, `pnpm`, `gh`.
+- To inspect data, use the **db-query** skill instead of writing a new `_tmp-*.ts` / `npx tsx -e "..."` each time:
+  `pnpm --filter db exec tsx scripts/query.ts "SELECT ..."` (read-only; `--write` to mutate, `--json` for JSON). Run from repo root.
+- To apply a migration (drizzle-kit migrate is broken): `pnpm --filter db exec tsx scripts/apply-migration.ts migrations/NNNN_name.sql` (add `--dry-run` first). Then tell me it's applied.
+- One-off DB scripts import `db` from `../src/index` and live in `packages/db/scripts/`, run via `pnpm --filter db exec tsx scripts/<name>.ts` (cwd = `packages/db`). Don't guess `./src/client` vs relative paths or use `/tmp`.
+
+### Waiting on background work — NEVER chain `sleep`
+- The harness blocks `sleep 30 && echo ...`. To wait on a background job/command, use `run_in_background: true` and poll with `until <check>; do sleep 2; done` (Monitor), or just wait — background sub-agents notify on completion. Don't ladder `sleep 20 → 45 → 90`.
+
+### Editing & testing
+- **Read the exact region before every Edit.** Never Edit from grep output alone — it causes "File has not been read yet" / "string not found" round-trips.
+- Scope a test to one file with `pnpm --filter <pkg> exec vitest run <path>` — NOT `... run test -- <name>` (the name is ignored and the whole 715-test suite runs).
+- After edits, `pnpm --filter web run typecheck` should be clean. Drizzle columns are frequently nullable — narrow before dereferencing (matches the "Optional Field Assumptions" rule above).
+
+### UI conventions (make these the template — I keep asking for them)
+- **One shared scrollable-container pattern for ALL scrollable areas.** Must support trackpad/two-finger scroll, not just arrow keys. New scroll areas reuse it — don't re-implement per list.
+- **Prefill carries unit + value, never just the value.** Amount fields must set their unit too.
+- **Recipe steps reuse the existing `/actions` functions** (add measurement, transfer, filter, carbonate, package) — fill values from the recipe; do NOT reimplement those flows.
+- Prefer showing the **last-activity date** on time-based inputs.
+
+### Sub-agents
+- `test-runner` now has Bash — route ALL test execution to it. `code-analyzer`/`Explore` are read-only (no Bash) — use them for tracing/search, not for running commands.
+- The heavy data-forensics work (trace lineage, check a vessel's volume) is a good fit for `Explore` / `code-analyzer` — don't do it all in the main loop.
 
 ## New Developer Onboarding
 
