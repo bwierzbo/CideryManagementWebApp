@@ -5459,6 +5459,33 @@ export const batchRouter = router({
             });
           }
 
+          // 1b. Idempotency guard: reject a duplicate identical rack (same
+          // source batch → same destination vessel, same volume) recorded in
+          // the last 2 minutes. This is the double-submit / network-retry that
+          // produced "tank shows 2 transfers of 200L, only one was made" and
+          // then required a manual soft-delete + volume correction.
+          const recentDuplicate = await tx
+            .select({ id: batchTransfers.id })
+            .from(batchTransfers)
+            .where(
+              and(
+                eq(batchTransfers.sourceBatchId, input.batchId),
+                eq(batchTransfers.destinationVesselId, input.destinationVesselId),
+                isNull(batchTransfers.deletedAt),
+                gte(batchTransfers.createdAt, new Date(Date.now() - 120_000)),
+                sql`ABS(${batchTransfers.volumeTransferred}::float8 - ${input.volumeToRack}) < 0.01`,
+              ),
+            )
+            .limit(1);
+
+          if (recentDuplicate.length > 0) {
+            throw new TRPCError({
+              code: "CONFLICT",
+              message:
+                "An identical rack from this batch to the same vessel was just recorded. Refresh to see it — if you meant to rack again, wait a moment and retry.",
+            });
+          }
+
           // 2. Verify destination vessel exists
           const destinationVessel = await tx
             .select({
