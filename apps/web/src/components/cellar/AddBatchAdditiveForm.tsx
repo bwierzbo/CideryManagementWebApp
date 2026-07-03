@@ -23,6 +23,7 @@ import { DateWarning } from "@/components/ui/DateWarning";
 import { LastActivityHint } from "@/components/ui/LastActivityHint";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Loader2, Package, AlertTriangle, Calculator } from "lucide-react";
+import { additiveRateGramsPerL } from "lib/src/units/conversions";
 import { SO2Calculator } from "./SO2Calculator";
 import { AdditiveCalculatorPanel } from "./AdditiveCalculatorPanel";
 import { useDateFormat } from "@/hooks/useDateFormat";
@@ -235,18 +236,18 @@ export function AddBatchAdditiveForm({
     const vol = effectiveBatchVolumeL;
     if (!Number.isFinite(n) || n <= 0 || !vol || vol <= 0 || !unit) return null;
     const u = unit.toLowerCase();
-    let grams: number | null = null;
-    if (u === "g") grams = n;
-    else if (u === "kg") grams = n * 1000;
-    else if (u === "oz") grams = n * 28.3495;
-    else if (u === "lbs" || u === "lb") grams = n * 453.592;
-    if (grams != null) return { value: grams / vol, label: "g/L", vol };
-    let ml: number | null = null;
-    if (u === "ml") ml = n;
-    else if (u === "l") ml = n * 1000;
-    if (ml != null) return { value: ml / vol, label: "mL/L", vol };
-    if (u === "g/l") return { value: n, label: "g/L", vol };
+    // Liquid-volume additions: show mL/L of batch (display only — no mass
+    // intensity is persisted for these).
+    if (u === "ml" || u === "l") {
+      const ml = u === "ml" ? n : n * 1000;
+      return { value: ml / vol, label: "mL/L", vol };
+    }
     if (u === "ppm") return { value: n, label: "ppm", vol };
+    // Mass units + g/L: use the SAME canonical helper the server persists as
+    // rate_grams_per_l, so this preview always equals what gets stored (and the
+    // "lbs"/"g/L" unit strings are normalized in one place).
+    const rate = additiveRateGramsPerL(n, unit, vol);
+    if (rate != null) return { value: rate, label: "g/L", vol };
     return null;
   }, [amount, unit, effectiveBatchVolumeL]);
 

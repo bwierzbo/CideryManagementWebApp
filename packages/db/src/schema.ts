@@ -1002,6 +1002,15 @@ export const batchAdditives = pgTable("batch_additives", {
    * batch.current_volume tracks reality.
    */
   volumeAddedL: decimal("volume_added_l", { precision: 10, scale: 3 }),
+  /**
+   * Comparable dosage intensity: grams of additive per liter of batch, derived
+   * at insert time from `amount` + `unit` + batch volume (see
+   * additiveRateGramsPerL in packages/lib). NULL when it can't be reduced to a
+   * mass intensity (pure liquid-volume additions with no known density).
+   * `amount`+`unit` remain the as-entered source of truth; this is the value to
+   * compare across batches regardless of whether kg or g/L was entered.
+   */
+  rateGramsPerL: decimal("rate_grams_per_l", { precision: 10, scale: 4 }),
   // Cost tracking fields - link to purchase and snapshot cost at time of use
   additivePurchaseItemId: uuid("additive_purchase_item_id").references(
     () => additivePurchaseItems.id,

@@ -531,3 +531,65 @@ export function calculateTotalVolume(
   );
   return convertVolume(totalLiters, "L", resultUnit);
 }
+
+// ============================================================
+// Additive Dosage Intensity
+// ============================================================
+
+/**
+ * Maps the additive form's loose unit strings (which include `"lbs"` and
+ * lowercase `"ml"`) onto the canonical {@link WeightUnit} vocabulary. This is
+ * the normalization gap that made the same additive look like different doses
+ * across batches.
+ */
+const ADDITIVE_MASS_UNIT_ALIASES: Record<string, WeightUnit> = {
+  g: "g",
+  gram: "g",
+  grams: "g",
+  kg: "kg",
+  oz: "oz",
+  lb: "lb",
+  lbs: "lb",
+  bushel: "bushel",
+  bushels: "bushel",
+};
+
+/**
+ * Express an additive dosage as a comparable **grams per liter of batch**
+ * intensity, so a fruit addition logged as `8 kg` and one logged as `100 g/L`
+ * can be compared directly.
+ *
+ * Returns `null` when the dosage can't be reduced to a mass intensity:
+ *   - pure liquid-volume units (`mL`/`L`) — needs a density we don't track;
+ *   - a missing/zero batch volume for a mass unit (nothing to divide by);
+ *   - a non-positive or non-finite amount.
+ *
+ * `"g/L"` passes through unchanged and `"ppm"` (≈ mg/L at density ~1) is
+ * divided by 1000 — neither needs the batch volume.
+ */
+export function additiveRateGramsPerL(
+  amount: number,
+  unit: string,
+  batchVolumeL: number | null | undefined,
+): number | null {
+  if (!Number.isFinite(amount) || amount < 0) return null;
+
+  const u = unit.trim().toLowerCase();
+  if (u === "g/l") return roundRate(amount);
+  if (u === "ppm") return roundRate(amount / 1000);
+
+  const massUnit = ADDITIVE_MASS_UNIT_ALIASES[u];
+  if (massUnit) {
+    if (!batchVolumeL || batchVolumeL <= 0) return null;
+    const grams = convertToKg(amount, massUnit) * 1000;
+    return roundRate(grams / batchVolumeL);
+  }
+
+  // Volume-only units (mL/L/gal) — no density, not a mass intensity.
+  return null;
+}
+
+/** Round a g/L rate to 4 decimal places (matches the DB column scale). */
+function roundRate(n: number): number {
+  return Math.round(n * 1e4) / 1e4;
+}

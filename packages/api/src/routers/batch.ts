@@ -34,7 +34,7 @@ import { bottleRuns, kegFills, kegs, bottleRunMaterials } from "db/src/schema/pa
 import { batchCarbonationOperations } from "db/src/schema/carbonation";
 import { eq, and, isNull, isNotNull, desc, asc, sql, or, like, ilike, inArray, aliasedTable, ne, gte, lte, gt } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
-import { convertToLiters } from "lib/src/units/conversions";
+import { convertToLiters, additiveRateGramsPerL } from "lib/src/units/conversions";
 import { validateBatches, type BatchValidation } from "../validation/batch-validation";
 import {
   calculateEstimatedSGAfterAddition,
@@ -2008,6 +2008,8 @@ export const batchRouter = router({
             productType: batches.productType,
             currentVolume: batches.currentVolume,
             currentVolumeUnit: batches.currentVolumeUnit,
+            currentVolumeLiters: batches.currentVolumeLiters,
+            initialVolumeLiters: batches.initialVolumeLiters,
           })
           .from(batches)
           .where(and(eq(batches.id, input.batchId), isNull(batches.deletedAt)))
@@ -2119,6 +2121,31 @@ export const batchRouter = router({
           });
         }
 
+        // Comparable dosage intensity (g per L of batch), so a fruit addition
+        // logged as "8 kg" and one logged as "100 g/L" can be compared directly.
+        // Prefer the live working volume; fall back to initial volume when the
+        // batch has been emptied (current_volume_liters = 0). NULL for
+        // pure-volume additions (no density) or when no volume is known.
+        const currentVolumeL = batchData[0].currentVolumeLiters
+          ? Number(batchData[0].currentVolumeLiters)
+          : batchData[0].currentVolume && batchData[0].currentVolumeUnit
+            ? convertToLiters(
+                Number(batchData[0].currentVolume),
+                batchData[0].currentVolumeUnit as any,
+              )
+            : 0;
+        const batchVolumeL =
+          currentVolumeL > 0
+            ? currentVolumeL
+            : batchData[0].initialVolumeLiters
+              ? Number(batchData[0].initialVolumeLiters)
+              : null;
+        const rateGramsPerL = additiveRateGramsPerL(
+          input.amount,
+          input.unit,
+          batchVolumeL,
+        );
+
         // Create additive record
         const newAdditive = await db
           .insert(batchAdditives)
@@ -2129,6 +2156,7 @@ export const batchRouter = router({
             additiveName: input.additiveName,
             amount: input.amount.toString(),
             unit: input.unit,
+            rateGramsPerL: rateGramsPerL !== null ? rateGramsPerL.toString() : null,
             volumeAddedL:
               input.volumeAddedL && input.volumeAddedL > 0
                 ? input.volumeAddedL.toString()
