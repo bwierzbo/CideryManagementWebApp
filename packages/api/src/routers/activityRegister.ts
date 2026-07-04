@@ -59,34 +59,32 @@ export const activityRegisterRouter = router({
       try {
         const { limit, offset, category, operationType, startDate, endDate, sortOrder } = input;
 
-        // Build date filter conditions
-        const dateConditions = [];
+        // Build WHERE conditions as a single composed clause. Each predicate is
+        // added WITHOUT a leading AND/WHERE; the clause is only emitted when at
+        // least one condition exists. This prevents a dangling `AND …` fragment
+        // when category is "all" (which previously produced invalid SQL:
+        // `SELECT * FROM all_activities AND operation = …`).
+        const conditions = [];
+        if (category !== "all") {
+          conditions.push(sql`category = ${category}`);
+        }
         if (startDate) {
-          dateConditions.push(sql`activity_date >= ${startDate.toISOString()}`);
+          conditions.push(sql`activity_date >= ${startDate.toISOString()}`);
         }
         if (endDate) {
-          dateConditions.push(sql`activity_date <= ${endDate.toISOString()}`);
+          conditions.push(sql`activity_date <= ${endDate.toISOString()}`);
         }
-        const dateFilter =
-          dateConditions.length > 0
-            ? sql`AND ${sql.join(dateConditions, sql` AND `)}`
-            : sql``;
-
-        // Build category filter
-        let categoryFilter = sql``;
-        if (category !== "all") {
-          categoryFilter = sql`WHERE category = ${category}`;
-        }
-
-        // Build operation type filter
-        let operationFilter = sql``;
         if (operationType === "creates") {
-          operationFilter = sql`AND operation = 'create'`;
+          conditions.push(sql`operation = 'create'`);
         } else if (operationType === "updates") {
-          operationFilter = sql`AND operation = 'update'`;
+          conditions.push(sql`operation = 'update'`);
         } else if (operationType === "deletes") {
-          operationFilter = sql`AND operation IN ('delete', 'soft_delete')`;
+          conditions.push(sql`operation IN ('delete', 'soft_delete')`);
         }
+        const whereClause =
+          conditions.length > 0
+            ? sql`WHERE ${sql.join(conditions, sql` AND `)}`
+            : sql``;
 
         // Query to get all activities with user attribution
         const activitiesQuery = sql`
@@ -590,9 +588,7 @@ export const activityRegisterRouter = router({
           )
           SELECT *
           FROM all_activities
-          ${categoryFilter}
-          ${dateFilter}
-          ${operationFilter}
+          ${whereClause}
           ORDER BY activity_date ${sortOrder === "desc" ? sql`DESC` : sql`ASC`}
           LIMIT ${limit}
           OFFSET ${offset}
@@ -690,9 +686,7 @@ export const activityRegisterRouter = router({
           )
           SELECT COUNT(*)::int as count
           FROM all_activities
-          ${categoryFilter}
-          ${dateFilter}
-          ${operationFilter}
+          ${whereClause}
         `;
 
         const countResult = await db.execute(countQuery);

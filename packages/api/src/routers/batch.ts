@@ -2029,6 +2029,24 @@ export const batchRouter = router({
           });
         }
 
+        // Batch volume (liters) for rate→absolute conversions. Prefer the live
+        // working volume; fall back to initial volume when the batch has been
+        // emptied (current_volume_liters = 0). NULL when no volume is known.
+        const currentVolumeL = batchData[0].currentVolumeLiters
+          ? Number(batchData[0].currentVolumeLiters)
+          : batchData[0].currentVolume && batchData[0].currentVolumeUnit
+            ? convertToLiters(
+                Number(batchData[0].currentVolume),
+                batchData[0].currentVolumeUnit as any,
+              )
+            : 0;
+        const batchVolumeL =
+          currentVolumeL > 0
+            ? currentVolumeL
+            : batchData[0].initialVolumeLiters
+              ? Number(batchData[0].initialVolumeLiters)
+              : null;
+
         // Calculate cost if purchase item is provided
         let costPerUnit = input.costPerUnit;
         let totalCost: number | undefined;
@@ -2094,7 +2112,16 @@ export const batchRouter = router({
         }
 
         if (costPerUnit !== undefined) {
-          totalCost = input.amount * costPerUnit;
+          // For per-liter rate units (e.g. "g/L", "mL/L", "ppm"), input.amount is
+          // a DOSE PER LITER, not an absolute quantity — multiply by the batch
+          // volume to get the absolute amount costPerUnit is priced against.
+          // Without this, COGS was understated by a factor of the batch volume
+          // (e.g. 100 g/L on a 200 L batch was costed as 100 units, not 20,000).
+          const isRateUnit =
+            input.unit === "g/L" || input.unit === "ppm" || input.unit.endsWith("/L");
+          const totalQty =
+            isRateUnit && batchVolumeL ? input.amount * batchVolumeL : input.amount;
+          totalCost = totalQty * costPerUnit;
         }
 
         // Check for duplicate additive (same vessel, name, amount, unit, and date)
@@ -2123,23 +2150,7 @@ export const batchRouter = router({
 
         // Comparable dosage intensity (g per L of batch), so a fruit addition
         // logged as "8 kg" and one logged as "100 g/L" can be compared directly.
-        // Prefer the live working volume; fall back to initial volume when the
-        // batch has been emptied (current_volume_liters = 0). NULL for
-        // pure-volume additions (no density) or when no volume is known.
-        const currentVolumeL = batchData[0].currentVolumeLiters
-          ? Number(batchData[0].currentVolumeLiters)
-          : batchData[0].currentVolume && batchData[0].currentVolumeUnit
-            ? convertToLiters(
-                Number(batchData[0].currentVolume),
-                batchData[0].currentVolumeUnit as any,
-              )
-            : 0;
-        const batchVolumeL =
-          currentVolumeL > 0
-            ? currentVolumeL
-            : batchData[0].initialVolumeLiters
-              ? Number(batchData[0].initialVolumeLiters)
-              : null;
+        // (batchVolumeL is computed above, before the cost block, for reuse.)
         const rateGramsPerL = additiveRateGramsPerL(
           input.amount,
           input.unit,

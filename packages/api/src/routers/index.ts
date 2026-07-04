@@ -1846,7 +1846,7 @@ export const appRouter = router({
       }),
 
     // Get full purchase details with all items
-    getDetails: createRbacProcedure("view", "purchase")
+    getDetails: createRbacProcedure("read", "purchase")
       .input(
         z.object({
           purchaseId: z.string().uuid(),
@@ -6749,7 +6749,7 @@ export const appRouter = router({
 
   // COGS and Reporting
   reports: router({
-    cogsPerBatch: createRbacProcedure("list", "reports").query(async () => {
+    cogsPerBatch: createRbacProcedure("list", "report").query(async () => {
       try {
         // TODO: Implement when batchCosts and cogsItems tables are created
         return {
@@ -6835,7 +6835,7 @@ export const appRouter = router({
       }
     }),
 
-    cogsBatchDetail: createRbacProcedure("list", "reports")
+    cogsBatchDetail: createRbacProcedure("list", "report")
       .input(z.object({ batchId: z.string().uuid() }))
       .query(async ({ input }) => {
         try {
