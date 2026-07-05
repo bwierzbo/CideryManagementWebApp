@@ -6014,21 +6014,11 @@ export const batchRouter = router({
                 .where(eq(batches.id, input.batchId))
                 .returning();
 
-              // Log lees loss as a formal volume adjustment for reporting/audit
-              if (volumeLossL > 0) {
-                await tx.insert(batchVolumeAdjustments).values({
-                  batchId: input.batchId,
-                  vesselId: input.destinationVesselId,
-                  adjustmentDate: input.rackedAt || new Date(),
-                  adjustmentType: "sediment",
-                  volumeBefore: volumeBeforeL.toString(),
-                  volumeAfter: volumeRackedL.toString(),
-                  adjustmentAmount: (-volumeLossL).toString(),
-                  reason: "Lees/sediment loss from racking",
-                  notes: input.notes || null,
-                  adjustedBy: ctx.session!.user!.id,
-                });
-              }
+              // NOTE: The lees/sediment loss is already captured by the
+              // batchRackingOperations record created above. Do NOT also insert a
+              // batchVolumeAdjustments row — the TTB/reconciliation engine sums
+              // BOTH racking losses AND volume adjustments, so writing both
+              // double-counts the loss (mirrors the rack-to-self path).
 
               resultMessage = `Batch racked to ${destinationVessel[0].name}`;
             }

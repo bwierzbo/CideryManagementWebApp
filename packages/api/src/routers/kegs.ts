@@ -26,6 +26,80 @@ import { eq, and, desc, isNull, sql, like, or, inArray } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { writeLedgerEntry } from "../lib/volume-ledger";
 
+/**
+ * Reverse the batch-volume effect of a keg fill (shared by void + delete).
+ *
+ * fillKegs deducts volumeTaken+loss from the batch and, if that emptied it,
+ * auto-completes the batch and clears its vessel. Voiding/deleting the fill must
+ * put that volume back, otherwise reconciliation permanently under-counts the
+ * batch (it expects the full volume while the batch stays deducted). Must be
+ * called inside a transaction (`tx`).
+ */
+async function restoreBatchVolumeFromKegFill(
+  tx: typeof db,
+  fill: {
+    batchId: string | null;
+    vesselId: string | null;
+    volumeTaken: string | null;
+    loss: string | null;
+  },
+): Promise<void> {
+  if (!fill.batchId) return;
+  const restoreL =
+    parseFloat(fill.volumeTaken ?? "0") + parseFloat(fill.loss ?? "0");
+  if (!(restoreL > 0)) return;
+
+  const [batch] = await tx
+    .select({
+      currentVolume: batches.currentVolume,
+      currentVolumeLiters: batches.currentVolumeLiters,
+      status: batches.status,
+      vesselId: batches.vesselId,
+    })
+    .from(batches)
+    .where(eq(batches.id, fill.batchId))
+    .limit(1);
+  if (!batch) return;
+
+  const currentL =
+    batch.currentVolumeLiters != null
+      ? parseFloat(batch.currentVolumeLiters)
+      : parseFloat(batch.currentVolume ?? "0");
+  const newL = currentL + restoreL;
+
+  const updates: Record<string, unknown> = {
+    currentVolume: newL.toString(),
+    currentVolumeLiters: newL.toString(),
+    updatedAt: new Date(),
+  };
+
+  // If the fill had emptied + auto-completed the batch, reactivate it.
+  if (batch.status === "completed" && newL > MIN_WORKING_VOLUME_L) {
+    updates.status = "conditioning";
+    updates.endDate = null;
+    // Re-attach the original vessel only if it is still free (no other active
+    // batch occupies it); otherwise leave it unassigned for the operator.
+    if (!batch.vesselId && fill.vesselId) {
+      const [occupant] = await tx
+        .select({ id: batches.id })
+        .from(batches)
+        .where(
+          and(eq(batches.vesselId, fill.vesselId), isNull(batches.deletedAt)),
+        )
+        .limit(1);
+      if (!occupant) {
+        updates.vesselId = fill.vesselId;
+        await tx
+          .update(vessels)
+          .set({ status: "available", updatedAt: new Date() })
+          .where(eq(vessels.id, fill.vesselId));
+      }
+    }
+  }
+
+  await tx.update(batches).set(updates).where(eq(batches.id, fill.batchId));
+}
+
 // Input validation schemas
 const kegMaterialSchema = z.object({
   packagingPurchaseItemId: z.string().uuid(),
@@ -956,11 +1030,16 @@ export const kegsRouter = router({
       try {
         const userId = ctx.user.id;
 
+        // Atomic: batch/vessel volume updates, the ledger entry, and every
+        // keg-fill/status/material write must all commit together or not at all.
+        // A partial commit here previously left the batch emptied+completed and
+        // the ledger deducted while only some kegs were actually filled.
+        return await db.transaction(async (tx) => {
         // Extract keg IDs from volumes array
         const kegIds = input.kegVolumes.map(kv => kv.kegId);
 
         // Verify batch exists
-        const [batch] = await db
+        const [batch] = await tx
           .select({ id: batches.id })
           .from(batches)
           .where(eq(batches.id, input.batchId))
@@ -976,7 +1055,7 @@ export const kegsRouter = router({
         // TODO: Calculate ABV from batch measurements if needed
 
         // Verify all kegs are available
-        const kegsToFill = await db
+        const kegsToFill = await tx
           .select({ id: kegs.id, status: kegs.status, kegNumber: kegs.kegNumber })
           .from(kegs)
           .where(
@@ -1009,7 +1088,7 @@ export const kegsRouter = router({
         const totalDeduction = totalVolumeTaken + totalLoss;
 
         // Update batch volume
-        const [currentBatch] = await db
+        const [currentBatch] = await tx
           .select({
             currentVolume: batches.currentVolume,
             currentVolumeUnit: batches.currentVolumeUnit,
@@ -1024,7 +1103,7 @@ export const kegsRouter = router({
           // Check if batch is exhausted (below minimum working volume threshold)
           if (newVolume <= MIN_WORKING_VOLUME_L) {
             // Complete the batch - no usable volume remaining
-            await db
+            await tx
               .update(batches)
               .set({
                 currentVolume: "0",
@@ -1038,7 +1117,7 @@ export const kegsRouter = router({
               .where(eq(batches.id, input.batchId));
 
             // Set vessel to cleaning status
-            await db
+            await tx
               .update(vessels)
               .set({
                 status: "cleaning" as any,
@@ -1047,7 +1126,7 @@ export const kegsRouter = router({
               .where(eq(vessels.id, input.vesselId));
           } else {
             // Partial kegging - just update volume
-            await db
+            await tx
               .update(batches)
               .set({
                 currentVolume: newVolume.toString(),
@@ -1068,12 +1147,12 @@ export const kegsRouter = router({
           lossReason: "packaging",
           linkedEntityType: "keg_fill",
           performedBy: ctx.user?.id,
-        });
+        }, tx);
 
         // Auto-link to most recent carbonation operation if not provided
         let carbonationOpId = input.sourceCarbonationOperationId ?? null;
         if (!carbonationOpId) {
-          const [latestCarbOp] = await db
+          const [latestCarbOp] = await tx
             .select({ id: batchCarbonationOperations.id })
             .from(batchCarbonationOperations)
             .where(
@@ -1094,7 +1173,7 @@ export const kegsRouter = router({
 
         for (const kegVolume of input.kegVolumes) {
           // Create fill record
-          const [fill] = await db
+          const [fill] = await tx
             .insert(kegFills)
             .values({
               kegId: kegVolume.kegId,
@@ -1118,7 +1197,7 @@ export const kegsRouter = router({
           fillRecords.push(fill);
 
           // Update keg status
-          await db
+          await tx
             .update(kegs)
             .set({
               status: "filled",
@@ -1128,7 +1207,7 @@ export const kegsRouter = router({
 
           // Add materials if provided and update inventory
           if (input.materials && input.materials.length > 0) {
-            await db.insert(kegFillMaterials).values(
+            await tx.insert(kegFillMaterials).values(
               input.materials.map((m) => ({
                 kegFillId: fill.id,
                 packagingPurchaseItemId: m.packagingPurchaseItemId,
@@ -1140,7 +1219,7 @@ export const kegsRouter = router({
 
             // Increment quantityUsed on packaging inventory for each material
             for (const material of input.materials) {
-              await db.execute(sql`
+              await tx.execute(sql`
                 UPDATE packaging_purchase_items
                 SET quantity_used = quantity_used + ${material.quantityUsed},
                     updated_at = NOW()
@@ -1154,6 +1233,7 @@ export const kegsRouter = router({
           success: true,
           fills: fillRecords,
         };
+        });
       } catch (error) {
         if (error instanceof TRPCError) throw error;
         console.error("Error filling kegs:", error);
@@ -1561,69 +1641,12 @@ export const kegsRouter = router({
     .input(voidKegFillSchema)
     .mutation(async ({ input, ctx }) => {
       try {
-        // Get fill info
-        const [fill] = await db
-          .select({ kegId: kegFills.kegId })
-          .from(kegFills)
-          .where(
-            and(
-              eq(kegFills.id, input.kegFillId),
-              isNull(kegFills.deletedAt)
-            )
-          )
-          .limit(1);
-
-        if (!fill) {
-          throw new TRPCError({
-            code: "NOT_FOUND",
-            message: "Keg fill not found",
-          });
-        }
-
-        // Void fill
-        await db
-          .update(kegFills)
-          .set({
-            status: "voided",
-            voidReason: input.voidReason,
-            voidedAt: new Date(),
-            voidedBy: ctx.user.id,
-            updatedAt: new Date(),
-          })
-          .where(eq(kegFills.id, input.kegFillId));
-
-        // Update keg to available
-        await db
-          .update(kegs)
-          .set({
-            status: "available",
-            updatedAt: new Date(),
-          })
-          .where(eq(kegs.id, fill.kegId));
-
-        return { success: true };
-      } catch (error) {
-        if (error instanceof TRPCError) throw error;
-        console.error("Error voiding keg fill:", error);
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: "Failed to void keg fill",
-        });
-      }
-    }),
-
-  /**
-   * Delete a keg fill (hard delete)
-   */
-  deleteKegFill: createRbacProcedure("delete", "package")
-    .input(z.object({ kegFillId: z.string().uuid() }))
-    .mutation(async ({ input }) => {
-      try {
-        // Get fill info including batch details
+        // Get fill info (volume fields needed to restore batch volume)
         const [fill] = await db
           .select({
             kegId: kegFills.kegId,
             batchId: kegFills.batchId,
+            vesselId: kegFills.vesselId,
             volumeTaken: kegFills.volumeTaken,
             loss: kegFills.loss,
           })
@@ -1643,26 +1666,101 @@ export const kegsRouter = router({
           });
         }
 
-        // Delete associated materials first
-        await db
-          .delete(kegFillMaterials)
-          .where(eq(kegFillMaterials.kegFillId, input.kegFillId));
+        return await db.transaction(async (tx) => {
+          // Void fill
+          await tx
+            .update(kegFills)
+            .set({
+              status: "voided",
+              voidReason: input.voidReason,
+              voidedAt: new Date(),
+              voidedBy: ctx.user.id,
+              updatedAt: new Date(),
+            })
+            .where(eq(kegFills.id, input.kegFillId));
 
-        // Delete the keg fill
-        await db
-          .delete(kegFills)
-          .where(eq(kegFills.id, input.kegFillId));
+          // Update keg to available
+          await tx
+            .update(kegs)
+            .set({
+              status: "available",
+              updatedAt: new Date(),
+            })
+            .where(eq(kegs.id, fill.kegId));
 
-        // Update keg to available (volume is NOT restored to batch)
-        await db
-          .update(kegs)
-          .set({
-            status: "available",
-            updatedAt: new Date(),
+          // Restore the deducted volume to the batch (reconciliation depends on it)
+          await restoreBatchVolumeFromKegFill(tx, fill);
+
+          return { success: true };
+        });
+      } catch (error) {
+        if (error instanceof TRPCError) throw error;
+        console.error("Error voiding keg fill:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to void keg fill",
+        });
+      }
+    }),
+
+  /**
+   * Delete a keg fill (hard delete)
+   */
+  deleteKegFill: createRbacProcedure("delete", "package")
+    .input(z.object({ kegFillId: z.string().uuid() }))
+    .mutation(async ({ input }) => {
+      try {
+        // Get fill info including batch + volume details (to restore volume)
+        const [fill] = await db
+          .select({
+            kegId: kegFills.kegId,
+            batchId: kegFills.batchId,
+            vesselId: kegFills.vesselId,
+            volumeTaken: kegFills.volumeTaken,
+            loss: kegFills.loss,
           })
-          .where(eq(kegs.id, fill.kegId));
+          .from(kegFills)
+          .where(
+            and(
+              eq(kegFills.id, input.kegFillId),
+              isNull(kegFills.deletedAt)
+            )
+          )
+          .limit(1);
 
-        return { success: true };
+        if (!fill) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Keg fill not found",
+          });
+        }
+
+        return await db.transaction(async (tx) => {
+          // Restore the deducted volume to the batch BEFORE removing the fill
+          // (the fill row is captured above; reconciliation depends on this).
+          await restoreBatchVolumeFromKegFill(tx, fill);
+
+          // Delete associated materials first
+          await tx
+            .delete(kegFillMaterials)
+            .where(eq(kegFillMaterials.kegFillId, input.kegFillId));
+
+          // Delete the keg fill
+          await tx
+            .delete(kegFills)
+            .where(eq(kegFills.id, input.kegFillId));
+
+          // Update keg to available
+          await tx
+            .update(kegs)
+            .set({
+              status: "available",
+              updatedAt: new Date(),
+            })
+            .where(eq(kegs.id, fill.kegId));
+
+          return { success: true };
+        });
       } catch (error) {
         if (error instanceof TRPCError) throw error;
         console.error("Error deleting keg fill:", error);

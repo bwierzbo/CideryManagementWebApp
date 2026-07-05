@@ -1702,6 +1702,10 @@ export const distillationRecords = pgTable(
     sourceVolumeUnit: unitEnum("source_volume_unit").notNull().default("L"),
     sourceVolumeLiters: decimal("source_volume_liters", { precision: 10, scale: 3 }),
     sourceAbv: decimal("source_abv", { precision: 4, scale: 2 }), // Typically ~6-8%
+    // Whether the send deducted volume from the source batch. cancel uses this
+    // to know whether to restore volume (a record-only send must NOT be
+    // restored). Defaults true — the common/historical path deducts.
+    deductedFromBatch: boolean("deducted_from_batch").notNull().default(true),
 
     // Distillery info
     distilleryName: text("distillery_name").notNull(),
