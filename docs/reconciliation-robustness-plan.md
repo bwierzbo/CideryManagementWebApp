@@ -8,6 +8,25 @@
 
 ---
 
+## 0. Refined product requirements (2026-07-06, from the owner)
+
+**Anchor: the already-filed 2024 & 2025 reports are the source of truth.** Do NOT overwrite history. Recompute honestly and *compare* to what was filed. If the corrected 2025 numbers differ **significantly**, surface the delta and let the owner decide: (a) file an amended report, or (b) roll the difference into the current year. Phase 0 must quantify this before any engine change ships.
+
+**Reconciliation is a user-facing checkpoint, distinct from TTB filing.**
+- A **reconciliation** can be run at ANY time. Its purpose: let the user verify their inventory/volumes are true and accurate as of a chosen date. When a reconciliation is *completed*, the numbers are trusted-accurate up to that reconciliation date (a checkpoint/lock the next period builds on).
+- A **TTB report** is generated + submitted when due (frequency the user selects: **monthly / quarterly / annual**). It is built ON TOP of the last completed reconciliation checkpoint.
+- So: reconciliation = "are my numbers right?" (any time); TTB report = "the official filing for period X" (on schedule). One feeds the other.
+
+**Two printable, submittable forms are required:**
+1. **TTB F 5120.17 — Report of Wine Premises Operations** (federal; already largely implemented as `generateForm512017`). Needs a clean printable/PDF output.
+2. **NY LIQ-774-777-021 — Domestic Winery Report** (New York state; NOT yet implemented). New form generator + printable output. (Structure being researched; may need a blank form from the owner.)
+
+**Internal programmer checks** (the identity/parity/drift checks scattered through `ttb.ts`, `batch-validation.ts`, and the test suite): keep them working during the rebuild, but plan to move them **admin-only** (a diagnostics panel) or delete the ones that stop earning their keep. They are scaffolding, not user features.
+
+**Qualities to hit:** robust, easy for a non-accountant owner to use, accurate (matches filed history or explains the delta), and fault-resistant (no silent plugs; a real variance is shown and must be explained/accepted before a filing is locked).
+
+---
+
 ## 1. Current architecture (grounded, with file:line)
 
 ### Two independent history-replay engines (this is the core problem)
@@ -87,23 +106,43 @@ Not a problem (verified correct): juice is excluded until it becomes cider/pomme
 ### Phase 5 — Automation & trust surface (fold in existing PRD)
 - Implement `.claude/prds/automated-reconciliation.md`: nightly recon job → `audit_logs`, dashboard "last reconciled at X / N drift items" badge, period-boundary snapshots, drift alerts.
 
+### Phase 6 — Reconciliation checkpoint model (user-facing workflow)
+The product model the owner described, built on the Phase 1–3 authoritative engine:
+- **Run reconciliation any time** for a chosen "as-of" date: show per-batch + aggregate volumes reconstructed from history, the true variance, and any batches needing attention (unreconciled / manually-corrected).
+- **Complete/lock a reconciliation** → writes a checkpoint (`ttbReconciliationSnapshots`) that means "numbers trusted-accurate through this date." The next reconciliation/period starts from it (opening = prior checkpoint ending). A completed checkpoint should be immutable (amend = new checkpoint).
+- Keep reconciliation SEPARATE from filing: a reconciliation is an internal truth-check; a TTB report is the official filing for a period. The report builds on the latest checkpoint ≤ period end.
+- UX for a non-accountant owner: plain-language status ("✓ Reconciled through Jun 30 — inventory matches" / "⚠ 3 batches off by 12 gal — review"), one-click drill-in, explicit "accept variance with reason" before locking.
+
+### Phase 7 — TTB report periods + printable/submittable forms
+- **Period selection:** monthly / quarterly / annual, user-chosen; generate the Form 5120.17 for the selected period from the checkpointed data. A period's opening = prior finalized period snapshot (already partly supported); finalize on submit.
+- **Form 1 — TTB F 5120.17 (Report of Wine Premises Operations):** produce a clean **printable/PDF** matching the official layout (Section A bulk, Section B bottled, Part IV materials), ready to submit. (Generator largely exists; needs faithful print output + the Phase-3 honest numbers.)
+- **Form 2 — NY LIQ-774-777-021 (Domestic Winery Report):** NEW. Build a state-report generator + printable output. Map its line items to the same event data (production, transfers, removals, losses, inventory). *Exact form fields TBD from research / a blank form the owner provides.*
+- Both forms print with the period, filer info (from org settings), and the reconciliation checkpoint they were built on.
+
+### Phase 8 — Move internal checks to admin-only (or retire)
+- The identity/parity/drift checks (`ttb.ts` inline checks, `batch-validation` extra checks, golden/parity tests) become an **admin-only diagnostics panel**, not user-facing. Retire ones that no longer earn their keep once the engine is authoritative. Keep the golden/filed-number comparison (Phase 4) as the regression guard.
+
 ---
 
 ## 4. Sequencing & acceptance criteria
 
-**Order:** Phase 0 gates 1–3 → Phase 1 before 2 → 2 before 3 → 3 before 4 → 5 last (or parallel once 1–2 land).
+**Order:** Phase 0 (diagnostic, gates everything) → 1 (one engine) → 2 (trustworthy live volume) → 3 (kill plugs + true variance + boundary) → 4 (filed-snapshot compare) → 6 (checkpoint UX) → 7 (periods + printable forms) → 8 (checks→admin). Phase 5 (automation) and the NY form (Phase 7 Form 2) can run in parallel once 1–3 land. **Nothing that changes filed 2024/2025 numbers ships before Phase 0 quantifies the delta and the owner decides amend-vs-roll-forward.**
 
 **Done when:**
 - One authoritative volume-from-history function; no duplicate formulas.
 - Every active batch reconciles within tolerance **or** is explicitly `volume_manually_corrected` with a reason.
 - The TTB form surfaces a real, non-plugged variance; residuals are itemized or flagged, not absorbed.
-- A recomputed period matches its filed snapshot within tolerance; drift is alerted.
+- A recomputed period matches its filed snapshot within tolerance (or the delta is surfaced and owner-accepted); drift is alerted.
+- The owner can run a reconciliation any time, lock a checkpoint, and generate a **printable, submittable** 5120.17 **and** NY LIQ-774 for a chosen monthly/quarterly/annual period.
 - The safe transfer delete/correction (currently reverted) is buildable on the Phase-2 recompute.
 
-## 5. Decisions to make (before/early)
+## 5. Decisions to make (with the owner)
+- **2025 delta handling** (the big one): once Phase 0 quantifies how far corrected 2025 is from filed — amend the TTB filing, or roll the difference into the current year? (Owner decides per §0.)
 - Delta-driven + self-heal vs derived live volume (Phase 2 stance).
 - Historical pre-2025 drift: backfill vs freeze via a finalized snapshot (PRD says pre-2025 backfill is out of scope).
-- Tolerance thresholds for "reconciled" (per-batch and aggregate).
+- Tolerance thresholds for "reconciled" (per-batch and aggregate) and for "significant" filing delta.
+- NY LIQ-774 exact fields — need a blank form / the owner's prior filing if research can't pin them down.
+- Reporting frequency default (monthly/quarterly/annual) and whether NY filing frequency differs from federal.
 
 ## 6. Key files
 - Per-batch: `packages/api/src/validation/batch-validation.ts`; endpoint `packages/api/src/routers/batch.ts:3210-3472`.
