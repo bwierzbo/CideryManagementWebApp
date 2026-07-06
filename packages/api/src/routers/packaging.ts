@@ -189,7 +189,10 @@ export const packagingRouter = router({
                   isNull(kegFills.deletedAt)
                 )
               )
-              .limit(1);
+              .limit(1)
+              // Lock the keg fill row so two concurrent packaging runs from the
+              // same fill can't both read the same remaining volume and double-spend.
+              .for("update");
 
             if (!kegFillData.length) {
               throw new TRPCError({
@@ -307,7 +310,11 @@ export const packagingRouter = router({
                 isNull(batches.deletedAt),
               ),
             )
-            .limit(1);
+            .limit(1)
+            // Lock the batch row so two concurrent packaging runs on the same
+            // batch serialize: the second blocks, then re-reads the reduced
+            // volume and correctly fails the sufficient-volume check below.
+            .for("update");
 
           if (!batchData.length) {
             throw new TRPCError({

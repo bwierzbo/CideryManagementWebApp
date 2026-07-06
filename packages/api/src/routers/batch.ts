@@ -6427,19 +6427,35 @@ export const batchRouter = router({
             }
           }
 
-          // 4. Update juice purchase item's allocated volume
-          const newAllocatedVolume = allocatedVolumeL + transferVolumeL;
-          const isFullyAllocated = newAllocatedVolume >= totalVolumeL;
-
-          await tx
+          // 4. Atomically allocate the juice. volume_allocated is written as a
+          // SQL delta guarded in the WHERE (…+ transfer <= volume), so two
+          // concurrent transfers can't both read the same "available" and
+          // over-allocate (lost update under READ COMMITTED). deletedAt is set
+          // via CASE against the live (pre-update) row so the fully-allocated
+          // soft-delete stays correct even if a concurrent transfer interleaved.
+          const allocated = await tx
             .update(juicePurchaseItems)
             .set({
-              volumeAllocated: newAllocatedVolume.toString(),
+              volumeAllocated: sql`COALESCE(${juicePurchaseItems.volumeAllocated}, 0) + ${transferVolumeL}`,
               updatedAt: new Date(),
-              // Archive (soft delete) if fully allocated
-              deletedAt: isFullyAllocated ? new Date() : undefined,
+              deletedAt: sql`CASE WHEN COALESCE(${juicePurchaseItems.volumeAllocated}, 0) + ${transferVolumeL} >= ${juicePurchaseItems.volume} THEN now() ELSE ${juicePurchaseItems.deletedAt} END`,
             })
-            .where(eq(juicePurchaseItems.id, input.juicePurchaseItemId));
+            .where(
+              and(
+                eq(juicePurchaseItems.id, input.juicePurchaseItemId),
+                sql`COALESCE(${juicePurchaseItems.volumeAllocated}, 0) + ${transferVolumeL} <= ${juicePurchaseItems.volume}`,
+              ),
+            )
+            .returning({ id: juicePurchaseItems.id });
+
+          if (allocated.length === 0) {
+            // Another concurrent transfer consumed the remaining volume first.
+            throw new TRPCError({
+              code: "CONFLICT",
+              message:
+                "This juice was just allocated by another operation. Refresh to see the remaining volume.",
+            });
+          }
 
           return {
             success: true,

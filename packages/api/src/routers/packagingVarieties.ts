@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { router, protectedProcedure } from "../trpc";
+import { router, protectedProcedure, createRbacProcedure } from "../trpc";
 import { db, packagingVarieties, vendorPackagingVarieties } from "db";
 import { eq, and, isNull, desc, asc, sql } from "drizzle-orm";
 import { packagingItemTypeSchema } from "lib";
@@ -101,7 +101,7 @@ export const packagingVarietiesRouter = router({
     }),
 
   // Create new packaging variety
-  create: protectedProcedure
+  create: createRbacProcedure("create", "inventory")
     .input(
       z.object({
         name: z.string().min(1, "Name is required"),
@@ -143,7 +143,7 @@ export const packagingVarietiesRouter = router({
     }),
 
   // Update packaging variety
-  update: protectedProcedure
+  update: createRbacProcedure("update", "inventory")
     .input(
       z.object({
         id: z.string().uuid(),
@@ -209,7 +209,7 @@ export const packagingVarietiesRouter = router({
     }),
 
   // Delete packaging variety (soft delete)
-  delete: protectedProcedure
+  delete: createRbacProcedure("delete", "inventory")
     .input(
       z.object({
         id: z.string().uuid(),

@@ -337,7 +337,27 @@ export function TankTransferForm({
         <Label>Display Units</Label>
         <Select
           value={displayUnit}
-          onValueChange={(value) => setDisplayUnit(value as "L" | "gal")}
+          onValueChange={(value) => {
+            const newUnit = value as "L" | "gal";
+            if (newUnit !== displayUnit) {
+              // Convert the already-entered values so the physical volume stays
+              // constant. Without this, switching L -> gal reinterpreted "200"
+              // as 200 gal (=757 L) and shipped the wrong transfer volume.
+              if (watchedVolumeL > 0) {
+                setValue(
+                  "volumeL",
+                  Math.round(convertVolume(watchedVolumeL, displayUnit, newUnit) * 100) / 100,
+                );
+              }
+              if (watchedLoss > 0) {
+                setValue(
+                  "loss",
+                  Math.round(convertVolume(watchedLoss, displayUnit, newUnit) * 100) / 100,
+                );
+              }
+            }
+            setDisplayUnit(newUnit);
+          }}
         >
           <SelectTrigger>
             <SelectValue />

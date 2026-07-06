@@ -221,6 +221,31 @@ export function RackingModal({
   };
 
   const selectedVessel = availableVessels.find((v) => v.vesselId === destinationVesselId);
+
+  // Capacity check in LITERS, accounting for liquid already in the destination.
+  // Previously this compared the source-unit rack volume directly against the
+  // destination's raw capacity (its own unit) and ignored existing liquid — so
+  // e.g. racking 200 gal (757 L) showed "✓ fits" in a 600 L vessel.
+  const rackToRackL =
+    volumeToRack != null
+      ? convertVolume(volumeToRack, sourceVesselCapacityUnit, "L")
+      : 0;
+  const destCapacityL = selectedVessel
+    ? convertVolume(
+        parseFloat(selectedVessel.vesselCapacity || "0"),
+        (selectedVessel.vesselCapacityUnit || "L") as "L" | "gal",
+        "L",
+      )
+    : 0;
+  const destExistingL = selectedVessel?.currentVolume
+    ? convertVolume(
+        parseFloat(selectedVessel.currentVolume.toString()),
+        (selectedVessel.currentVolumeUnit || "L") as "L" | "gal",
+        "L",
+      )
+    : 0;
+  const wouldExceedCapacity =
+    destCapacityL > 0 && rackToRackL + destExistingL > destCapacityL;
   const isRackToSelf = destinationVesselId === sourceVesselId;
 
   return (
@@ -491,17 +516,19 @@ export function RackingModal({
           {/* Capacity Check (only for different vessels) */}
           {!isRackToSelf && selectedVessel && volumeToRack && (
             <div className={`p-3 rounded-lg ${
-              volumeToRack > parseFloat(selectedVessel.vesselCapacity || "0")
+              wouldExceedCapacity
                 ? "bg-red-50 border border-red-200"
                 : "bg-green-50 border border-green-200"
             }`}>
               <p className="text-sm font-medium">
-                {volumeToRack > parseFloat(selectedVessel.vesselCapacity || "0")
+                {wouldExceedCapacity
                   ? "⚠️ Volume exceeds vessel capacity!"
                   : "✓ Volume fits in vessel"}
               </p>
               <p className="text-xs mt-1">
                 Vessel capacity: {selectedVessel.vesselCapacity} {selectedVessel.vesselCapacityUnit}
+                {destExistingL > 0.01 &&
+                  ` · ${destExistingL.toFixed(1)} L already in vessel · adding ${rackToRackL.toFixed(1)} L`}
               </p>
             </div>
           )}

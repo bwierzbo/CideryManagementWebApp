@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { router, protectedProcedure } from "../trpc";
+import { router, protectedProcedure, createRbacProcedure } from "../trpc";
 import { db, additiveVarieties, vendorAdditiveVarieties } from "db";
 import { eq, and, isNull, desc, asc, sql } from "drizzle-orm";
 import { additiveTypeSchema } from "lib";
@@ -101,7 +101,7 @@ export const additiveVarietiesRouter = router({
     }),
 
   // Create new additive variety
-  create: protectedProcedure
+  create: createRbacProcedure("create", "inventory")
     .input(
       z.object({
         name: z.string().min(1, "Name is required"),
@@ -158,7 +158,7 @@ export const additiveVarietiesRouter = router({
     }),
 
   // Update additive variety
-  update: protectedProcedure
+  update: createRbacProcedure("update", "inventory")
     .input(
       z.object({
         id: z.string().uuid(),
@@ -241,7 +241,7 @@ export const additiveVarietiesRouter = router({
     }),
 
   // Delete additive variety (soft delete)
-  delete: protectedProcedure
+  delete: createRbacProcedure("delete", "inventory")
     .input(
       z.object({
         id: z.string().uuid(),

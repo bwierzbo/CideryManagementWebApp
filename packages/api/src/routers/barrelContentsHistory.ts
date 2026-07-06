@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { router, protectedProcedure } from "../trpc";
+import { router, protectedProcedure, createRbacProcedure } from "../trpc";
 import { db, barrelContentsHistory, vessels, batches } from "db";
 import { eq, asc, desc } from "drizzle-orm";
 
@@ -63,7 +63,7 @@ export const barrelContentsHistoryRouter = router({
     }),
 
   // Create a new contents history entry (manual or pre-purchase)
-  create: protectedProcedure
+  create: createRbacProcedure("create", "vessel")
     .input(
       z.object({
         vesselId: z.string().uuid(),
@@ -150,7 +150,7 @@ export const barrelContentsHistoryRouter = router({
     }),
 
   // Update a contents history entry
-  update: protectedProcedure
+  update: createRbacProcedure("update", "vessel")
     .input(
       z.object({
         id: z.string().uuid(),
@@ -203,7 +203,7 @@ export const barrelContentsHistoryRouter = router({
     }),
 
   // Delete a contents history entry
-  delete: protectedProcedure
+  delete: createRbacProcedure("delete", "vessel")
     .input(
       z.object({
         id: z.string().uuid(),
