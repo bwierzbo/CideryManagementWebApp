@@ -59,6 +59,9 @@ export function AddBatchMeasurementForm({
   // canonically as volumes (converted via Henry's Law at the sample temp).
   const [co2Unit, setCo2Unit] = useState<"psi" | "vol">("psi");
   const [temperature, setTemperature] = useState("10");
+  // Temperature entry unit; stored canonically in °C. Cellar temps vary widely,
+  // so the operator can enter in either scale.
+  const [tempUnit, setTempUnit] = useState<"C" | "F">("C");
   const [notes, setNotes] = useState("");
   const [sensoryNotes, setSensoryNotes] = useState("");
   const [volume, setVolume] = useState("");
@@ -79,19 +82,29 @@ export function AddBatchMeasurementForm({
   // Fetch active calibration status
   const { data: calibrationData } = trpc.calibration.getActive.useQuery();
 
+  // Sample temperature normalized to °C — the canonical unit for storage, SG
+  // correction, and the Henry's-Law CO₂ conversion — regardless of entry unit.
+  const tempNum = parseFloat(temperature);
+  const tempC =
+    temperature !== "" && !isNaN(tempNum)
+      ? tempUnit === "F"
+        ? (tempNum - 32) * (5 / 9)
+        : tempNum
+      : null;
+
   // Preview correction when we have the necessary inputs
   const canPreviewCorrection =
     !!rawReading &&
-    !!temperature &&
+    tempC !== null &&
     parseFloat(rawReading) > 0 &&
-    parseFloat(temperature) >= -10;
+    tempC >= -10;
 
   const { data: correctionPreview, isFetching: isLoadingPreview } =
     trpc.calibration.previewCorrection.useQuery(
       {
         instrumentType: measurementMethod === "calculated" ? "hydrometer" : measurementMethod,
         rawReading: parseFloat(rawReading) || 1,
-        temperatureC: parseFloat(temperature) || 20,
+        temperatureC: tempC ?? 20,
         originalGravity: originalGravity ? parseFloat(originalGravity) : undefined,
         isFreshJuice,
       },
@@ -176,13 +189,12 @@ export function AddBatchMeasurementForm({
     if (totalAcidity) measurementData.totalAcidity = parseFloat(totalAcidity);
     if (dissolvedCo2) {
       const co2Raw = parseFloat(dissolvedCo2);
-      const tempC = parseFloat(temperature) || 20;
       // Store canonical dissolved CO₂ in volumes. If entered as head pressure
-      // (psi), convert via Henry's Law at the sample temperature.
+      // (psi), convert via Henry's Law at the sample temperature (°C).
       measurementData.dissolvedCo2 =
-        co2Unit === "psi" ? calculateCO2Volumes(co2Raw, tempC) : co2Raw;
+        co2Unit === "psi" ? calculateCO2Volumes(co2Raw, tempC ?? 20) : co2Raw;
     }
-    if (temperature) measurementData.temperature = parseFloat(temperature);
+    if (tempC !== null) measurementData.temperature = tempC;
     if (notes) measurementData.notes = notes;
     if (sensoryNotes) measurementData.sensoryNotes = sensoryNotes;
     if (volume) measurementData.volume = parseFloat(volume);
@@ -325,17 +337,60 @@ export function AddBatchMeasurementForm({
 
           {/* Temperature */}
           <div className="space-y-2">
-            <Label htmlFor="temperature">Sample Temperature (°C)</Label>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="temperature">Sample Temperature (°{tempUnit})</Label>
+              <div className="inline-flex overflow-hidden rounded-md border text-xs">
+                <button
+                  type="button"
+                  onClick={() => {
+                    // Convert the entered value so the physical temp is unchanged.
+                    if (tempUnit === "F" && !isNaN(tempNum)) {
+                      setTemperature(
+                        String(Math.round(((tempNum - 32) * 5) / 9 * 10) / 10),
+                      );
+                    }
+                    setTempUnit("C");
+                  }}
+                  className={
+                    tempUnit === "C"
+                      ? "bg-primary px-2 py-0.5 text-primary-foreground"
+                      : "bg-background px-2 py-0.5"
+                  }
+                >
+                  °C
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (tempUnit === "C" && !isNaN(tempNum)) {
+                      setTemperature(
+                        String(Math.round(((tempNum * 9) / 5 + 32) * 10) / 10),
+                      );
+                    }
+                    setTempUnit("F");
+                  }}
+                  className={
+                    tempUnit === "F"
+                      ? "bg-primary px-2 py-0.5 text-primary-foreground"
+                      : "bg-background px-2 py-0.5"
+                  }
+                >
+                  °F
+                </button>
+              </div>
+            </div>
             <Input
               id="temperature"
               type="number"
               step="0.1"
-              placeholder="10"
+              placeholder={tempUnit === "F" ? "50" : "10"}
               value={temperature}
               onChange={(e) => setTemperature(e.target.value)}
             />
             <p className="text-xs text-muted-foreground">
-              Temperature at time of measurement. Range: -10–40°C
+              Temperature at time of measurement.
+              {tempC !== null && tempUnit === "F" && ` ≈ ${tempC.toFixed(1)}°C`}
+              {" "}Range: {tempUnit === "F" ? "14–104°F" : "-10–40°C"}
             </p>
           </div>
 
@@ -407,23 +462,6 @@ export function AddBatchMeasurementForm({
               )}
             </div>
           )}
-        </div>
-      )}
-
-      {/* Sensory Notes - prominent for brandy/pommeau, optional for others */}
-      {showSensoryFields && (
-        <div className="space-y-2">
-          <Label htmlFor="sensoryNotes">Sensory Notes</Label>
-          <Textarea
-            id="sensoryNotes"
-            placeholder="Describe appearance, aroma, taste, finish..."
-            value={sensoryNotes}
-            onChange={(e) => setSensoryNotes(e.target.value)}
-            className="min-h-[100px]"
-          />
-          <p className="text-xs text-muted-foreground">
-            Record tasting observations for aging products
-          </p>
         </div>
       )}
 
@@ -526,12 +564,12 @@ export function AddBatchMeasurementForm({
           <p className="text-xs text-muted-foreground">
             {co2Unit === "psi" ? (
               <>
-                Head pressure in psi at {temperature || "?"}°C
+                Head pressure in psi at {temperature || "?"}°{tempUnit}
                 {dissolvedCo2 &&
                   !isNaN(parseFloat(dissolvedCo2)) &&
                   ` · ≈ ${calculateCO2Volumes(
                     parseFloat(dissolvedCo2),
-                    parseFloat(temperature) || 20,
+                    tempC ?? 20,
                   ).toFixed(2)} vol dissolved (stored)`}
               </>
             ) : (
@@ -540,6 +578,23 @@ export function AddBatchMeasurementForm({
           </p>
         </div>
       </div>
+
+      {/* Sensory Notes - after all measurements, above general Notes */}
+      {showSensoryFields && (
+        <div className="space-y-2">
+          <Label htmlFor="sensoryNotes">Sensory Notes</Label>
+          <Textarea
+            id="sensoryNotes"
+            placeholder="Describe appearance, aroma, taste, finish..."
+            value={sensoryNotes}
+            onChange={(e) => setSensoryNotes(e.target.value)}
+            className="min-h-[100px]"
+          />
+          <p className="text-xs text-muted-foreground">
+            Record tasting observations for aging products
+          </p>
+        </div>
+      )}
 
       <div className="space-y-2">
         <Label htmlFor="notes">Notes</Label>
