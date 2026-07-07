@@ -22,7 +22,7 @@ import { toast } from "@/hooks/use-toast";
 import { useBatchDateValidation } from "@/hooks/useBatchDateValidation";
 import { DateWarning } from "@/components/ui/DateWarning";
 import { LastActivityHint } from "@/components/ui/LastActivityHint";
-import { Loader2, Info, CheckCircle2, AlertTriangle } from "lucide-react";
+import { Loader2, Info } from "lucide-react";
 import { useDateFormat } from "@/hooks/useDateFormat";
 
 interface AddBatchMeasurementFormProps {
@@ -267,101 +267,26 @@ export function AddBatchMeasurementForm({
 
   return (
     <form onSubmit={handleSubmit} onKeyDown={preventEnterSubmit} className="space-y-4">
-      {/* Date/Time - always visible */}
-      <div className="space-y-2">
-        <Label htmlFor="measurementDateTime">Measurement Date & Time</Label>
-        <Input
-          id="measurementDateTime"
-          type="datetime-local"
-          value={measurementDateTime}
-          onChange={(e) => {
-            setMeasurementDateTime(e.target.value);
-            const result = validateDate(e.target.value);
-            setDateWarning(result.warning);
-          }}
-          className="w-full"
-        />
-        <DateWarning warning={dateWarning} />
-        <LastActivityHint batchId={batchId} date={measurementDateTime} />
-      </div>
-
-      {/* Calibration Status Banner - only for SG-focused products */}
-      {showSgFields && measurementMethod !== "calculated" && (
-        <div className={`p-3 rounded-lg border text-sm ${
-          hasActiveCalibration
-            ? "bg-green-50 border-green-200 text-green-800"
-            : "bg-yellow-50 border-yellow-200 text-yellow-800"
-        }`}>
-          <div className="flex items-center gap-2">
-            {hasActiveCalibration ? (
-              <>
-                <CheckCircle2 className="w-4 h-4" />
-                <span>
-                  Active calibration: <strong>{calibrationData?.calibration?.name}</strong>
-                </span>
-              </>
-            ) : (
-              <>
-                <AlertTriangle className="w-4 h-4" />
-                <span>
-                  No calibration active.{" "}
-                  {measurementMethod === "hydrometer"
-                    ? "Temperature correction only."
-                    : "Readings will not be corrected for alcohol."}
-                </span>
-              </>
-            )}
-          </div>
+      {/* Row 1: Date/Time + Sample Temperature (temp for SG-focused products) */}
+      <div className={showSgFields ? "grid grid-cols-2 gap-4" : ""}>
+        <div className="space-y-2">
+          <Label htmlFor="measurementDateTime">Measurement Date & Time</Label>
+          <Input
+            id="measurementDateTime"
+            type="datetime-local"
+            value={measurementDateTime}
+            onChange={(e) => {
+              setMeasurementDateTime(e.target.value);
+              const result = validateDate(e.target.value);
+              setDateWarning(result.warning);
+            }}
+            className="w-full"
+          />
+          <DateWarning warning={dateWarning} />
+          <LastActivityHint batchId={batchId} date={measurementDateTime} />
         </div>
-      )}
 
-      {/* SG Fields - only for cider/perry/juice */}
-      {showSgFields && (
-        <div className="grid grid-cols-2 gap-4">
-          {/* Raw Reading / Specific Gravity — instrument inline, only relevant here */}
-          <div className="space-y-2">
-            <Label htmlFor="rawReading">
-              {measurementMethod === "calculated" ? "Specific Gravity" : "Raw Reading (SG)"}
-            </Label>
-            <div className="flex gap-2">
-              <Select
-                value={measurementMethod}
-                onValueChange={(value) =>
-                  setMeasurementMethod(value as MeasurementMethod)
-                }
-              >
-                <SelectTrigger
-                  id="measurementMethod"
-                  aria-label="Instrument"
-                  className="w-36 shrink-0"
-                >
-                  <SelectValue placeholder="Instrument" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="hydrometer">Hydrometer</SelectItem>
-                  <SelectItem value="refractometer">Refractometer</SelectItem>
-                  <SelectItem value="calculated">Calculated</SelectItem>
-                </SelectContent>
-              </Select>
-              <Input
-                id="rawReading"
-                type="number"
-                step="0.001"
-                placeholder={sgPlaceholder}
-                value={rawReading}
-                onChange={(e) => setRawReading(e.target.value)}
-                className="flex-1"
-              />
-            </div>
-            <p className="text-xs text-muted-foreground">
-              {measurementMethod !== "calculated"
-                ? `Reading from your ${measurementMethod}. `
-                : ""}
-              Range: 0.980–1.200
-            </p>
-          </div>
-
-          {/* Temperature */}
+        {showSgFields && (
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <Label htmlFor="temperature">Sample Temperature (°{tempUnit})</Label>
@@ -419,38 +344,91 @@ export function AddBatchMeasurementForm({
               {" "}Range: {tempUnit === "F" ? "14–104°F" : "-10–40°C"}
             </p>
           </div>
+        )}
+      </div>
 
-          {/* Original Gravity - Only for refractometer when not fresh juice */}
-          {showOGField && (
-            <div className="space-y-2">
-              <Label htmlFor="originalGravity">Original Gravity (for correction)</Label>
+      {/* Row 2: Raw Reading (SG) full width, instrument inline (only relevant here) */}
+      {showSgFields && (
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="rawReading">
+              {measurementMethod === "calculated" ? "Specific Gravity" : "Raw Reading (SG)"}
+            </Label>
+            <div className="flex gap-2">
+              <Select
+                value={measurementMethod}
+                onValueChange={(value) =>
+                  setMeasurementMethod(value as MeasurementMethod)
+                }
+              >
+                <SelectTrigger
+                  id="measurementMethod"
+                  aria-label="Instrument"
+                  className="w-36 shrink-0"
+                >
+                  <SelectValue placeholder="Instrument" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="hydrometer">Hydrometer</SelectItem>
+                  <SelectItem value="refractometer">Refractometer</SelectItem>
+                  <SelectItem value="calculated">Calculated</SelectItem>
+                </SelectContent>
+              </Select>
               <Input
-                id="originalGravity"
+                id="rawReading"
                 type="number"
                 step="0.001"
-                placeholder="1.048"
-                value={originalGravity}
-                onChange={(e) => setOriginalGravity(e.target.value)}
+                placeholder={sgPlaceholder}
+                value={rawReading}
+                onChange={(e) => setRawReading(e.target.value)}
+                className="flex-1"
               />
-              <p className="text-xs text-muted-foreground">
-                OG of this batch, needed for alcohol correction
-              </p>
             </div>
-          )}
+            <p className="text-xs text-muted-foreground">
+              {measurementMethod !== "calculated"
+                ? `Reading from your ${measurementMethod}. `
+                : ""}
+              Range: 0.980–1.200
+              {measurementMethod === "refractometer" &&
+                (hasActiveCalibration
+                  ? ` · Calibration: ${calibrationData?.calibration?.name ?? "active"}`
+                  : " · No calibration active — not corrected for alcohol.")}
+            </p>
+          </div>
 
-          {/* Fresh Juice checkbox for refractometer */}
-          {measurementMethod === "refractometer" && (
-            <div className="flex items-center gap-2 pt-6">
-              <input
-                type="checkbox"
-                id="isFreshJuice"
-                checked={isFreshJuice}
-                onChange={(e) => setIsFreshJuice(e.target.checked)}
-                className="rounded border-gray-300"
-              />
-              <Label htmlFor="isFreshJuice" className="text-sm">
-                Fresh juice (no alcohol yet)
-              </Label>
+          {/* Original Gravity + Fresh Juice - refractometer only */}
+          {(showOGField || measurementMethod === "refractometer") && (
+            <div className="grid grid-cols-2 gap-4">
+              {showOGField && (
+                <div className="space-y-2">
+                  <Label htmlFor="originalGravity">Original Gravity (for correction)</Label>
+                  <Input
+                    id="originalGravity"
+                    type="number"
+                    step="0.001"
+                    placeholder="1.048"
+                    value={originalGravity}
+                    onChange={(e) => setOriginalGravity(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    OG of this batch, needed for alcohol correction
+                  </p>
+                </div>
+              )}
+              {measurementMethod === "refractometer" && (
+                <div className="flex items-center gap-2 pt-6">
+                  <input
+                    type="checkbox"
+                    id="isFreshJuice"
+                    checked={isFreshJuice}
+                    onChange={(e) => setIsFreshJuice(e.target.checked)}
+                    className="rounded border-gray-300"
+                  />
+                  <Label htmlFor="isFreshJuice" className="text-sm">
+                    Fresh juice (no alcohol yet)
+                  </Label>
+                </div>
+              )}
             </div>
           )}
         </div>
