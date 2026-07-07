@@ -2,7 +2,10 @@
 
 import React, { useState } from "react";
 import { trpc } from "@/utils/trpc";
-import { calculateCO2Volumes } from "lib/src/utils/carbonation-calculations";
+import {
+  calculateCO2Volumes,
+  calculateRequiredPressure,
+} from "lib/src/utils/carbonation-calculations";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -68,6 +71,10 @@ export function AddBatchMeasurementForm({
 
   // Fetch batch details to get product type
   const { data: batchData } = trpc.batch.get.useQuery({ batchId });
+  // Most recent prior measurement — used as greyed placeholders so the operator
+  // can spot a drastic change from last time.
+  const { data: history } = trpc.batch.getHistory.useQuery({ batchId });
+  const last = history?.measurements?.[0];
   const productType = batchData?.productType ?? "cider";
 
   // Determine which fields to show based on product type
@@ -98,6 +105,32 @@ export function AddBatchMeasurementForm({
     tempC !== null &&
     parseFloat(rawReading) > 0 &&
     tempC >= -10;
+
+  // Greyed placeholders = the LAST recorded value for each field, so a drastic
+  // change from the previous measurement is visible while entering.
+  const lastCo2Vol =
+    last?.dissolvedCo2 != null ? parseFloat(String(last.dissolvedCo2)) : null;
+  const sgPlaceholder =
+    last?.specificGravity != null ? last.specificGravity.toFixed(3) : "1.050";
+  const abvPlaceholder = last?.abv != null ? last.abv.toFixed(1) : "6.5";
+  const phPlaceholder = last?.ph != null ? last.ph.toFixed(2) : "3.50";
+  const taPlaceholder =
+    last?.totalAcidity != null ? last.totalAcidity.toFixed(1) : "6.5";
+  const volPlaceholder = last?.volume != null ? last.volume.toFixed(1) : "120";
+  const tempPlaceholder =
+    last?.temperature != null
+      ? (tempUnit === "F" ? (last.temperature * 9) / 5 + 32 : last.temperature).toFixed(1)
+      : tempUnit === "F"
+        ? "50"
+        : "10";
+  const co2Placeholder =
+    lastCo2Vol != null
+      ? co2Unit === "psi"
+        ? calculateRequiredPressure(lastCo2Vol, tempC ?? 20).toFixed(0)
+        : lastCo2Vol.toFixed(2)
+      : co2Unit === "psi"
+        ? "12"
+        : "2.5";
 
   const { data: correctionPreview, isFetching: isLoadingPreview } =
     trpc.calibration.previewCorrection.useQuery(
@@ -235,50 +268,21 @@ export function AddBatchMeasurementForm({
   return (
     <form onSubmit={handleSubmit} onKeyDown={preventEnterSubmit} className="space-y-4">
       {/* Date/Time - always visible */}
-      <div className={showSgFields ? "grid grid-cols-2 gap-4" : ""}>
-        <div className="space-y-2">
-          <Label htmlFor="measurementDateTime">Measurement Date & Time</Label>
-          <Input
-            id="measurementDateTime"
-            type="datetime-local"
-            value={measurementDateTime}
-            onChange={(e) => {
-              setMeasurementDateTime(e.target.value);
-              const result = validateDate(e.target.value);
-              setDateWarning(result.warning);
-            }}
-            className="w-full"
-          />
-          <DateWarning warning={dateWarning} />
-          <LastActivityHint batchId={batchId} date={measurementDateTime} />
-        </div>
-
-        {/* Measurement Method - only for SG-focused products */}
-        {showSgFields && (
-          <div className="space-y-2">
-            <Label htmlFor="measurementMethod">Measurement Method</Label>
-            <Select
-              value={measurementMethod}
-              onValueChange={(value) => setMeasurementMethod(value as MeasurementMethod)}
-            >
-              <SelectTrigger id="measurementMethod">
-                <SelectValue placeholder="Select method" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="hydrometer">Hydrometer</SelectItem>
-                <SelectItem value="refractometer">Refractometer</SelectItem>
-                <SelectItem value="calculated">Calculated</SelectItem>
-              </SelectContent>
-            </Select>
-            <p className="text-xs text-muted-foreground">
-              {measurementMethod === "hydrometer"
-                ? "Hydrometer readings are used for terminal gravity confirmation"
-                : measurementMethod === "refractometer"
-                ? "Refractometer readings will be corrected for alcohol if calibrated"
-                : "Use for calculated/estimated values"}
-            </p>
-          </div>
-        )}
+      <div className="space-y-2">
+        <Label htmlFor="measurementDateTime">Measurement Date & Time</Label>
+        <Input
+          id="measurementDateTime"
+          type="datetime-local"
+          value={measurementDateTime}
+          onChange={(e) => {
+            setMeasurementDateTime(e.target.value);
+            const result = validateDate(e.target.value);
+            setDateWarning(result.warning);
+          }}
+          className="w-full"
+        />
+        <DateWarning warning={dateWarning} />
+        <LastActivityHint batchId={batchId} date={measurementDateTime} />
       </div>
 
       {/* Calibration Status Banner - only for SG-focused products */}
@@ -314,22 +318,44 @@ export function AddBatchMeasurementForm({
       {/* SG Fields - only for cider/perry/juice */}
       {showSgFields && (
         <div className="grid grid-cols-2 gap-4">
-          {/* Raw Reading / Specific Gravity */}
+          {/* Raw Reading / Specific Gravity — instrument inline, only relevant here */}
           <div className="space-y-2">
             <Label htmlFor="rawReading">
               {measurementMethod === "calculated" ? "Specific Gravity" : "Raw Reading (SG)"}
             </Label>
-            <Input
-              id="rawReading"
-              type="number"
-              step="0.001"
-              placeholder="1.050"
-              value={rawReading}
-              onChange={(e) => setRawReading(e.target.value)}
-            />
+            <div className="flex gap-2">
+              <Select
+                value={measurementMethod}
+                onValueChange={(value) =>
+                  setMeasurementMethod(value as MeasurementMethod)
+                }
+              >
+                <SelectTrigger
+                  id="measurementMethod"
+                  aria-label="Instrument"
+                  className="w-36 shrink-0"
+                >
+                  <SelectValue placeholder="Instrument" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="hydrometer">Hydrometer</SelectItem>
+                  <SelectItem value="refractometer">Refractometer</SelectItem>
+                  <SelectItem value="calculated">Calculated</SelectItem>
+                </SelectContent>
+              </Select>
+              <Input
+                id="rawReading"
+                type="number"
+                step="0.001"
+                placeholder={sgPlaceholder}
+                value={rawReading}
+                onChange={(e) => setRawReading(e.target.value)}
+                className="flex-1"
+              />
+            </div>
             <p className="text-xs text-muted-foreground">
               {measurementMethod !== "calculated"
-                ? `Enter the reading directly from your ${measurementMethod}. `
+                ? `Reading from your ${measurementMethod}. `
                 : ""}
               Range: 0.980–1.200
             </p>
@@ -383,7 +409,7 @@ export function AddBatchMeasurementForm({
               id="temperature"
               type="number"
               step="0.1"
-              placeholder={tempUnit === "F" ? "50" : "10"}
+              placeholder={tempPlaceholder}
               value={temperature}
               onChange={(e) => setTemperature(e.target.value)}
             />
@@ -473,7 +499,7 @@ export function AddBatchMeasurementForm({
             id="volume"
             type="number"
             step="0.1"
-            placeholder="18.5"
+            placeholder={volPlaceholder}
             value={volume}
             onChange={(e) => setVolume(e.target.value)}
           />
@@ -490,7 +516,7 @@ export function AddBatchMeasurementForm({
             id="abv"
             type="number"
             step="0.1"
-            placeholder="6.5"
+            placeholder={abvPlaceholder}
             value={abv}
             onChange={(e) => setAbv(e.target.value)}
           />
@@ -503,7 +529,7 @@ export function AddBatchMeasurementForm({
             id="ph"
             type="number"
             step="0.01"
-            placeholder="3.50"
+            placeholder={phPlaceholder}
             value={ph}
             onChange={(e) => setPh(e.target.value)}
           />
@@ -516,7 +542,7 @@ export function AddBatchMeasurementForm({
             id="totalAcidity"
             type="number"
             step="0.1"
-            placeholder="6.5"
+            placeholder={taPlaceholder}
             value={totalAcidity}
             onChange={(e) => setTotalAcidity(e.target.value)}
           />
@@ -557,7 +583,7 @@ export function AddBatchMeasurementForm({
             id="dissolvedCo2"
             type="number"
             step="0.1"
-            placeholder={co2Unit === "psi" ? "12" : "2.5"}
+            placeholder={co2Placeholder}
             value={dissolvedCo2}
             onChange={(e) => setDissolvedCo2(e.target.value)}
           />
