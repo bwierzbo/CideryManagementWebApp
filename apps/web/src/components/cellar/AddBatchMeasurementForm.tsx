@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import { trpc } from "@/utils/trpc";
+import { calculateCO2Volumes } from "lib/src/utils/carbonation-calculations";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -53,6 +54,10 @@ export function AddBatchMeasurementForm({
   const [ph, setPh] = useState("");
   const [totalAcidity, setTotalAcidity] = useState("");
   const [dissolvedCo2, setDissolvedCo2] = useState("");
+  // How the operator enters CO₂: head pressure (psi) or dissolved volumes.
+  // Default psi — that's what the gauge reads during force-carbonation. Stored
+  // canonically as volumes (converted via Henry's Law at the sample temp).
+  const [co2Unit, setCo2Unit] = useState<"psi" | "vol">("psi");
   const [temperature, setTemperature] = useState("10");
   const [notes, setNotes] = useState("");
   const [sensoryNotes, setSensoryNotes] = useState("");
@@ -169,7 +174,14 @@ export function AddBatchMeasurementForm({
     if (abv) measurementData.abv = parseFloat(abv);
     if (ph) measurementData.ph = parseFloat(ph);
     if (totalAcidity) measurementData.totalAcidity = parseFloat(totalAcidity);
-    if (dissolvedCo2) measurementData.dissolvedCo2 = parseFloat(dissolvedCo2);
+    if (dissolvedCo2) {
+      const co2Raw = parseFloat(dissolvedCo2);
+      const tempC = parseFloat(temperature) || 20;
+      // Store canonical dissolved CO₂ in volumes. If entered as head pressure
+      // (psi), convert via Henry's Law at the sample temperature.
+      measurementData.dissolvedCo2 =
+        co2Unit === "psi" ? calculateCO2Volumes(co2Raw, tempC) : co2Raw;
+    }
     if (temperature) measurementData.temperature = parseFloat(temperature);
     if (notes) measurementData.notes = notes;
     if (sensoryNotes) measurementData.sensoryNotes = sensoryNotes;
@@ -474,16 +486,58 @@ export function AddBatchMeasurementForm({
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="dissolvedCo2">CO₂ (volumes)</Label>
+          <div className="flex items-center justify-between">
+            <Label htmlFor="dissolvedCo2">
+              CO₂ ({co2Unit === "psi" ? "psi" : "volumes"})
+            </Label>
+            <div className="inline-flex overflow-hidden rounded-md border text-xs">
+              <button
+                type="button"
+                onClick={() => setCo2Unit("psi")}
+                className={
+                  co2Unit === "psi"
+                    ? "bg-primary px-2 py-0.5 text-primary-foreground"
+                    : "bg-background px-2 py-0.5"
+                }
+              >
+                psi
+              </button>
+              <button
+                type="button"
+                onClick={() => setCo2Unit("vol")}
+                className={
+                  co2Unit === "vol"
+                    ? "bg-primary px-2 py-0.5 text-primary-foreground"
+                    : "bg-background px-2 py-0.5"
+                }
+              >
+                vol
+              </button>
+            </div>
+          </div>
           <Input
             id="dissolvedCo2"
             type="number"
             step="0.1"
-            placeholder="2.5"
+            placeholder={co2Unit === "psi" ? "12" : "2.5"}
             value={dissolvedCo2}
             onChange={(e) => setDissolvedCo2(e.target.value)}
           />
-          <p className="text-xs text-muted-foreground">Dissolved CO₂, e.g. 2.5 vol</p>
+          <p className="text-xs text-muted-foreground">
+            {co2Unit === "psi" ? (
+              <>
+                Head pressure in psi at {temperature || "?"}°C
+                {dissolvedCo2 &&
+                  !isNaN(parseFloat(dissolvedCo2)) &&
+                  ` · ≈ ${calculateCO2Volumes(
+                    parseFloat(dissolvedCo2),
+                    parseFloat(temperature) || 20,
+                  ).toFixed(2)} vol dissolved (stored)`}
+              </>
+            ) : (
+              "Dissolved CO₂ in volumes, e.g. 2.5 vol"
+            )}
+          </p>
         </div>
       </div>
 
