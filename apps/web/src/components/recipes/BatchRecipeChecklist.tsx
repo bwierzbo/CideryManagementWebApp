@@ -212,7 +212,14 @@ export function BatchRecipeChecklist({ batchId }: { batchId: string }) {
   };
 
   const onComplete = (t: Task) => {
-    const earlierOpen = openBySeq.some((o) => o.sequence < t.sequence);
+    // Only warn about earlier steps on the SAME path (or shared "all" steps).
+    // The bottle and keg paths are independent — you can keg first then bottle,
+    // or split a batch across both — so open steps on the other path don't nag.
+    const earlierOpen = openBySeq.some(
+      (o) =>
+        o.sequence < t.sequence &&
+        (o.packagingPath === "all" || o.packagingPath === t.packagingPath),
+    );
     if (earlierOpen && !confirm("Earlier steps aren't done yet. Complete this one anyway?")) return;
     complete.mutate({ taskId: t.id });
   };
