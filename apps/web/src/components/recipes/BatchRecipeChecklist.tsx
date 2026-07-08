@@ -186,8 +186,39 @@ export function BatchRecipeChecklist({ batchId }: { batchId: string }) {
     complete.mutate({ taskId: t.id });
   };
   const onSkip = (t: Task) => {
-    if (!t.isOptional && !confirm("This step isn't marked optional. Skip it anyway?")) return;
+    // Path-specific steps (bottle-only / keg-only) are inherently optional when
+    // you're not doing that path, so skip them without the "not optional" nag.
+    const pathSpecific = t.packagingPath !== "all";
+    if (
+      !t.isOptional &&
+      !pathSpecific &&
+      !confirm("This step isn't marked optional. Skip it anyway?")
+    )
+      return;
     skip.mutate({ taskId: t.id });
+  };
+
+  // Pending steps for one packaging path — used for the one-click bulk skip when
+  // the batch only went one way (e.g. bottled everything, not kegging).
+  const pendingByPath = (path: "keg" | "bottle") =>
+    sorted.filter(
+      (t) =>
+        t.packagingPath === path &&
+        t.status !== "done" &&
+        t.status !== "skipped",
+    );
+  const skipPath = async (path: "keg" | "bottle") => {
+    const steps = pendingByPath(path);
+    if (steps.length === 0) return;
+    if (
+      !confirm(
+        `Skip the ${steps.length} remaining ${path}-only step(s)? Use this if you're not ${path === "keg" ? "kegging" : "bottling"} this batch.`,
+      )
+    )
+      return;
+    for (const s of steps) {
+      await skip.mutateAsync({ taskId: s.id });
+    }
   };
 
   const busy = complete.isPending || skip.isPending || reopen.isPending;
@@ -204,6 +235,34 @@ export function BatchRecipeChecklist({ batchId }: { batchId: string }) {
         </CardDescription>
       </CardHeader>
       <CardContent>
+        {(pendingByPath("keg").length > 0 || pendingByPath("bottle").length > 0) && (
+          <div className="mb-3 flex flex-wrap gap-2">
+            {pendingByPath("keg").length > 0 && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => skipPath("keg")}
+                disabled={busy}
+              >
+                <SkipForward className="w-4 h-4 mr-1" />
+                Not kegging? Skip {pendingByPath("keg").length} keg-only step(s)
+              </Button>
+            )}
+            {pendingByPath("bottle").length > 0 && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => skipPath("bottle")}
+                disabled={busy}
+              >
+                <SkipForward className="w-4 h-4 mr-1" />
+                Not bottling? Skip {pendingByPath("bottle").length} bottle-only step(s)
+              </Button>
+            )}
+          </div>
+        )}
         <Table>
           <TableHeader>
             <TableRow>
