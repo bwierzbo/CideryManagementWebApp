@@ -39,11 +39,23 @@ import {
 } from "@/components/ui/table";
 import { Check, SkipForward, RotateCcw, Lock } from "lucide-react";
 
-const STATUS_STYLE: Record<string, string> = {
-  pending: "border-gray-300 text-gray-600",
-  in_progress: "border-blue-300 text-blue-700",
-  done: "border-green-300 text-green-700",
-  skipped: "border-gray-200 text-gray-400",
+// Display status (richer than the raw status) → left-border accent + badge.
+type RowStatus = "done" | "ready" | "overdue" | "blocked" | "skipped" | "pending";
+const ROW_ACCENT: Record<RowStatus, string> = {
+  done: "border-l-4 border-l-green-500",
+  ready: "border-l-4 border-l-blue-500 bg-blue-50/40",
+  overdue: "border-l-4 border-l-red-500 bg-red-50/40",
+  blocked: "border-l-4 border-l-amber-400",
+  skipped: "border-l-4 border-l-gray-200",
+  pending: "border-l-4 border-l-gray-200",
+};
+const STATUS_DISPLAY: Record<RowStatus, { label: string; cls: string; dot: string }> = {
+  done: { label: "done", cls: "border-green-300 text-green-700 bg-green-50", dot: "bg-green-500" },
+  ready: { label: "ready", cls: "border-blue-300 text-blue-700 bg-blue-50", dot: "bg-blue-500" },
+  overdue: { label: "overdue", cls: "border-red-300 text-red-700 bg-red-50", dot: "bg-red-500" },
+  blocked: { label: "blocked", cls: "border-amber-300 text-amber-700 bg-amber-50", dot: "bg-amber-400" },
+  skipped: { label: "skipped", cls: "border-gray-200 text-gray-400", dot: "bg-gray-300" },
+  pending: { label: "pending", cls: "border-gray-300 text-gray-500", dot: "bg-gray-300" },
 };
 
 const fmtDate = (d: string | Date | null) =>
@@ -180,6 +192,25 @@ export function BatchRecipeChecklist({ batchId }: { batchId: string }) {
   // order so finishing steps out of sequence doesn't scramble the list.
   const sorted = [...tasks].sort((a, b) => a.sequence - b.sequence);
 
+  // The single "do this next" step: earliest non-terminal, non-blocked step.
+  const nextReadyId = sorted.find(
+    (t) => t.status !== "done" && t.status !== "skipped" && !blockedReason(t),
+  )?.id;
+  const isOverdue = (t: Task) => {
+    if (t.status === "done" || t.status === "skipped" || !t.scheduledDate) return false;
+    const end = new Date(t.scheduledDate);
+    end.setHours(23, 59, 59, 999);
+    return end.getTime() < Date.now();
+  };
+  const rowStatus = (t: Task): RowStatus => {
+    if (t.status === "done") return "done";
+    if (t.status === "skipped") return "skipped";
+    if (blockedReason(t)) return "blocked";
+    if (isOverdue(t)) return "overdue";
+    if (t.id === nextReadyId) return "ready";
+    return "pending";
+  };
+
   const onComplete = (t: Task) => {
     const earlierOpen = openBySeq.some((o) => o.sequence < t.sequence);
     if (earlierOpen && !confirm("Earlier steps aren't done yet. Complete this one anyway?")) return;
@@ -263,6 +294,16 @@ export function BatchRecipeChecklist({ batchId }: { batchId: string }) {
             )}
           </div>
         )}
+        <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+          {(["ready", "done", "overdue", "blocked", "pending", "skipped"] as RowStatus[]).map(
+            (s) => (
+              <span key={s} className="inline-flex items-center gap-1">
+                <span className={`inline-block h-2 w-2 rounded-full ${STATUS_DISPLAY[s].dot}`} />
+                {STATUS_DISPLAY[s].label}
+              </span>
+            ),
+          )}
+        </div>
         <Table>
           <TableHeader>
             <TableRow>
@@ -276,11 +317,12 @@ export function BatchRecipeChecklist({ batchId }: { batchId: string }) {
           <TableBody>
             {sorted.map((t) => {
               const terminal = t.status === "done" || t.status === "skipped";
+              const rs = rowStatus(t);
               return (
                 <TableRow
                   key={t.id}
                   onClick={() => openStep(t)}
-                  className={`cursor-pointer hover:bg-gray-50 ${terminal ? "opacity-60" : ""}`}
+                  className={`cursor-pointer hover:bg-gray-50 ${ROW_ACCENT[rs]} ${terminal ? "opacity-60" : ""}`}
                 >
                   <TableCell className="text-muted-foreground">{t.sequence + 1}</TableCell>
                   <TableCell>
@@ -306,10 +348,14 @@ export function BatchRecipeChecklist({ batchId }: { batchId: string }) {
                       <p className="text-xs text-muted-foreground mt-0.5">{t.description}</p>
                     )}
                   </TableCell>
-                  <TableCell className="text-sm">{fmtDate(t.scheduledDate)}</TableCell>
+                  <TableCell
+                    className={`text-sm ${rs === "overdue" ? "text-red-600 font-medium" : ""}`}
+                  >
+                    {fmtDate(t.scheduledDate)}
+                  </TableCell>
                   <TableCell>
-                    <Badge variant="outline" className={`text-[10px] ${STATUS_STYLE[t.status] ?? ""}`}>
-                      {t.status.replace("_", " ")}
+                    <Badge variant="outline" className={`text-[10px] ${STATUS_DISPLAY[rs].cls}`}>
+                      {STATUS_DISPLAY[rs].label}
                     </Badge>
                   </TableCell>
                   <TableCell className="text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
