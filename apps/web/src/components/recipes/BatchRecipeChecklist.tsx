@@ -229,27 +229,44 @@ export function BatchRecipeChecklist({ batchId }: { batchId: string }) {
     skip.mutate({ taskId: t.id });
   };
 
-  // Pending steps for one packaging path — used for the one-click bulk skip when
-  // the batch only went one way (e.g. bottled everything, not kegging).
-  const pendingByPath = (path: "keg" | "bottle") =>
-    sorted.filter(
-      (t) =>
-        t.packagingPath === path &&
-        t.status !== "done" &&
-        t.status !== "skipped",
-    );
-  const skipPath = async (path: "keg" | "bottle") => {
-    const steps = pendingByPath(path);
-    if (steps.length === 0) return;
-    if (
-      !confirm(
-        `Skip the ${steps.length} remaining ${path}-only step(s)? Use this if you're not ${path === "keg" ? "kegging" : "bottling"} this batch.`,
-      )
-    )
-      return;
-    for (const s of steps) {
-      await skip.mutateAsync({ taskId: s.id });
+  // Packaging plan: a dual-path recipe has both bottle- and keg-only steps. The
+  // operator picks Both / Bottle only / Keg only; the "off" path's steps are
+  // skipped, and switching back reopens them. Fully reversible, no confirm.
+  const kegSteps = sorted.filter((t) => t.packagingPath === "keg");
+  const bottleSteps = sorted.filter((t) => t.packagingPath === "bottle");
+  const hasBothPaths = kegSteps.length > 0 && bottleSteps.length > 0;
+  const allSkipped = (steps: Task[]) =>
+    steps.length > 0 && steps.every((t) => t.status === "skipped");
+  const kegOff = allSkipped(kegSteps);
+  const bottleOff = allSkipped(bottleSteps);
+  type PackMode = "both" | "bottle" | "keg";
+  const packMode: PackMode =
+    bottleOff && !kegOff ? "keg" : kegOff && !bottleOff ? "bottle" : "both";
+
+  const setPackMode = async (target: PackMode) => {
+    const toSkip: Task[] = [];
+    const toReopen: Task[] = [];
+    const wantSkipped = (steps: Task[]) =>
+      steps.forEach((t) => {
+        if (t.status !== "skipped" && t.status !== "done") toSkip.push(t);
+      });
+    const wantActive = (steps: Task[]) =>
+      steps.forEach((t) => {
+        if (t.status === "skipped") toReopen.push(t);
+      });
+    if (target === "bottle") {
+      wantSkipped(kegSteps);
+      wantActive(bottleSteps);
+    } else if (target === "keg") {
+      wantSkipped(bottleSteps);
+      wantActive(kegSteps);
+    } else {
+      wantActive(kegSteps);
+      wantActive(bottleSteps);
     }
+    // Reopen first (so a mistaken skip is undone), then skip the off path.
+    for (const t of toReopen) await reopen.mutateAsync({ taskId: t.id });
+    for (const t of toSkip) await skip.mutateAsync({ taskId: t.id });
   };
 
   const busy = complete.isPending || skip.isPending || reopen.isPending;
@@ -266,32 +283,35 @@ export function BatchRecipeChecklist({ batchId }: { batchId: string }) {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        {(pendingByPath("keg").length > 0 || pendingByPath("bottle").length > 0) && (
-          <div className="mb-3 flex flex-wrap gap-2">
-            {pendingByPath("keg").length > 0 && (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => skipPath("keg")}
-                disabled={busy}
-              >
-                <SkipForward className="w-4 h-4 mr-1" />
-                Not kegging? Skip {pendingByPath("keg").length} keg-only step(s)
-              </Button>
-            )}
-            {pendingByPath("bottle").length > 0 && (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => skipPath("bottle")}
-                disabled={busy}
-              >
-                <SkipForward className="w-4 h-4 mr-1" />
-                Not bottling? Skip {pendingByPath("bottle").length} bottle-only step(s)
-              </Button>
-            )}
+        {hasBothPaths && (
+          <div className="mb-3">
+            <div className="mb-1 text-xs text-muted-foreground">
+              Packaging plan — the unused path&apos;s steps are skipped (switch back
+              anytime to restore them)
+            </div>
+            <div className="inline-flex overflow-hidden rounded-md border text-sm">
+              {(
+                [
+                  { key: "both", label: "Bottle + Keg" },
+                  { key: "bottle", label: "Bottle only" },
+                  { key: "keg", label: "Keg only" },
+                ] as { key: PackMode; label: string }[]
+              ).map((opt, i) => (
+                <button
+                  key={opt.key}
+                  type="button"
+                  onClick={() => setPackMode(opt.key)}
+                  disabled={busy}
+                  className={`px-3 py-1.5 ${i > 0 ? "border-l" : ""} ${
+                    packMode === opt.key
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-background hover:bg-gray-50"
+                  } disabled:opacity-50`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
           </div>
         )}
         <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
