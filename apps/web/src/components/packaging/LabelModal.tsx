@@ -322,11 +322,13 @@ export function LabelModal({
               </div>
             )}
             {labelQuantityMismatch && (
-              <div className="flex items-start gap-2 text-sm text-red-600 bg-red-50 border border-red-200 rounded p-2">
+              <div className="flex items-start gap-2 text-sm text-amber-600 bg-amber-50 border border-amber-200 rounded p-2">
                 <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
                 <span>
-                  You only have {totalLabelsSelected.toLocaleString()} labels selected but are trying to label {unitsToLabelValue.toLocaleString()} bottles.
-                  Either reduce "Units to Label" to {totalLabelsSelected.toLocaleString()} or add more labels.
+                  {totalLabelsSelected.toLocaleString()} labels selected for{" "}
+                  {unitsToLabelValue.toLocaleString()} bottles &mdash;{" "}
+                  {(unitsToLabelValue - totalLabelsSelected).toLocaleString()} bottle(s)
+                  won&apos;t be labeled. You can proceed, or add more labels.
                 </span>
               </div>
             )}
@@ -525,7 +527,7 @@ export function LabelModal({
             <Button
               type="submit"
               className="w-full"
-              disabled={isSubmitting || isLoadingItems || !!dateError || labelQuantityMismatch}
+              disabled={isSubmitting || isLoadingItems || !!dateError}
             >
               {isSubmitting ? (
                 <>
