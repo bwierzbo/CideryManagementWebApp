@@ -158,6 +158,34 @@ export function LabelModal({
     }
   }, [open, reset, remainingUnits]);
 
+  // Pre-select the label that matches this run's recipe/product name (e.g.
+  // "Duskrun - Lavender Salal" → the Duskrun label), so the operator just
+  // confirms instead of hunting. Only fills the first slot while it's empty;
+  // never overrides a manual choice, and the operator can change it.
+  useEffect(() => {
+    if (!open) return;
+    const items = packagingItems?.items;
+    if (!items || items.length === 0) return;
+    if (labelsData?.[0]?.packagingItemId) return; // don't override a choice
+    const tokens = (bottleRunName || "")
+      .toLowerCase()
+      .replace(/[^a-z\s]/g, " ")
+      .split(/\s+/)
+      .filter((w) => w.length >= 3);
+    if (tokens.length === 0) return;
+    let bestId: string | null = null;
+    let bestScore = 0;
+    for (const it of items) {
+      const name = (((it as any).varietyName || it.size || "") as string).toLowerCase();
+      const score = tokens.reduce((s, t) => (name.includes(t) ? s + 1 : s), 0);
+      if (score > bestScore) {
+        bestScore = score;
+        bestId = it.id;
+      }
+    }
+    if (bestId) setValue("labels.0.packagingItemId", bestId);
+  }, [open, packagingItems, bottleRunName, labelsData, setValue]);
+
   const labelMutation = trpc.packaging.addLabel.useMutation();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
