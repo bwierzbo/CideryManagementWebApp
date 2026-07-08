@@ -86,6 +86,11 @@ export function BatchRecipeChecklist({ batchId }: { batchId: string }) {
   const refresh = () => {
     utils.recipeExecution.getForBatch.invalidate({ batchId });
     utils.recipeExecution.listOpenTasks.invalidate();
+    // Packaging steps create a bottle run that pasteurize/label depend on
+    // (via latestRun). Without invalidating this, those steps stay
+    // "needs Package first" until a full page reload.
+    utils.packaging.list.invalidate({ batchId });
+    utils.batch.get.invalidate({ batchId });
   };
   const complete = trpc.recipeExecution.completeTask.useMutation({ onSuccess: refresh });
   const skip = trpc.recipeExecution.skipTask.useMutation({ onSuccess: refresh });
