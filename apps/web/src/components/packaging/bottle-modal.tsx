@@ -574,7 +574,10 @@ export function BottleModal({
                       <div className="flex-1">
                         <p className="text-sm font-medium">{material.itemName}</p>
                         <p className="text-xs text-muted-foreground">
-                          {material.materialType} - Using {material.quantityUsed} of {material.availableQuantity} available
+                          {material.materialType} —{" "}
+                          {unitsProduced && unitsProduced > 0
+                            ? `Using ${material.quantityUsed} of ${material.availableQuantity} available`
+                            : `count set below · ${material.availableQuantity} available`}
                         </p>
                       </div>
                       <Button
