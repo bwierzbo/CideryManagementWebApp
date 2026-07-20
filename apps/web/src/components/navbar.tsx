@@ -153,7 +153,7 @@ export function Navbar() {
               </div>
               <div className="hidden sm:block">
                 <h1 className="text-xl font-display font-bold text-foreground group-hover:text-primary transition-colors">
-                  CideryCraft
+                  CiderPilot
                 </h1>
                 <p className="text-2xs font-medium text-muted-foreground -mt-0.5 tracking-wide uppercase">
                   Management System

@@ -39,7 +39,7 @@ export function PackagingPDFTemplate({
   const [isGenerating, setIsGenerating] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [options, setOptions] = useState<PDFGeneratorOptions>({
-    companyName: "Cidery Management",
+    companyName: "CiderPilot",
     companyAddress: "",
     includePhotos: false,
     includeQRCode: false,

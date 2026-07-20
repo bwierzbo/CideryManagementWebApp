@@ -130,7 +130,7 @@ export class PackagingPDFGenerator {
 
   constructor(options: PDFGeneratorOptions = {}) {
     this.options = {
-      companyName: "Cidery Management",
+      companyName: "CiderPilot",
       companyAddress: "",
       includePhotos: false,
       includeQRCode: false,
@@ -274,7 +274,7 @@ export class PackagingPDFGenerator {
 
     return [
       {
-        text: this.options.companyName || "Cidery Management",
+        text: this.options.companyName || "CiderPilot",
         style: "header",
         alignment: "center" as const,
       },

@@ -55,7 +55,7 @@ function ResetPasswordForm() {
             <Grape className="h-6 w-6 text-purple-600" />
           </div>
           <h1 className="mt-6 text-3xl font-bold text-gray-900">
-            Cidery Management
+            CiderPilot
           </h1>
           <p className="mt-2 text-gray-600">Reset your password</p>
         </div>
