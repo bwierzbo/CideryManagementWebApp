@@ -4,17 +4,22 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Cidery Management MVP - A web application replacing Excel for tracking vendor purchases → pressing → fermentation → packaging → inventory with COGS reporting per batch.
+**CiderPilot** (formerly "Cidery Management MVP") - A web application replacing Excel for tracking the full cidery production lifecycle: vendor purchases → pressing → fermentation → packaging → distribution, with COGS reporting per batch and TTB compliance reporting.
 
-**Tech Stack**: Next.js 15 + TypeScript + Tailwind + tRPC + PostgreSQL + Drizzle ORM
+The app was rebranded from "Cidery Management" to **CiderPilot** in November 2025 (PR #117). Some older docs/strings may still say "Cidery Management" — the product name is now CiderPilot.
+
+**Tech Stack**: Next.js 15 + TypeScript + Tailwind + tRPC + PostgreSQL (Neon) + Drizzle ORM + NextAuth
+
+> For a detailed, current map of routes, tables, routers, and known tech debt, see `SYSTEM_MAP.md` at the repo root — it is regenerated more often than this file.
 
 ## Monorepo Structure
 
-- `apps/web/` - Next.js frontend application (shadcn/ui components, Auth.js)
-- `packages/api/` - tRPC API routers and procedures
-- `packages/db/` - Drizzle ORM schema, migrations, and seed data
-- `packages/lib/` - Shared domain logic (ABV calculations, yield, RBAC, audit)
+- `apps/web/` - Next.js frontend application (shadcn/ui components, NextAuth)
+- `packages/api/` - tRPC API routers and procedures (~34 routers)
+- `packages/db/` - Drizzle ORM schema, migrations (0001–0142+), and seed data
+- `packages/lib/` - Shared domain logic (calculations, RBAC, audit, recipes, units)
 - `packages/worker/` - Background jobs for exports and snapshots
+- `packages/docs/` - Documentation package
 
 ## Development Commands
 
@@ -46,16 +51,33 @@ pnpm --filter <package> run <script>  # Run script in specific package
 
 The system tracks the cidery production flow through these key entities:
 
-- **Vendor** → **Purchase/PurchaseLines** → **PressRun** → **JuiceLot**
-- **JuiceLot** → **Vessel** → **Batch** → **Measurement/Transfer**
-- **Batch** → **CarbonationOperation** → **PackagingRun** → **InventoryItem**
-- **Batch** → **BlendComponent** → **PackagingRun** → **InventoryItem**
-- Supporting: **RefValue** (reference data), **User** (RBAC), **AuditLog** (change tracking)
+**Purchasing → Pressing → Fermentation**
+- **Vendor** → **BaseFruit / Juice / Additive / Packaging Purchase** (+ Items) → **Inventory**
+- **PressRun** (loads, juice yield) → **Vessel** → **Batch** (central record: volume, status, gravity, ABV, product type)
+- **Batch** → **BatchMeasurement** (SG, pH, temp, ABV) / **BatchAdditive** / **BatchTransfer** / **BatchMergeHistory** (blends)
 
-### Recent Additions (October 2025)
-- **CarbonationOperation** - Tracks forced carbonation (CO2 addition under pressure)
-- **NextAuth Integration** - Complete authentication system with middleware
-- **Session Management** - Idle timeout and session indicators
+**Packaging → Distribution → Compliance**
+- **Batch** → **CarbonationOperation** → **BottleRun** (+ BottleRunMaterials) → **InventoryItem**
+- **Batch** → **Keg / KegFill** → keg inventory → distribution locations
+- **InventoryItem** → **Sales** (Square POS) → **TTB Reporting** (periods, snapshots, reconciliation)
+
+**Parallel & supporting tracks**
+- **Recipes** → **RecipeExecution** (step-by-step batch execution reusing the `/actions` flows) — BOM, labor, scaling, scheduling live in `packages/lib/src/recipes/`
+- **Distillation**: Cider → distillery → brandy → barrel aging; **Pommeau** (brandy + cider/juice blend)
+- **Planning** / **ProductionPlan** — production planning with configurable granularity
+- **ActivityRegister** — activity logging
+- Supporting: **RefValue**/variety tables (reference data), **User** (RBAC), **AuditLog** (change tracking), **Organization** (org-level defaults)
+
+### Recent Additions (as of mid-2026)
+- **CiderPilot rebrand** (PR #117, Nov 2025)
+- **Recipes & RecipeExecution** - Reusable recipes with step triggers, packaging-path toggles, and a scannable execution checklist (migrations 0128–0139)
+- **Distillation & Pommeau** - Send-to-distillery / receive-brandy / fortified-blend tracking
+- **Kegs & KegFills** - Keg inventory and fill/distribution tracking
+- **Planning / ProductionPlans** - Production planning (migrations 0135–0136)
+- **TTB Compliance** - Federal alcohol tax reporting periods, snapshots, reconciliation
+- **Square POS / Sales** - Sales channel + Square integration (see `SQUARE_INTEGRATION_*.md`)
+- **CarbonationOperation** - Forced carbonation (CO2 under pressure); measurements now accept CO2 as psi or volumes (0140)
+- **NextAuth Integration** - Complete authentication system with middleware, idle timeout, session indicators
 
 ## Architecture Patterns
 
@@ -112,10 +134,20 @@ The system tracks the cidery production flow through these key entities:
 - NextAuth for authentication
 
 ### Domain-Specific Features
-- **CO2 Calculations** - Henry's Law implementation for carbonation (`packages/lib/src/calculations/co2.ts`)
-- **ABV Calculations** - Alcohol by volume calculations for batches
-- **Yield Tracking** - Volume tracking through production stages
-- **COGS Reporting** - Cost of goods sold per batch
+Domain math lives in two sibling dirs under `packages/lib/src/`:
+
+`calc/` — production & financial:
+- **ABV** (`abv.ts`), **Yield** (`yield.ts`) - volume tracking through production stages
+- **COGS** (`cogs.ts`), **Financial** (`financial.ts`) - cost of goods sold per batch
+- **Fermentation** (`fermentation.ts`), **Measurement scheduling** (`measurement-schedule.ts`)
+- **SG calibration / correction** (`sg-calibration.ts`, `sg-correction.ts`) - hydrometer temperature correction
+
+`calculations/` — chemistry & compliance:
+- **CO2** (`co2.ts`) - Henry's Law forced-carbonation model
+- **SO2** (`so2.ts`), **Sugar** (`sugar.ts`), **Pasteurization** (`pasteurization.ts`)
+- **TTB** (`ttb.ts`) - federal reporting math
+
+Recipe logic lives in `packages/lib/src/recipes/` — **BOM** (`bom.ts`), **labor** (`labor.ts`), **scaling** (`scaling.ts`), **schedule** (`schedule.ts`), **triggers** (`triggers.ts`).
 
 ## Common Vercel Build Errors & Prevention
 
