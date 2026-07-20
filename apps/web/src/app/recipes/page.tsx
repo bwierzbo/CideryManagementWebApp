@@ -11,7 +11,7 @@
  * the permission, but the server is the source of truth.
  */
 
-import { useMemo, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
@@ -88,7 +88,7 @@ function statusBadgeClass(status: string): string {
   }
 }
 
-export default function RecipesPage() {
+function RecipesPageInner() {
   const { data: session } = useSession();
   const user = session?.user as
     | { role?: string; permissionOverrides?: Record<string, boolean> }
@@ -389,6 +389,16 @@ export default function RecipesPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function RecipesPage() {
+  // useSearchParams() (read inside RecipesPageInner) requires a Suspense
+  // boundary so the page can be prerendered without bailing the whole build.
+  return (
+    <Suspense fallback={null}>
+      <RecipesPageInner />
+    </Suspense>
   );
 }
 
