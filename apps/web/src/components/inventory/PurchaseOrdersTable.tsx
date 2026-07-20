@@ -664,7 +664,7 @@ export function PurchaseOrdersTable({
         },
       ],
       footer: (currentPage: number, pageCount: number) => ({
-        text: `Generated on ${new Date().toLocaleString()} | Cidery Management System`,
+        text: `Generated on ${new Date().toLocaleString()} | CiderPilot`,
         alignment: "center",
         fontSize: 8,
         color: "#6b7280",

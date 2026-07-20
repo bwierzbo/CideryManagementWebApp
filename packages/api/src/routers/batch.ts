@@ -34,7 +34,7 @@ import { bottleRuns, kegFills, kegs, bottleRunMaterials } from "db/src/schema/pa
 import { batchCarbonationOperations } from "db/src/schema/carbonation";
 import { eq, and, isNull, isNotNull, desc, asc, sql, or, like, ilike, inArray, aliasedTable, ne, gte, lte, gt } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
-import { convertToLiters } from "lib/src/units/conversions";
+import { convertToLiters, additiveRateGramsPerL } from "lib/src/units/conversions";
 import { validateBatches, type BatchValidation } from "../validation/batch-validation";
 import {
   calculateEstimatedSGAfterAddition,
@@ -2008,6 +2008,8 @@ export const batchRouter = router({
             productType: batches.productType,
             currentVolume: batches.currentVolume,
             currentVolumeUnit: batches.currentVolumeUnit,
+            currentVolumeLiters: batches.currentVolumeLiters,
+            initialVolumeLiters: batches.initialVolumeLiters,
           })
           .from(batches)
           .where(and(eq(batches.id, input.batchId), isNull(batches.deletedAt)))
@@ -2026,6 +2028,24 @@ export const batchRouter = router({
             message: "Batch is not assigned to a vessel",
           });
         }
+
+        // Batch volume (liters) for rate→absolute conversions. Prefer the live
+        // working volume; fall back to initial volume when the batch has been
+        // emptied (current_volume_liters = 0). NULL when no volume is known.
+        const currentVolumeL = batchData[0].currentVolumeLiters
+          ? Number(batchData[0].currentVolumeLiters)
+          : batchData[0].currentVolume && batchData[0].currentVolumeUnit
+            ? convertToLiters(
+                Number(batchData[0].currentVolume),
+                batchData[0].currentVolumeUnit as any,
+              )
+            : 0;
+        const batchVolumeL =
+          currentVolumeL > 0
+            ? currentVolumeL
+            : batchData[0].initialVolumeLiters
+              ? Number(batchData[0].initialVolumeLiters)
+              : null;
 
         // Calculate cost if purchase item is provided
         let costPerUnit = input.costPerUnit;
@@ -2092,7 +2112,16 @@ export const batchRouter = router({
         }
 
         if (costPerUnit !== undefined) {
-          totalCost = input.amount * costPerUnit;
+          // For per-liter rate units (e.g. "g/L", "mL/L", "ppm"), input.amount is
+          // a DOSE PER LITER, not an absolute quantity — multiply by the batch
+          // volume to get the absolute amount costPerUnit is priced against.
+          // Without this, COGS was understated by a factor of the batch volume
+          // (e.g. 100 g/L on a 200 L batch was costed as 100 units, not 20,000).
+          const isRateUnit =
+            input.unit === "g/L" || input.unit === "ppm" || input.unit.endsWith("/L");
+          const totalQty =
+            isRateUnit && batchVolumeL ? input.amount * batchVolumeL : input.amount;
+          totalCost = totalQty * costPerUnit;
         }
 
         // Check for duplicate additive (same vessel, name, amount, unit, and date)
@@ -2119,6 +2148,15 @@ export const batchRouter = router({
           });
         }
 
+        // Comparable dosage intensity (g per L of batch), so a fruit addition
+        // logged as "8 kg" and one logged as "100 g/L" can be compared directly.
+        // (batchVolumeL is computed above, before the cost block, for reuse.)
+        const rateGramsPerL = additiveRateGramsPerL(
+          input.amount,
+          input.unit,
+          batchVolumeL,
+        );
+
         // Create additive record
         const newAdditive = await db
           .insert(batchAdditives)
@@ -2129,6 +2167,7 @@ export const batchRouter = router({
             additiveName: input.additiveName,
             amount: input.amount.toString(),
             unit: input.unit,
+            rateGramsPerL: rateGramsPerL !== null ? rateGramsPerL.toString() : null,
             volumeAddedL:
               input.volumeAddedL && input.volumeAddedL > 0
                 ? input.volumeAddedL.toString()
@@ -5431,6 +5470,33 @@ export const batchRouter = router({
             });
           }
 
+          // 1b. Idempotency guard: reject a duplicate identical rack (same
+          // source batch → same destination vessel, same volume) recorded in
+          // the last 2 minutes. This is the double-submit / network-retry that
+          // produced "tank shows 2 transfers of 200L, only one was made" and
+          // then required a manual soft-delete + volume correction.
+          const recentDuplicate = await tx
+            .select({ id: batchTransfers.id })
+            .from(batchTransfers)
+            .where(
+              and(
+                eq(batchTransfers.sourceBatchId, input.batchId),
+                eq(batchTransfers.destinationVesselId, input.destinationVesselId),
+                isNull(batchTransfers.deletedAt),
+                gte(batchTransfers.createdAt, new Date(Date.now() - 120_000)),
+                sql`ABS(${batchTransfers.volumeTransferred}::float8 - ${input.volumeToRack}) < 0.01`,
+              ),
+            )
+            .limit(1);
+
+          if (recentDuplicate.length > 0) {
+            throw new TRPCError({
+              code: "CONFLICT",
+              message:
+                "An identical rack from this batch to the same vessel was just recorded. Refresh to see it — if you meant to rack again, wait a moment and retry.",
+            });
+          }
+
           // 2. Verify destination vessel exists
           const destinationVessel = await tx
             .select({
@@ -5948,21 +6014,11 @@ export const batchRouter = router({
                 .where(eq(batches.id, input.batchId))
                 .returning();
 
-              // Log lees loss as a formal volume adjustment for reporting/audit
-              if (volumeLossL > 0) {
-                await tx.insert(batchVolumeAdjustments).values({
-                  batchId: input.batchId,
-                  vesselId: input.destinationVesselId,
-                  adjustmentDate: input.rackedAt || new Date(),
-                  adjustmentType: "sediment",
-                  volumeBefore: volumeBeforeL.toString(),
-                  volumeAfter: volumeRackedL.toString(),
-                  adjustmentAmount: (-volumeLossL).toString(),
-                  reason: "Lees/sediment loss from racking",
-                  notes: input.notes || null,
-                  adjustedBy: ctx.session!.user!.id,
-                });
-              }
+              // NOTE: The lees/sediment loss is already captured by the
+              // batchRackingOperations record created above. Do NOT also insert a
+              // batchVolumeAdjustments row — the TTB/reconciliation engine sums
+              // BOTH racking losses AND volume adjustments, so writing both
+              // double-counts the loss (mirrors the rack-to-self path).
 
               resultMessage = `Batch racked to ${destinationVessel[0].name}`;
             }
@@ -6371,19 +6427,35 @@ export const batchRouter = router({
             }
           }
 
-          // 4. Update juice purchase item's allocated volume
-          const newAllocatedVolume = allocatedVolumeL + transferVolumeL;
-          const isFullyAllocated = newAllocatedVolume >= totalVolumeL;
-
-          await tx
+          // 4. Atomically allocate the juice. volume_allocated is written as a
+          // SQL delta guarded in the WHERE (…+ transfer <= volume), so two
+          // concurrent transfers can't both read the same "available" and
+          // over-allocate (lost update under READ COMMITTED). deletedAt is set
+          // via CASE against the live (pre-update) row so the fully-allocated
+          // soft-delete stays correct even if a concurrent transfer interleaved.
+          const allocated = await tx
             .update(juicePurchaseItems)
             .set({
-              volumeAllocated: newAllocatedVolume.toString(),
+              volumeAllocated: sql`COALESCE(${juicePurchaseItems.volumeAllocated}, 0) + ${transferVolumeL}`,
               updatedAt: new Date(),
-              // Archive (soft delete) if fully allocated
-              deletedAt: isFullyAllocated ? new Date() : undefined,
+              deletedAt: sql`CASE WHEN COALESCE(${juicePurchaseItems.volumeAllocated}, 0) + ${transferVolumeL} >= ${juicePurchaseItems.volume} THEN now() ELSE ${juicePurchaseItems.deletedAt} END`,
             })
-            .where(eq(juicePurchaseItems.id, input.juicePurchaseItemId));
+            .where(
+              and(
+                eq(juicePurchaseItems.id, input.juicePurchaseItemId),
+                sql`COALESCE(${juicePurchaseItems.volumeAllocated}, 0) + ${transferVolumeL} <= ${juicePurchaseItems.volume}`,
+              ),
+            )
+            .returning({ id: juicePurchaseItems.id });
+
+          if (allocated.length === 0) {
+            // Another concurrent transfer consumed the remaining volume first.
+            throw new TRPCError({
+              code: "CONFLICT",
+              message:
+                "This juice was just allocated by another operation. Refresh to see the remaining volume.",
+            });
+          }
 
           return {
             success: true,

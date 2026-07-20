@@ -16,7 +16,7 @@
  */
 
 import { useState, useMemo } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { Navbar } from "@/components/navbar";
@@ -105,7 +105,11 @@ const STEP_KIND_LABEL: Record<string, string> = {
 export default function RecipeDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const recipeId = params?.id as string;
+  // When arriving via a batch's "Attach a recipe" button, open the wizard
+  // straight into attach mode with that batch preselected.
+  const attachBatchId = searchParams.get("attachBatchId");
   const { data: session } = useSession();
   const user = session?.user as
     | { role?: string; permissionOverrides?: Record<string, boolean> }
@@ -129,7 +133,7 @@ export default function RecipeDetailPage() {
 
   const [previewVolumeL, setPreviewVolumeL] = useState<number>(120);
   const [versionsOpen, setVersionsOpen] = useState(false);
-  const [wizardOpen, setWizardOpen] = useState(false);
+  const [wizardOpen, setWizardOpen] = useState(!!attachBatchId);
   const [cloneDialogOpen, setCloneDialogOpen] = useState(false);
   const [cloneName, setCloneName] = useState("");
 
@@ -293,6 +297,7 @@ export default function RecipeDetailPage() {
           recipe={{ id: recipe.id, name: recipe.name, productType: recipe.productType }}
           inputs={inputs}
           steps={steps}
+          preselectedBatchId={attachBatchId ?? undefined}
         />
 
         {/* Recipe header */}

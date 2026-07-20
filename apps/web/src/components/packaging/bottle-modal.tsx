@@ -94,7 +94,6 @@ export function BottleModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedMaterials, setSelectedMaterials] = useState<SelectedMaterial[]>([]);
   const [currentMaterialId, setCurrentMaterialId] = useState<string>("");
-  const [currentQuantity, setCurrentQuantity] = useState<number>(1);
   const [laborAssignments, setLaborAssignments] = useState<WorkerAssignment[]>([]);
   const [inputMode, setInputMode] = useState<InputMode>("volume");
   const [unitEntryMode, setUnitEntryMode] = useState<"bottles" | "cases">("bottles");
@@ -192,9 +191,12 @@ export function BottleModal({
     return match ? parseInt(match[1]) : null;
   };
 
-  // Add material to the list
+  // Add material to the list. Quantity is NOT entered here — it follows the
+  // packaging unit count set in the "How much are you packaging?" step (and syncs
+  // automatically via the unitsProduced effect below). We seed it with the
+  // current count (capped at stock) so it's right immediately.
   const handleAddMaterial = () => {
-    if (!currentMaterialId || currentQuantity <= 0) return;
+    if (!currentMaterialId) return;
 
     const selectedItem = allPackagingItems.find(item => item.id === currentMaterialId);
     if (!selectedItem) return;
@@ -203,25 +205,20 @@ export function BottleModal({
     if (selectedMaterials.some(m => m.packagingPurchaseItemId === currentMaterialId)) {
       toast({
         title: "Material Already Added",
-        description: "This material is already in the list. Remove it first to change the quantity.",
+        description: "This material is already in the list. Remove it first.",
         variant: "destructive",
       });
       return;
     }
 
-    // Check if quantity exceeds available
-    if (currentQuantity > selectedItem.quantity) {
-      toast({
-        title: "Insufficient Quantity",
-        description: `Only ${selectedItem.quantity} units available`,
-        variant: "destructive",
-      });
-      return;
-    }
+    const seededQty = Math.min(
+      unitsProduced && unitsProduced > 0 ? unitsProduced : 1,
+      selectedItem.quantity,
+    );
 
     const newMaterial: SelectedMaterial = {
       packagingPurchaseItemId: currentMaterialId,
-      quantityUsed: currentQuantity,
+      quantityUsed: seededQty,
       materialType: selectedItem.type,
       itemName: selectedItem.varietyName || selectedItem.size || "Unknown",
       availableQuantity: selectedItem.quantity,
@@ -231,7 +228,6 @@ export function BottleModal({
     setValue("materials", [...selectedMaterials, newMaterial]);
 
     setCurrentMaterialId("");
-    setCurrentQuantity(1);
   };
 
   // Remove material from the list
@@ -255,13 +251,6 @@ export function BottleModal({
       }
     }
   }, [currentMaterialId, allPackagingItems, packageSizeMl, setValue]);
-
-  // Auto-fill quantity when material is selected
-  useEffect(() => {
-    if (currentMaterialId && unitsProduced && unitsProduced > 0) {
-      setCurrentQuantity(unitsProduced);
-    }
-  }, [currentMaterialId, unitsProduced]);
 
   // Sync already-added materials when unitsProduced changes. Without this, a
   // user who adds bottles/caps BEFORE typing the unit count gets quantityUsed=1
@@ -359,7 +348,6 @@ export function BottleModal({
       });
       setSelectedMaterials([]);
       setCurrentMaterialId("");
-      setCurrentQuantity(1);
       setLaborAssignments([]);
       setInputMode("volume");
       setUnitEntryMode("bottles");
@@ -530,10 +518,11 @@ export function BottleModal({
                 package size to compute units. */}
           <div className="space-y-3">
             <Label className="text-sm md:text-base font-medium">
-              Packaging Materials *
+              1. Choose packaging *
             </Label>
             <p className="text-xs text-blue-600">
-              💡 Select primary packaging first (e.g., 750ml bottles) to calculate units
+              💡 Pick your bottle/can size first (e.g. 750ml bottles). Caps and
+              labels follow the bottle count automatically — no counting needed.
             </p>
 
             {/* Add Material Section */}
@@ -559,23 +548,12 @@ export function BottleModal({
                   />
                 </div>
 
-                <div className="flex gap-2">
-                  <Input
-                    type="text"
-                    inputMode="numeric"
-                    pattern="^\d+$"
-                    min="1"
-                    value={currentQuantity}
-                    onChange={(e) => setCurrentQuantity(parseInt(e.target.value) || 1)}
-                    placeholder="Qty"
-                    className="h-10"
-                  />
+                <div className="flex items-stretch">
                   <Button
                     type="button"
                     onClick={handleAddMaterial}
-                    disabled={!currentMaterialId || currentQuantity <= 0}
-                    size="sm"
-                    className="flex items-center gap-1"
+                    disabled={!currentMaterialId}
+                    className="flex w-full items-center justify-center gap-1"
                   >
                     <Plus className="w-4 h-4" />
                     Add
@@ -596,7 +574,10 @@ export function BottleModal({
                       <div className="flex-1">
                         <p className="text-sm font-medium">{material.itemName}</p>
                         <p className="text-xs text-muted-foreground">
-                          {material.materialType} - Using {material.quantityUsed} of {material.availableQuantity} available
+                          {material.materialType} —{" "}
+                          {unitsProduced && unitsProduced > 0
+                            ? `Using ${material.quantityUsed} of ${material.availableQuantity} available`
+                            : `count set below · ${material.availableQuantity} available`}
                         </p>
                       </div>
                       <Button
@@ -624,8 +605,12 @@ export function BottleModal({
           {/* 5. Input Mode Toggle */}
           <div>
             <Label className="text-sm md:text-base font-medium">
-              How do you want to enter the quantity? *
+              2. How much are you packaging? *
             </Label>
+            <p className="text-xs text-muted-foreground mb-1">
+              Enter the number you know — bottle count or volume — and the other
+              is computed. The selected materials update to match.
+            </p>
             <div className="flex rounded-lg border overflow-hidden mt-2">
               <button
                 type="button"
@@ -928,8 +913,8 @@ export function BottleModal({
               </div>
 
               <div>
-                <Label className="text-sm text-muted-foreground mb-2 block">
-                  What happens to the remaining {remainingVolumeL.toFixed(1)}L?
+                <Label className="text-sm md:text-base font-medium mb-2 block">
+                  3. What happens to the remaining {remainingVolumeL.toFixed(1)}L?
                 </Label>
                 <div className="flex rounded-lg border overflow-hidden">
                   <button

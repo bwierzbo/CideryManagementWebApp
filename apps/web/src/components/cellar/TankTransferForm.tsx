@@ -150,10 +150,13 @@ export function TankTransferForm({
   // Convert current volume to display unit
   const currentVolume = fromLiters(currentVolumeL, displayUnit);
 
-  // Get available destination vessels (include source vessel for rack-to-self)
+  // Available destination vessels. Exclude the source vessel — this form moves
+  // liquid to ANOTHER tank; racking to the same vessel (sediment loss) has its
+  // own dedicated Rack action, and offering it here led to accidental
+  // self-transfers ("rack to self requires a loss amount").
   const availableVessels =
     vesselListQuery.data?.vessels?.filter(
-      (vessel) => vessel.status === "available",
+      (vessel) => vessel.status === "available" && vessel.id !== fromVesselId,
     ) || [];
 
   // Filter vessels based on search query with natural sort
@@ -334,7 +337,27 @@ export function TankTransferForm({
         <Label>Display Units</Label>
         <Select
           value={displayUnit}
-          onValueChange={(value) => setDisplayUnit(value as "L" | "gal")}
+          onValueChange={(value) => {
+            const newUnit = value as "L" | "gal";
+            if (newUnit !== displayUnit) {
+              // Convert the already-entered values so the physical volume stays
+              // constant. Without this, switching L -> gal reinterpreted "200"
+              // as 200 gal (=757 L) and shipped the wrong transfer volume.
+              if (watchedVolumeL > 0) {
+                setValue(
+                  "volumeL",
+                  Math.round(convertVolume(watchedVolumeL, displayUnit, newUnit) * 100) / 100,
+                );
+              }
+              if (watchedLoss > 0) {
+                setValue(
+                  "loss",
+                  Math.round(convertVolume(watchedLoss, displayUnit, newUnit) * 100) / 100,
+                );
+              }
+            }
+            setDisplayUnit(newUnit);
+          }}
         >
           <SelectTrigger>
             <SelectValue />

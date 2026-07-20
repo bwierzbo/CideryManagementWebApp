@@ -1656,6 +1656,131 @@ async function computeReconciliationFromBatches(
 
 export const ttbRouter = router({
   /**
+   * READ-ONLY reconciliation diagnostic: reconstruct EVERY batch's on-hand
+   * volume AS OF a date (no start_date filter, so late-entered "backlog" batches
+   * are visible), grouped by TTB tax class. Surfaces the data-timing signals
+   * needed to walk a period's inventory and confirm/correct dates:
+   * fermentation-start (first yeast pitch = when juice became cider/TTB-tracked),
+   * the data-entry start_date, the origin press date, a duplicate-name flag, and
+   * the stored-vs-reconstructed volume. Mutates nothing.
+   */
+  onHandReconciliation: createRbacProcedure("read", "report")
+    .input(
+      z.object({
+        asOfDate: z.string(), // 'YYYY-MM-DD'
+        minLiters: z.number().min(0).default(0.5),
+      }),
+    )
+    .query(async ({ input }) => {
+      const allBatches = await db
+        .select({
+          id: batches.id,
+          name: batches.name,
+          customName: batches.customName,
+          productType: batches.productType,
+          status: batches.status,
+          startDate: batches.startDate,
+          currentVolumeLiters: batches.currentVolumeLiters,
+          parentBatchId: batches.parentBatchId,
+        })
+        .from(batches)
+        .where(isNull(batches.deletedAt));
+
+      // Reconstruct each batch's volume as of the date (existing SBD engine).
+      const { perBatch } = await computeSystemCalculatedOnHand(
+        allBatches.map((b) => b.id),
+        input.asOfDate,
+      );
+      const { map: taxClassMap } = await buildBatchTaxClassMap();
+
+      // First yeast pitch = when the juice became cider (TTB "produced by
+      // fermentation"). Juice is not on TTB forms until this happens.
+      const fermRes: any = await db.execute(sql`
+        SELECT batch_id, MIN(added_at)::date AS ferm_start
+        FROM batch_additives
+        WHERE deleted_at IS NULL AND additive_type = 'Fermentation Organisms'
+        GROUP BY batch_id
+      `);
+      const fermMap = new Map<string, string>();
+      for (const r of (fermRes.rows ?? fermRes) as any[]) {
+        if (r.ferm_start) fermMap.set(r.batch_id, String(r.ferm_start).slice(0, 10));
+      }
+
+      const pressRes: any = await db.execute(sql`
+        SELECT b.id AS batch_id, pr.date_completed::date AS pressed
+        FROM batches b JOIN press_runs pr ON pr.id = b.origin_press_run_id
+        WHERE b.deleted_at IS NULL
+      `);
+      const pressMap = new Map<string, string>();
+      for (const r of (pressRes.rows ?? pressRes) as any[]) {
+        if (r.pressed) pressMap.set(r.batch_id, String(r.pressed).slice(0, 10));
+      }
+
+      const nameById = new Map<string, string>();
+      const nameCount = new Map<string, number>();
+      for (const b of allBatches) {
+        const nm = (b.customName || b.name || "").trim();
+        nameById.set(b.id, nm);
+        nameCount.set(nm, (nameCount.get(nm) ?? 0) + 1);
+      }
+
+      const rows = allBatches
+        .map((b) => {
+          const volL = perBatch.get(b.id) ?? 0;
+          const nm = (b.customName || b.name || "").trim();
+          const fermStart = fermMap.get(b.id) ?? null;
+          const startYear = b.startDate ? new Date(b.startDate).getUTCFullYear() : null;
+          const fermYear = fermStart ? Number(fermStart.slice(0, 4)) : null;
+          return {
+            id: b.id,
+            name: nm,
+            productType: b.productType,
+            status: b.status,
+            taxClass: taxClassMap.get(b.id) ?? "unclassified",
+            onHandL: Math.round(volL * 100) / 100,
+            onHandGal: Math.round(litersToWineGallons(volL) * 100) / 100,
+            currentStoredL:
+              b.currentVolumeLiters != null ? Number(b.currentVolumeLiters) : null,
+            fermentationStart: fermStart,
+            startDate: b.startDate
+              ? new Date(b.startDate).toISOString().slice(0, 10)
+              : null,
+            pressedDate: pressMap.get(b.id) ?? null,
+            parentName: b.parentBatchId ? nameById.get(b.parentBatchId) ?? null : null,
+            duplicateName: (nameCount.get(nm) ?? 0) > 1,
+            // Fermented in a different year than its data-entry start_date =
+            // a backlog-timing candidate to review.
+            timingMismatch:
+              fermYear != null && startYear != null && fermYear !== startYear,
+          };
+        })
+        .filter((r) => Math.abs(r.onHandL) >= input.minLiters)
+        .sort((a, b) => b.onHandL - a.onHandL);
+
+      const byClass = new Map<string, { liters: number; gallons: number; count: number }>();
+      for (const r of rows) {
+        const c = byClass.get(r.taxClass) ?? { liters: 0, gallons: 0, count: 0 };
+        c.liters += r.onHandL;
+        c.gallons += r.onHandGal;
+        c.count += 1;
+        byClass.set(r.taxClass, c);
+      }
+      const subtotals = Array.from(byClass.entries())
+        .map(([taxClass, v]) => ({
+          taxClass,
+          liters: Math.round(v.liters * 100) / 100,
+          gallons: Math.round(v.gallons * 100) / 100,
+          count: v.count,
+        }))
+        .sort((a, b) => b.gallons - a.gallons);
+
+      const totalGal =
+        Math.round(rows.reduce((s, r) => s + r.onHandGal, 0) * 100) / 100;
+
+      return { asOfDate: input.asOfDate, rows, subtotals, totalGal };
+    }),
+
+  /**
    * Generate TTB Form 5120.17 data for a reporting period.
    *
    * Aggregates data from batches, inventory, distributions, and adjustments

@@ -11,6 +11,7 @@
  */
 
 import { useState } from "react";
+import Link from "next/link";
 import { trpc } from "@/utils/trpc";
 import { toast } from "@/hooks/use-toast";
 import { StepDetailModal } from "@/components/recipes/StepDetailModal";
@@ -38,11 +39,23 @@ import {
 } from "@/components/ui/table";
 import { Check, SkipForward, RotateCcw, Lock } from "lucide-react";
 
-const STATUS_STYLE: Record<string, string> = {
-  pending: "border-gray-300 text-gray-600",
-  in_progress: "border-blue-300 text-blue-700",
-  done: "border-green-300 text-green-700",
-  skipped: "border-gray-200 text-gray-400",
+// Display status (richer than the raw status) → left-border accent + badge.
+type RowStatus = "done" | "ready" | "overdue" | "blocked" | "skipped" | "pending";
+const ROW_ACCENT: Record<RowStatus, string> = {
+  done: "border-l-4 border-l-green-500",
+  ready: "border-l-4 border-l-blue-500 bg-blue-50/40",
+  overdue: "border-l-4 border-l-red-500 bg-red-50/40",
+  blocked: "border-l-4 border-l-amber-400",
+  skipped: "border-l-4 border-l-gray-200",
+  pending: "border-l-4 border-l-gray-200",
+};
+const STATUS_DISPLAY: Record<RowStatus, { label: string; cls: string; dot: string }> = {
+  done: { label: "done", cls: "border-green-300 text-green-700 bg-green-50", dot: "bg-green-500" },
+  ready: { label: "ready", cls: "border-blue-300 text-blue-700 bg-blue-50", dot: "bg-blue-500" },
+  overdue: { label: "overdue", cls: "border-red-300 text-red-700 bg-red-50", dot: "bg-red-500" },
+  blocked: { label: "blocked", cls: "border-amber-300 text-amber-700 bg-amber-50", dot: "bg-amber-400" },
+  skipped: { label: "skipped", cls: "border-gray-200 text-gray-400", dot: "bg-gray-300" },
+  pending: { label: "pending", cls: "border-gray-300 text-gray-500", dot: "bg-gray-300" },
 };
 
 const fmtDate = (d: string | Date | null) =>
@@ -85,6 +98,11 @@ export function BatchRecipeChecklist({ batchId }: { batchId: string }) {
   const refresh = () => {
     utils.recipeExecution.getForBatch.invalidate({ batchId });
     utils.recipeExecution.listOpenTasks.invalidate();
+    // Packaging steps create a bottle run that pasteurize/label depend on
+    // (via latestRun). Without invalidating this, those steps stay
+    // "needs Package first" until a full page reload.
+    utils.packaging.list.invalidate({ batchId });
+    utils.batch.get.invalidate({ batchId });
   };
   const complete = trpc.recipeExecution.completeTask.useMutation({ onSuccess: refresh });
   const skip = trpc.recipeExecution.skipTask.useMutation({ onSuccess: refresh });
@@ -142,10 +160,15 @@ export function BatchRecipeChecklist({ batchId }: { batchId: string }) {
         <CardHeader>
           <CardTitle className="text-base">Recipe checklist</CardTitle>
           <CardDescription>
-            No recipe is attached to this batch. Open a recipe and choose “Use this
-            recipe” to generate a scheduled checklist.
+            No recipe is attached to this batch. Pick a recipe to generate a
+            scheduled checklist for it.
           </CardDescription>
         </CardHeader>
+        <CardContent>
+          <Button asChild>
+            <Link href={`/recipes?attachBatchId=${batchId}`}>Attach a recipe</Link>
+          </Button>
+        </CardContent>
       </Card>
     );
   }
@@ -169,14 +192,88 @@ export function BatchRecipeChecklist({ batchId }: { batchId: string }) {
   // order so finishing steps out of sequence doesn't scramble the list.
   const sorted = [...tasks].sort((a, b) => a.sequence - b.sequence);
 
+  // The single "do this next" step: earliest non-terminal, non-blocked step.
+  const nextReadyId = sorted.find(
+    (t) => t.status !== "done" && t.status !== "skipped" && !blockedReason(t),
+  )?.id;
+  const isOverdue = (t: Task) => {
+    if (t.status === "done" || t.status === "skipped" || !t.scheduledDate) return false;
+    const end = new Date(t.scheduledDate);
+    end.setHours(23, 59, 59, 999);
+    return end.getTime() < Date.now();
+  };
+  const rowStatus = (t: Task): RowStatus => {
+    if (t.status === "done") return "done";
+    if (t.status === "skipped") return "skipped";
+    if (blockedReason(t)) return "blocked";
+    if (isOverdue(t)) return "overdue";
+    if (t.id === nextReadyId) return "ready";
+    return "pending";
+  };
+
   const onComplete = (t: Task) => {
-    const earlierOpen = openBySeq.some((o) => o.sequence < t.sequence);
+    // Only warn about earlier steps on the SAME path (or shared "all" steps).
+    // The bottle and keg paths are independent — you can keg first then bottle,
+    // or split a batch across both — so open steps on the other path don't nag.
+    const earlierOpen = openBySeq.some(
+      (o) =>
+        o.sequence < t.sequence &&
+        (o.packagingPath === "all" || o.packagingPath === t.packagingPath),
+    );
     if (earlierOpen && !confirm("Earlier steps aren't done yet. Complete this one anyway?")) return;
     complete.mutate({ taskId: t.id });
   };
   const onSkip = (t: Task) => {
-    if (!t.isOptional && !confirm("This step isn't marked optional. Skip it anyway?")) return;
+    // Path-specific steps (bottle-only / keg-only) are inherently optional when
+    // you're not doing that path, so skip them without the "not optional" nag.
+    const pathSpecific = t.packagingPath !== "all";
+    if (
+      !t.isOptional &&
+      !pathSpecific &&
+      !confirm("This step isn't marked optional. Skip it anyway?")
+    )
+      return;
     skip.mutate({ taskId: t.id });
+  };
+
+  // Packaging plan: a dual-path recipe has both bottle- and keg-only steps. The
+  // operator picks Both / Bottle only / Keg only; the "off" path's steps are
+  // skipped, and switching back reopens them. Fully reversible, no confirm.
+  const kegSteps = sorted.filter((t) => t.packagingPath === "keg");
+  const bottleSteps = sorted.filter((t) => t.packagingPath === "bottle");
+  const hasBothPaths = kegSteps.length > 0 && bottleSteps.length > 0;
+  const allSkipped = (steps: Task[]) =>
+    steps.length > 0 && steps.every((t) => t.status === "skipped");
+  const kegOff = allSkipped(kegSteps);
+  const bottleOff = allSkipped(bottleSteps);
+  type PackMode = "both" | "bottle" | "keg";
+  const packMode: PackMode =
+    bottleOff && !kegOff ? "keg" : kegOff && !bottleOff ? "bottle" : "both";
+
+  const setPackMode = async (target: PackMode) => {
+    const toSkip: Task[] = [];
+    const toReopen: Task[] = [];
+    const wantSkipped = (steps: Task[]) =>
+      steps.forEach((t) => {
+        if (t.status !== "skipped" && t.status !== "done") toSkip.push(t);
+      });
+    const wantActive = (steps: Task[]) =>
+      steps.forEach((t) => {
+        if (t.status === "skipped") toReopen.push(t);
+      });
+    if (target === "bottle") {
+      wantSkipped(kegSteps);
+      wantActive(bottleSteps);
+    } else if (target === "keg") {
+      wantSkipped(bottleSteps);
+      wantActive(kegSteps);
+    } else {
+      wantActive(kegSteps);
+      wantActive(bottleSteps);
+    }
+    // Reopen first (so a mistaken skip is undone), then skip the off path.
+    for (const t of toReopen) await reopen.mutateAsync({ taskId: t.id });
+    for (const t of toSkip) await skip.mutateAsync({ taskId: t.id });
   };
 
   const busy = complete.isPending || skip.isPending || reopen.isPending;
@@ -193,6 +290,47 @@ export function BatchRecipeChecklist({ batchId }: { batchId: string }) {
         </CardDescription>
       </CardHeader>
       <CardContent>
+        {hasBothPaths && (
+          <div className="mb-3">
+            <div className="mb-1 text-xs text-muted-foreground">
+              Packaging plan — the unused path&apos;s steps are skipped (switch back
+              anytime to restore them)
+            </div>
+            <div className="inline-flex overflow-hidden rounded-md border text-sm">
+              {(
+                [
+                  { key: "both", label: "Bottle + Keg" },
+                  { key: "bottle", label: "Bottle only" },
+                  { key: "keg", label: "Keg only" },
+                ] as { key: PackMode; label: string }[]
+              ).map((opt, i) => (
+                <button
+                  key={opt.key}
+                  type="button"
+                  onClick={() => setPackMode(opt.key)}
+                  disabled={busy}
+                  className={`px-3 py-1.5 ${i > 0 ? "border-l" : ""} ${
+                    packMode === opt.key
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-background hover:bg-gray-50"
+                  } disabled:opacity-50`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+          {(["ready", "done", "overdue", "blocked", "pending", "skipped"] as RowStatus[]).map(
+            (s) => (
+              <span key={s} className="inline-flex items-center gap-1">
+                <span className={`inline-block h-2 w-2 rounded-full ${STATUS_DISPLAY[s].dot}`} />
+                {STATUS_DISPLAY[s].label}
+              </span>
+            ),
+          )}
+        </div>
         <Table>
           <TableHeader>
             <TableRow>
@@ -206,11 +344,12 @@ export function BatchRecipeChecklist({ batchId }: { batchId: string }) {
           <TableBody>
             {sorted.map((t) => {
               const terminal = t.status === "done" || t.status === "skipped";
+              const rs = rowStatus(t);
               return (
                 <TableRow
                   key={t.id}
                   onClick={() => openStep(t)}
-                  className={`cursor-pointer hover:bg-gray-50 ${terminal ? "opacity-60" : ""}`}
+                  className={`cursor-pointer hover:bg-gray-50 ${ROW_ACCENT[rs]} ${terminal ? "opacity-60" : ""}`}
                 >
                   <TableCell className="text-muted-foreground">{t.sequence + 1}</TableCell>
                   <TableCell>
@@ -236,10 +375,14 @@ export function BatchRecipeChecklist({ batchId }: { batchId: string }) {
                       <p className="text-xs text-muted-foreground mt-0.5">{t.description}</p>
                     )}
                   </TableCell>
-                  <TableCell className="text-sm">{fmtDate(t.scheduledDate)}</TableCell>
+                  <TableCell
+                    className={`text-sm ${rs === "overdue" ? "text-red-600 font-medium" : ""}`}
+                  >
+                    {fmtDate(t.scheduledDate)}
+                  </TableCell>
                   <TableCell>
-                    <Badge variant="outline" className={`text-[10px] ${STATUS_STYLE[t.status] ?? ""}`}>
-                      {t.status.replace("_", " ")}
+                    <Badge variant="outline" className={`text-[10px] ${STATUS_DISPLAY[rs].cls}`}>
+                      {STATUS_DISPLAY[rs].label}
                     </Badge>
                   </TableCell>
                   <TableCell className="text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>

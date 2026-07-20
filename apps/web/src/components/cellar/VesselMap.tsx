@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { formatDate } from "@/utils/date-format";
 import { useDateFormat } from "@/hooks/useDateFormat";
 import { trpc } from "@/utils/trpc";
@@ -71,7 +72,6 @@ import {
   VolumeUnit,
   convertVolume,
 } from "lib";
-import { BatchHistoryModal } from "@/components/cellar/BatchHistoryModal";
 import { UnifiedPackagingModal } from "@/components/packaging/UnifiedPackagingModal";
 import { FilterModal } from "@/components/cellar/FilterModal";
 import { RackingModal } from "@/components/cellar/RackingModal";
@@ -197,9 +197,7 @@ export function VesselMap() {
   const [selectedBatchIdForMeasurement, setSelectedBatchIdForMeasurement] =
     useState<string | null>(null);
 
-  // History modal state
-  const [showBatchHistory, setShowBatchHistory] = useState(false);
-  const [selectedBatchId, setSelectedBatchId] = useState<string | null>(null);
+  const router = useRouter();
 
   // Vessel history modal state
   const [showVesselHistory, setShowVesselHistory] = useState(false);
@@ -454,7 +452,7 @@ const updateBatchStatusMutation = trpc.batch.update.useMutation({
         case "aging":
           return "border-blue-300 bg-blue-50";
         case "conditioning":
-          return "border-teal-300 bg-teal-50";
+          return "border-pink-300 bg-pink-50";
         case "completed":
           return "border-slate-300 bg-slate-100";
         case "discarded":
@@ -524,7 +522,7 @@ const updateBatchStatusMutation = trpc.batch.update.useMutation({
         switch (batchStatus) {
           case "fermentation": icon = <Beaker className="w-4 h-4 text-purple-600" />; break;
           case "aging":        icon = <Clock className="w-4 h-4 text-blue-600" />; break;
-          case "conditioning": icon = <Sparkles className="w-4 h-4 text-teal-600" />; break;
+          case "conditioning": icon = <Sparkles className="w-4 h-4 text-pink-600" />; break;
           case "completed":    icon = <Archive className="w-4 h-4 text-slate-500" />; break;
           case "discarded":    icon = <AlertTriangle className="w-4 h-4 text-gray-600" />; break;
           default:             icon = <AlertTriangle className="w-4 h-4 text-amber-600" />;
@@ -730,9 +728,9 @@ const updateBatchStatusMutation = trpc.batch.update.useMutation({
     const batchId = liquidMapVessel?.batchId;
 
     if (batchId) {
-      // Show batch history modal
-      setSelectedBatchId(batchId);
-      setShowBatchHistory(true);
+      // Open the full batch detail page so the same information (incl. the
+      // Recipe tab) is shown regardless of how the user reaches a batch.
+      router.push(`/batch/${batchId}`);
     } else {
       // Show message if no active batch in vessel
       alert("No active batch found in this vessel");
@@ -1809,18 +1807,6 @@ const updateBatchStatusMutation = trpc.batch.update.useMutation({
             />
           </DialogContent>
         </Dialog>
-
-        {/* Batch History Modal */}
-        {selectedBatchId && (
-          <BatchHistoryModal
-            batchId={selectedBatchId}
-            open={showBatchHistory}
-            onClose={() => {
-              setShowBatchHistory(false);
-              setSelectedBatchId(null);
-            }}
-          />
-        )}
 
         {/* Vessel History Modal */}
         {selectedVesselForHistory && (

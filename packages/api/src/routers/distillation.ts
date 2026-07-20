@@ -48,11 +48,16 @@ export const distillationRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      // Atomic: either all batches are sent + deducted, or none are. Without a
+      // transaction, a later batch's volume-check failure left earlier batches
+      // already sent+deducted, and a resubmit double-sent them (double proof
+      // gallons to TTB).
+      return await db.transaction(async (tx) => {
       const results: Array<typeof distillationRecords.$inferSelect> = [];
 
       for (const batchInput of input.batches) {
         // Verify source batch exists and has volume
-        const [sourceBatch] = await db
+        const [sourceBatch] = await tx
           .select()
           .from(batches)
           .where(and(eq(batches.id, batchInput.sourceBatchId), isNull(batches.deletedAt)))
@@ -89,7 +94,7 @@ export const distillationRouter = router({
         }
 
         // Create distillation record
-        const [record] = await db
+        const [record] = await tx
           .insert(distillationRecords)
           .values({
             sourceBatchId: batchInput.sourceBatchId,
@@ -105,6 +110,7 @@ export const distillationRouter = router({
             tibOutboundNumber: input.tibOutboundNumber || null,
             proofGallonsSent: proofGallonsSent !== null ? String(proofGallonsSent) : null,
             notes: input.notes || null,
+            deductedFromBatch: input.deductFromBatch,
             status: "sent",
           })
           .returning();
@@ -117,7 +123,7 @@ export const distillationRouter = router({
           const isEmpty = newVolumeLiters <= 1.0;
 
           if (isEmpty) {
-            await db
+            await tx
               .update(batches)
               .set({
                 currentVolumeLiters: "0",
@@ -130,7 +136,7 @@ export const distillationRouter = router({
               .where(eq(batches.id, batchInput.sourceBatchId));
 
             if (sourceBatch.vesselId) {
-              await db
+              await tx
                 .update(vessels)
                 .set({
                   status: "cleaning" as any,
@@ -139,7 +145,7 @@ export const distillationRouter = router({
                 .where(eq(vessels.id, sourceBatch.vesselId));
             }
           } else {
-            await db
+            await tx
               .update(batches)
               .set({
                 currentVolumeLiters: String(Math.max(0, newVolumeLiters)),
@@ -155,6 +161,7 @@ export const distillationRouter = router({
         records: results,
         count: results.length,
       };
+      });
     }),
 
   /**
@@ -232,6 +239,7 @@ export const distillationRouter = router({
           tibOutboundNumber: input.tibOutboundNumber || null,
           proofGallonsSent: proofGallonsSent !== null ? String(proofGallonsSent) : null,
           notes: input.notes || null,
+          deductedFromBatch: input.deductFromBatch,
           status: "sent",
         })
         .returning();
@@ -465,8 +473,13 @@ export const distillationRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      // Atomic: the brandy batch, the ledger entry, flipping every source record
+      // to 'received', and all vessel splits must commit together. Previously the
+      // record flips committed before the split inserts, so a bad destination
+      // vessel id stranded all records as 'received' (unrecoverable).
+      return await db.transaction(async (tx) => {
       // Get all distillation records
-      const records = await db
+      const records = await tx
         .select()
         .from(distillationRecords)
         .where(and(
@@ -492,7 +505,7 @@ export const distillationRouter = router({
 
       // Get source batches for naming
       const sourceBatchIds = records.map((r) => r.sourceBatchId);
-      const sourceBatches = await db
+      const sourceBatches = await tx
         .select()
         .from(batches)
         .where(inArray(batches.id, sourceBatchIds));
@@ -517,7 +530,7 @@ export const distillationRouter = router({
       // Verify destination vessel if provided
       let destinationVessel = null;
       if (input.destinationVesselId) {
-        const [vessel] = await db
+        const [vessel] = await tx
           .select()
           .from(vessels)
           .where(and(eq(vessels.id, input.destinationVesselId), isNull(vessels.deletedAt)))
@@ -532,6 +545,25 @@ export const distillationRouter = router({
         destinationVessel = vessel;
       }
 
+      // Verify all split destination vessels exist BEFORE any writes, so a bad
+      // vessel id fails fast (the transaction also protects against this, but
+      // this gives a clear error instead of an FK violation mid-way).
+      if (input.destinationVessels && input.destinationVessels.length > 0) {
+        const splitVesselIds = input.destinationVessels.map((v) => v.vesselId);
+        const foundVessels = await tx
+          .select({ id: vessels.id })
+          .from(vessels)
+          .where(
+            and(inArray(vessels.id, splitVesselIds), isNull(vessels.deletedAt)),
+          );
+        if (foundVessels.length !== new Set(splitVesselIds).size) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "One or more destination vessels not found",
+          });
+        }
+      }
+
       // Generate batch name for brandy
       const sourceNames = sourceBatches.map((b) => b.customName || b.batchNumber).slice(0, 3);
       const batchName = input.brandyBatchName ||
@@ -541,7 +573,7 @@ export const distillationRouter = router({
       const batchNumber = `BR-${Date.now().toString(36).toUpperCase()}`;
 
       // Create brandy batch
-      const [brandyBatch] = await db
+      const [brandyBatch] = await tx
         .insert(batches)
         .values({
           vesselId: input.destinationVesselId || null,
@@ -571,7 +603,7 @@ export const distillationRouter = router({
         sourceDescription: `Brandy received from ${records[0]?.distilleryName || "distillery"} (${input.receivedVolume} ${input.receivedVolumeUnit})`,
         linkedEntityType: "distillation_record",
         performedBy: ctx.user.id,
-      });
+      }, tx);
 
       // Update all distillation records to reference the same brandy batch
       // Distribute the received volume proportionally across records for tracking
@@ -587,7 +619,7 @@ export const distillationRouter = router({
 
         const combinedNotes = [record.notes, input.notes].filter(Boolean).join("\n");
 
-        await db
+        await tx
           .update(distillationRecords)
           .set({
             resultBatchId: brandyBatch.id,
@@ -616,7 +648,7 @@ export const distillationRouter = router({
           ? firstVesselVolume * LITERS_PER_GALLON
           : firstVesselVolume;
 
-        await db
+        await tx
           .update(batches)
           .set({
             currentVolume: String(firstVesselVolume),
@@ -640,7 +672,7 @@ export const distillationRouter = router({
           const splitName = `${batchName} #${i + 1}`;
           const splitBatchNumber = `${batchNumber}-${i + 1}`;
 
-          await db.insert(batches).values({
+          await tx.insert(batches).values({
             vesselId: vesselAlloc.vesselId,
             name: splitName,
             customName: splitName,
@@ -667,7 +699,7 @@ export const distillationRouter = router({
           });
 
           // Record barrel contents if the vessel is a barrel
-          const [splitVessel] = await db
+          const [splitVessel] = await tx
             .select({ isBarrel: vessels.isBarrel })
             .from(vessels)
             .where(eq(vessels.id, vesselAlloc.vesselId))
@@ -678,7 +710,7 @@ export const distillationRouter = router({
               ? input.receivedAt.toISOString().split("T")[0]
               : new Date(input.receivedAt).toISOString().split("T")[0];
 
-            await db.insert(barrelContentsHistory).values({
+            await tx.insert(barrelContentsHistory).values({
               vesselId: vesselAlloc.vesselId,
               contentsType: "brandy",
               contentsDescription: splitName,
@@ -696,7 +728,7 @@ export const distillationRouter = router({
           ? input.receivedAt.toISOString().split("T")[0]
           : new Date(input.receivedAt).toISOString().split("T")[0];
 
-        await db.insert(barrelContentsHistory).values({
+        await tx.insert(barrelContentsHistory).values({
           vesselId: input.destinationVesselId!,
           contentsType: "brandy",
           contentsDescription: batchName,
@@ -715,6 +747,7 @@ export const distillationRouter = router({
         totalProofGallonsSent,
         vesselCount: multiVessels.length || (input.destinationVesselId ? 1 : 0),
       };
+      });
     }),
 
   /**
@@ -755,16 +788,63 @@ export const distillationRouter = router({
         .filter(Boolean)
         .join("\n");
 
-      await db
-        .update(distillationRecords)
-        .set({
-          status: "cancelled",
-          notes,
-          updatedAt: new Date(),
-        })
-        .where(eq(distillationRecords.id, input.id));
+      return await db.transaction(async (tx) => {
+        await tx
+          .update(distillationRecords)
+          .set({
+            status: "cancelled",
+            notes,
+            updatedAt: new Date(),
+          })
+          .where(eq(distillationRecords.id, input.id));
 
-      return { success: true };
+        // Restore the deducted volume to the source batch. The send only reduced
+        // the batch when deductedFromBatch is true; reconciliation stops counting
+        // a cancelled record's outflow, so without this the batch would
+        // permanently under-count by the sent volume.
+        const restoreL = record.sourceVolumeLiters
+          ? parseFloat(record.sourceVolumeLiters)
+          : 0;
+        if (
+          record.status === "sent" &&
+          record.deductedFromBatch &&
+          record.sourceBatchId &&
+          restoreL > 0
+        ) {
+          const [batch] = await tx
+            .select({
+              currentVolume: batches.currentVolume,
+              currentVolumeLiters: batches.currentVolumeLiters,
+              status: batches.status,
+            })
+            .from(batches)
+            .where(eq(batches.id, record.sourceBatchId))
+            .limit(1);
+          if (batch) {
+            const currentL =
+              batch.currentVolumeLiters != null
+                ? parseFloat(batch.currentVolumeLiters)
+                : parseFloat(batch.currentVolume ?? "0");
+            const newL = currentL + restoreL;
+            const updates: Record<string, unknown> = {
+              currentVolume: newL.toString(),
+              currentVolumeLiters: newL.toString(),
+              updatedAt: new Date(),
+            };
+            // Reactivate if the send had emptied + auto-completed the batch.
+            if (batch.status === "completed" && newL > 1.0) {
+              updates.status = "conditioning";
+              updates.endDate = null;
+            }
+            await tx
+              .update(batches)
+              .set(updates)
+              .where(eq(batches.id, record.sourceBatchId));
+          }
+        }
+
+        return { success: true };
+      });
     }),
 
   /**

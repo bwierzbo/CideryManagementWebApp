@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { router, protectedProcedure } from "../trpc";
+import { router, protectedProcedure, createRbacProcedure } from "../trpc";
 import { db, juiceVarieties, vendorJuiceVarieties } from "db";
 import { eq, and, isNull, desc, asc, sql } from "drizzle-orm";
 
@@ -95,7 +95,7 @@ export const juiceVarietiesRouter = router({
     }),
 
   // Create new juice variety
-  create: protectedProcedure
+  create: createRbacProcedure("create", "inventory")
     .input(
       z.object({
         name: z.string().min(1, "Name is required"),
@@ -132,7 +132,7 @@ export const juiceVarietiesRouter = router({
     }),
 
   // Update juice variety
-  update: protectedProcedure
+  update: createRbacProcedure("update", "inventory")
     .input(
       z.object({
         id: z.string().uuid(),
@@ -191,7 +191,7 @@ export const juiceVarietiesRouter = router({
     }),
 
   // Delete juice variety (soft delete)
-  delete: protectedProcedure
+  delete: createRbacProcedure("delete", "inventory")
     .input(
       z.object({
         id: z.string().uuid(),

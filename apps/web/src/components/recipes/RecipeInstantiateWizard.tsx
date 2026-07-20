@@ -113,14 +113,16 @@ interface Props {
   recipe: { id: string; name: string; productType: string };
   inputs: RecipeInput[];
   steps: RecipeStep[];
+  /** When set (deep-linked from a batch), start in attach mode for this batch. */
+  preselectedBatchId?: string;
 }
 
 const todayStr = () => new Date().toISOString().slice(0, 10);
 
-export function RecipeInstantiateWizard({ open, onClose, recipe, inputs, steps }: Props) {
+export function RecipeInstantiateWizard({ open, onClose, recipe, inputs, steps, preselectedBatchId }: Props) {
   const router = useRouter();
 
-  const [mode, setMode] = useState<"new" | "attach">("new");
+  const [mode, setMode] = useState<"new" | "attach">(preselectedBatchId ? "attach" : "new");
   const [startDate, setStartDate] = useState(todayStr());
   // String-backed so the field can be cleared/retyped freely (a numeric state
   // would coerce an empty field back to 0, making the 0 impossible to delete).
@@ -131,7 +133,7 @@ export function RecipeInstantiateWizard({ open, onClose, recipe, inputs, steps }
   const [parentVolumes, setParentVolumes] = useState<Record<string, string>>({});
   const [pressRunId, setPressRunId] = useState<string | null>(null);
   const [juicePurchaseItemId, setJuicePurchaseItemId] = useState<string | null>(null);
-  const [existingBatchId, setExistingBatchId] = useState<string | null>(null);
+  const [existingBatchId, setExistingBatchId] = useState<string | null>(preselectedBatchId ?? null);
   const [skippedStepIds, setSkippedStepIds] = useState<Set<string>>(new Set());
 
   const hasParentReq = inputs.some((i) => i.kind === "parent_batch_requirement");

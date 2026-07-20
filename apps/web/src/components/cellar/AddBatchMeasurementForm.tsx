@@ -2,6 +2,10 @@
 
 import React, { useState } from "react";
 import { trpc } from "@/utils/trpc";
+import {
+  calculateCO2Volumes,
+  calculateRequiredPressure,
+} from "lib/src/utils/carbonation-calculations";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,7 +22,7 @@ import { toast } from "@/hooks/use-toast";
 import { useBatchDateValidation } from "@/hooks/useBatchDateValidation";
 import { DateWarning } from "@/components/ui/DateWarning";
 import { LastActivityHint } from "@/components/ui/LastActivityHint";
-import { Loader2, Info, CheckCircle2, AlertTriangle } from "lucide-react";
+import { Loader2, Info } from "lucide-react";
 import { useDateFormat } from "@/hooks/useDateFormat";
 
 interface AddBatchMeasurementFormProps {
@@ -53,13 +57,24 @@ export function AddBatchMeasurementForm({
   const [ph, setPh] = useState("");
   const [totalAcidity, setTotalAcidity] = useState("");
   const [dissolvedCo2, setDissolvedCo2] = useState("");
+  // How the operator enters CO₂: head pressure (psi) or dissolved volumes.
+  // Default psi — that's what the gauge reads during force-carbonation. Stored
+  // canonically as volumes (converted via Henry's Law at the sample temp).
+  const [co2Unit, setCo2Unit] = useState<"psi" | "vol">("psi");
   const [temperature, setTemperature] = useState("10");
+  // Temperature entry unit; stored canonically in °C. Cellar temps vary widely,
+  // so the operator can enter in either scale.
+  const [tempUnit, setTempUnit] = useState<"C" | "F">("C");
   const [notes, setNotes] = useState("");
   const [sensoryNotes, setSensoryNotes] = useState("");
   const [volume, setVolume] = useState("");
 
   // Fetch batch details to get product type
   const { data: batchData } = trpc.batch.get.useQuery({ batchId });
+  // Most recent prior measurement — used as greyed placeholders so the operator
+  // can spot a drastic change from last time.
+  const { data: history } = trpc.batch.getHistory.useQuery({ batchId });
+  const last = history?.measurements?.[0];
   const productType = batchData?.productType ?? "cider";
 
   // Determine which fields to show based on product type
@@ -74,19 +89,55 @@ export function AddBatchMeasurementForm({
   // Fetch active calibration status
   const { data: calibrationData } = trpc.calibration.getActive.useQuery();
 
+  // Sample temperature normalized to °C — the canonical unit for storage, SG
+  // correction, and the Henry's-Law CO₂ conversion — regardless of entry unit.
+  const tempNum = parseFloat(temperature);
+  const tempC =
+    temperature !== "" && !isNaN(tempNum)
+      ? tempUnit === "F"
+        ? (tempNum - 32) * (5 / 9)
+        : tempNum
+      : null;
+
   // Preview correction when we have the necessary inputs
   const canPreviewCorrection =
     !!rawReading &&
-    !!temperature &&
+    tempC !== null &&
     parseFloat(rawReading) > 0 &&
-    parseFloat(temperature) >= -10;
+    tempC >= -10;
+
+  // Greyed placeholders = the LAST recorded value for each field, so a drastic
+  // change from the previous measurement is visible while entering.
+  const lastCo2Vol =
+    last?.dissolvedCo2 != null ? parseFloat(String(last.dissolvedCo2)) : null;
+  const sgPlaceholder =
+    last?.specificGravity != null ? last.specificGravity.toFixed(3) : "1.050";
+  const abvPlaceholder = last?.abv != null ? last.abv.toFixed(1) : "6.5";
+  const phPlaceholder = last?.ph != null ? last.ph.toFixed(2) : "3.50";
+  const taPlaceholder =
+    last?.totalAcidity != null ? last.totalAcidity.toFixed(1) : "6.5";
+  const volPlaceholder = last?.volume != null ? last.volume.toFixed(1) : "120";
+  const tempPlaceholder =
+    last?.temperature != null
+      ? (tempUnit === "F" ? (last.temperature * 9) / 5 + 32 : last.temperature).toFixed(1)
+      : tempUnit === "F"
+        ? "50"
+        : "10";
+  const co2Placeholder =
+    lastCo2Vol != null
+      ? co2Unit === "psi"
+        ? calculateRequiredPressure(lastCo2Vol, tempC ?? 20).toFixed(0)
+        : lastCo2Vol.toFixed(2)
+      : co2Unit === "psi"
+        ? "12"
+        : "2.5";
 
   const { data: correctionPreview, isFetching: isLoadingPreview } =
     trpc.calibration.previewCorrection.useQuery(
       {
         instrumentType: measurementMethod === "calculated" ? "hydrometer" : measurementMethod,
         rawReading: parseFloat(rawReading) || 1,
-        temperatureC: parseFloat(temperature) || 20,
+        temperatureC: tempC ?? 20,
         originalGravity: originalGravity ? parseFloat(originalGravity) : undefined,
         isFreshJuice,
       },
@@ -169,8 +220,14 @@ export function AddBatchMeasurementForm({
     if (abv) measurementData.abv = parseFloat(abv);
     if (ph) measurementData.ph = parseFloat(ph);
     if (totalAcidity) measurementData.totalAcidity = parseFloat(totalAcidity);
-    if (dissolvedCo2) measurementData.dissolvedCo2 = parseFloat(dissolvedCo2);
-    if (temperature) measurementData.temperature = parseFloat(temperature);
+    if (dissolvedCo2) {
+      const co2Raw = parseFloat(dissolvedCo2);
+      // Store canonical dissolved CO₂ in volumes. If entered as head pressure
+      // (psi), convert via Henry's Law at the sample temperature (°C).
+      measurementData.dissolvedCo2 =
+        co2Unit === "psi" ? calculateCO2Volumes(co2Raw, tempC ?? 20) : co2Raw;
+    }
+    if (tempC !== null) measurementData.temperature = tempC;
     if (notes) measurementData.notes = notes;
     if (sensoryNotes) measurementData.sensoryNotes = sensoryNotes;
     if (volume) measurementData.volume = parseFloat(volume);
@@ -210,7 +267,7 @@ export function AddBatchMeasurementForm({
 
   return (
     <form onSubmit={handleSubmit} onKeyDown={preventEnterSubmit} className="space-y-4">
-      {/* Date/Time - always visible */}
+      {/* Row 1: Date/Time + Sample Temperature (temp for SG-focused products) */}
       <div className={showSgFields ? "grid grid-cols-2 gap-4" : ""}>
         <div className="space-y-2">
           <Label htmlFor="measurementDateTime">Measurement Date & Time</Label>
@@ -229,135 +286,149 @@ export function AddBatchMeasurementForm({
           <LastActivityHint batchId={batchId} date={measurementDateTime} />
         </div>
 
-        {/* Measurement Method - only for SG-focused products */}
         {showSgFields && (
           <div className="space-y-2">
-            <Label htmlFor="measurementMethod">Measurement Method</Label>
-            <Select
-              value={measurementMethod}
-              onValueChange={(value) => setMeasurementMethod(value as MeasurementMethod)}
-            >
-              <SelectTrigger id="measurementMethod">
-                <SelectValue placeholder="Select method" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="hydrometer">Hydrometer</SelectItem>
-                <SelectItem value="refractometer">Refractometer</SelectItem>
-                <SelectItem value="calculated">Calculated</SelectItem>
-              </SelectContent>
-            </Select>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="temperature">Sample Temperature (°{tempUnit})</Label>
+              <div className="inline-flex overflow-hidden rounded-md border text-xs">
+                <button
+                  type="button"
+                  onClick={() => {
+                    // Convert the entered value so the physical temp is unchanged.
+                    if (tempUnit === "F" && !isNaN(tempNum)) {
+                      setTemperature(
+                        String(Math.round(((tempNum - 32) * 5) / 9 * 10) / 10),
+                      );
+                    }
+                    setTempUnit("C");
+                  }}
+                  className={
+                    tempUnit === "C"
+                      ? "bg-primary px-2 py-0.5 text-primary-foreground"
+                      : "bg-background px-2 py-0.5"
+                  }
+                >
+                  °C
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (tempUnit === "C" && !isNaN(tempNum)) {
+                      setTemperature(
+                        String(Math.round(((tempNum * 9) / 5 + 32) * 10) / 10),
+                      );
+                    }
+                    setTempUnit("F");
+                  }}
+                  className={
+                    tempUnit === "F"
+                      ? "bg-primary px-2 py-0.5 text-primary-foreground"
+                      : "bg-background px-2 py-0.5"
+                  }
+                >
+                  °F
+                </button>
+              </div>
+            </div>
+            <Input
+              id="temperature"
+              type="number"
+              step="0.1"
+              placeholder={tempPlaceholder}
+              value={temperature}
+              onChange={(e) => setTemperature(e.target.value)}
+            />
             <p className="text-xs text-muted-foreground">
-              {measurementMethod === "hydrometer"
-                ? "Hydrometer readings are used for terminal gravity confirmation"
-                : measurementMethod === "refractometer"
-                ? "Refractometer readings will be corrected for alcohol if calibrated"
-                : "Use for calculated/estimated values"}
+              Temperature at time of measurement.
+              {tempC !== null && tempUnit === "F" && ` ≈ ${tempC.toFixed(1)}°C`}
+              {" "}Range: {tempUnit === "F" ? "14–104°F" : "-10–40°C"}
             </p>
           </div>
         )}
       </div>
 
-      {/* Calibration Status Banner - only for SG-focused products */}
-      {showSgFields && measurementMethod !== "calculated" && (
-        <div className={`p-3 rounded-lg border text-sm ${
-          hasActiveCalibration
-            ? "bg-green-50 border-green-200 text-green-800"
-            : "bg-yellow-50 border-yellow-200 text-yellow-800"
-        }`}>
-          <div className="flex items-center gap-2">
-            {hasActiveCalibration ? (
-              <>
-                <CheckCircle2 className="w-4 h-4" />
-                <span>
-                  Active calibration: <strong>{calibrationData?.calibration?.name}</strong>
-                </span>
-              </>
-            ) : (
-              <>
-                <AlertTriangle className="w-4 h-4" />
-                <span>
-                  No calibration active.{" "}
-                  {measurementMethod === "hydrometer"
-                    ? "Temperature correction only."
-                    : "Readings will not be corrected for alcohol."}
-                </span>
-              </>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* SG Fields - only for cider/perry/juice */}
+      {/* Row 2: Raw Reading (SG) full width, instrument inline (only relevant here) */}
       {showSgFields && (
-        <div className="grid grid-cols-2 gap-4">
-          {/* Raw Reading / Specific Gravity */}
+        <div className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="rawReading">
               {measurementMethod === "calculated" ? "Specific Gravity" : "Raw Reading (SG)"}
             </Label>
-            <Input
-              id="rawReading"
-              type="number"
-              step="0.001"
-              placeholder="1.050"
-              value={rawReading}
-              onChange={(e) => setRawReading(e.target.value)}
-            />
-            <p className="text-xs text-muted-foreground">
-              {measurementMethod !== "calculated"
-                ? `Enter the reading directly from your ${measurementMethod}. `
-                : ""}
-              Range: 0.980–1.200
-            </p>
-          </div>
-
-          {/* Temperature */}
-          <div className="space-y-2">
-            <Label htmlFor="temperature">Sample Temperature (°C)</Label>
-            <Input
-              id="temperature"
-              type="number"
-              step="0.1"
-              placeholder="10"
-              value={temperature}
-              onChange={(e) => setTemperature(e.target.value)}
-            />
-            <p className="text-xs text-muted-foreground">
-              Temperature at time of measurement. Range: -10–40°C
-            </p>
-          </div>
-
-          {/* Original Gravity - Only for refractometer when not fresh juice */}
-          {showOGField && (
-            <div className="space-y-2">
-              <Label htmlFor="originalGravity">Original Gravity (for correction)</Label>
+            <div className="flex gap-2">
+              <Select
+                value={measurementMethod}
+                onValueChange={(value) =>
+                  setMeasurementMethod(value as MeasurementMethod)
+                }
+              >
+                <SelectTrigger
+                  id="measurementMethod"
+                  aria-label="Instrument"
+                  className="w-36 shrink-0"
+                >
+                  <SelectValue placeholder="Instrument" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="hydrometer">Hydrometer</SelectItem>
+                  <SelectItem value="refractometer">Refractometer</SelectItem>
+                  <SelectItem value="calculated">Calculated</SelectItem>
+                </SelectContent>
+              </Select>
               <Input
-                id="originalGravity"
+                id="rawReading"
                 type="number"
                 step="0.001"
-                placeholder="1.048"
-                value={originalGravity}
-                onChange={(e) => setOriginalGravity(e.target.value)}
+                placeholder={sgPlaceholder}
+                value={rawReading}
+                onChange={(e) => setRawReading(e.target.value)}
+                className="flex-1"
               />
-              <p className="text-xs text-muted-foreground">
-                OG of this batch, needed for alcohol correction
-              </p>
             </div>
-          )}
+            <p className="text-xs text-muted-foreground">
+              {measurementMethod !== "calculated"
+                ? `Reading from your ${measurementMethod}. `
+                : ""}
+              Range: 0.980–1.200
+              {measurementMethod === "refractometer" &&
+                (hasActiveCalibration
+                  ? ` · Calibration: ${calibrationData?.calibration?.name ?? "active"}`
+                  : " · No calibration active — not corrected for alcohol.")}
+            </p>
+          </div>
 
-          {/* Fresh Juice checkbox for refractometer */}
-          {measurementMethod === "refractometer" && (
-            <div className="flex items-center gap-2 pt-6">
-              <input
-                type="checkbox"
-                id="isFreshJuice"
-                checked={isFreshJuice}
-                onChange={(e) => setIsFreshJuice(e.target.checked)}
-                className="rounded border-gray-300"
-              />
-              <Label htmlFor="isFreshJuice" className="text-sm">
-                Fresh juice (no alcohol yet)
-              </Label>
+          {/* Original Gravity + Fresh Juice - refractometer only */}
+          {(showOGField || measurementMethod === "refractometer") && (
+            <div className="grid grid-cols-2 gap-4">
+              {showOGField && (
+                <div className="space-y-2">
+                  <Label htmlFor="originalGravity">Original Gravity (for correction)</Label>
+                  <Input
+                    id="originalGravity"
+                    type="number"
+                    step="0.001"
+                    placeholder="1.048"
+                    value={originalGravity}
+                    onChange={(e) => setOriginalGravity(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    OG of this batch, needed for alcohol correction
+                  </p>
+                </div>
+              )}
+              {measurementMethod === "refractometer" && (
+                <div className="flex items-center gap-2 pt-6">
+                  <input
+                    type="checkbox"
+                    id="isFreshJuice"
+                    checked={isFreshJuice}
+                    onChange={(e) => setIsFreshJuice(e.target.checked)}
+                    className="rounded border-gray-300"
+                  />
+                  <Label htmlFor="isFreshJuice" className="text-sm">
+                    Fresh juice (no alcohol yet)
+                  </Label>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -398,23 +469,6 @@ export function AddBatchMeasurementForm({
         </div>
       )}
 
-      {/* Sensory Notes - prominent for brandy/pommeau, optional for others */}
-      {showSensoryFields && (
-        <div className="space-y-2">
-          <Label htmlFor="sensoryNotes">Sensory Notes</Label>
-          <Textarea
-            id="sensoryNotes"
-            placeholder="Describe appearance, aroma, taste, finish..."
-            value={sensoryNotes}
-            onChange={(e) => setSensoryNotes(e.target.value)}
-            className="min-h-[100px]"
-          />
-          <p className="text-xs text-muted-foreground">
-            Record tasting observations for aging products
-          </p>
-        </div>
-      )}
-
       {/* Volume - for brandy/pommeau (angel's share tracking) */}
       {showVolumeField && (
         <div className="space-y-2">
@@ -423,7 +477,7 @@ export function AddBatchMeasurementForm({
             id="volume"
             type="number"
             step="0.1"
-            placeholder="18.5"
+            placeholder={volPlaceholder}
             value={volume}
             onChange={(e) => setVolume(e.target.value)}
           />
@@ -440,7 +494,7 @@ export function AddBatchMeasurementForm({
             id="abv"
             type="number"
             step="0.1"
-            placeholder="6.5"
+            placeholder={abvPlaceholder}
             value={abv}
             onChange={(e) => setAbv(e.target.value)}
           />
@@ -453,7 +507,7 @@ export function AddBatchMeasurementForm({
             id="ph"
             type="number"
             step="0.01"
-            placeholder="3.50"
+            placeholder={phPlaceholder}
             value={ph}
             onChange={(e) => setPh(e.target.value)}
           />
@@ -466,7 +520,7 @@ export function AddBatchMeasurementForm({
             id="totalAcidity"
             type="number"
             step="0.1"
-            placeholder="6.5"
+            placeholder={taPlaceholder}
             value={totalAcidity}
             onChange={(e) => setTotalAcidity(e.target.value)}
           />
@@ -474,18 +528,77 @@ export function AddBatchMeasurementForm({
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="dissolvedCo2">CO₂ (volumes)</Label>
+          <div className="flex items-center justify-between">
+            <Label htmlFor="dissolvedCo2">
+              CO₂ ({co2Unit === "psi" ? "psi" : "volumes"})
+            </Label>
+            <div className="inline-flex overflow-hidden rounded-md border text-xs">
+              <button
+                type="button"
+                onClick={() => setCo2Unit("psi")}
+                className={
+                  co2Unit === "psi"
+                    ? "bg-primary px-2 py-0.5 text-primary-foreground"
+                    : "bg-background px-2 py-0.5"
+                }
+              >
+                psi
+              </button>
+              <button
+                type="button"
+                onClick={() => setCo2Unit("vol")}
+                className={
+                  co2Unit === "vol"
+                    ? "bg-primary px-2 py-0.5 text-primary-foreground"
+                    : "bg-background px-2 py-0.5"
+                }
+              >
+                vol
+              </button>
+            </div>
+          </div>
           <Input
             id="dissolvedCo2"
             type="number"
             step="0.1"
-            placeholder="2.5"
+            placeholder={co2Placeholder}
             value={dissolvedCo2}
             onChange={(e) => setDissolvedCo2(e.target.value)}
           />
-          <p className="text-xs text-muted-foreground">Dissolved CO₂, e.g. 2.5 vol</p>
+          <p className="text-xs text-muted-foreground">
+            {co2Unit === "psi" ? (
+              <>
+                Head pressure in psi at {temperature || "?"}°{tempUnit}
+                {dissolvedCo2 &&
+                  !isNaN(parseFloat(dissolvedCo2)) &&
+                  ` · ≈ ${calculateCO2Volumes(
+                    parseFloat(dissolvedCo2),
+                    tempC ?? 20,
+                  ).toFixed(2)} vol dissolved (stored)`}
+              </>
+            ) : (
+              "Dissolved CO₂ in volumes, e.g. 2.5 vol"
+            )}
+          </p>
         </div>
       </div>
+
+      {/* Sensory Notes - after all measurements, above general Notes */}
+      {showSensoryFields && (
+        <div className="space-y-2">
+          <Label htmlFor="sensoryNotes">Sensory Notes</Label>
+          <Textarea
+            id="sensoryNotes"
+            placeholder="Describe appearance, aroma, taste, finish..."
+            value={sensoryNotes}
+            onChange={(e) => setSensoryNotes(e.target.value)}
+            className="min-h-[100px]"
+          />
+          <p className="text-xs text-muted-foreground">
+            Record tasting observations for aging products
+          </p>
+        </div>
+      )}
 
       <div className="space-y-2">
         <Label htmlFor="notes">Notes</Label>

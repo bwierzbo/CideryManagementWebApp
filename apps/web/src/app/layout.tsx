@@ -20,7 +20,7 @@ const sourceSans = Source_Sans_3({
 });
 
 export const metadata: Metadata = {
-  title: "CideryCraft | Cidery Management",
+  title: "CiderPilot | Cidery Management",
   description:
     "Craft cidery management system - Track vendor purchases, pressing, fermentation, packaging, and inventory with precision.",
   icons: {

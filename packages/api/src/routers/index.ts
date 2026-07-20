@@ -77,6 +77,8 @@ import {
   distillationRecords,
   barrelUsageHistory,
   batchMergeHistory,
+  batchRecipeExecutions,
+  batchStepTasks,
   workers,
   activityLaborAssignments,
 } from "db";
@@ -1844,7 +1846,7 @@ export const appRouter = router({
       }),
 
     // Get full purchase details with all items
-    getDetails: createRbacProcedure("view", "purchase")
+    getDetails: createRbacProcedure("read", "purchase")
       .input(
         z.object({
           purchaseId: z.string().uuid(),
@@ -4166,7 +4168,7 @@ export const appRouter = router({
             let remainingBatch = null;
 
             // Check if this is a full transfer, partial transfer, or residual (< MIN_WORKING_VOLUME_L)
-            let transferredBatch = null;
+            let transferredBatch: typeof batches.$inferSelect | null = null;
             if (remainingVolumeL > MIN_WORKING_VOLUME_L && !isBlending) {
               // Partial transfer to EMPTY vessel - create transferred batch in destination vessel, keep source in source
               // Note: If blending (destination has batch), we skip new batch creation and use the blending logic below
@@ -4309,6 +4311,71 @@ export const appRouter = router({
                   createdAt: new Date(),
                   updatedAt: new Date(),
                 });
+              }
+
+              // Copy the recipe execution + step checklist (with each step's
+              // completed/skipped status) to the transferred batch. A transfer
+              // that spawns a new batch keeps following the same recipe, with
+              // already-finished steps preserved (e.g. cider kegged early still
+              // shows the work done up to that point).
+              const [sourceExecution] = await tx
+                .select()
+                .from(batchRecipeExecutions)
+                .where(eq(batchRecipeExecutions.batchId, sourceBatch[0].id))
+                .limit(1);
+
+              if (sourceExecution) {
+                const [clonedExecution] = await tx
+                  .insert(batchRecipeExecutions)
+                  .values({
+                    batchId: transferredBatch.id,
+                    recipeId: sourceExecution.recipeId,
+                    recipeVersion: sourceExecution.recipeVersion,
+                    mode: sourceExecution.mode,
+                    startDate: sourceExecution.startDate,
+                    sourceRefs: sourceExecution.sourceRefs,
+                    bottleVolumeL: sourceExecution.bottleVolumeL,
+                    kegVolumeL: sourceExecution.kegVolumeL,
+                    status: sourceExecution.status,
+                    createdBy: ctx.user.id,
+                    createdAt: new Date(),
+                    updatedAt: new Date(),
+                  })
+                  .returning({ id: batchRecipeExecutions.id });
+
+                const sourceTasks = await tx
+                  .select()
+                  .from(batchStepTasks)
+                  .where(eq(batchStepTasks.executionId, sourceExecution.id))
+                  .orderBy(asc(batchStepTasks.sequence));
+
+                if (sourceTasks.length > 0) {
+                  const childBatchId = transferredBatch.id;
+                  await tx.insert(batchStepTasks).values(
+                    sourceTasks.map((t) => ({
+                      executionId: clonedExecution.id,
+                      batchId: childBatchId,
+                      sequence: t.sequence,
+                      kind: t.kind,
+                      label: t.label,
+                      description: t.description,
+                      packagingPath: t.packagingPath,
+                      isOptional: t.isOptional,
+                      triggerKind: t.triggerKind,
+                      triggerData: t.triggerData,
+                      actionData: t.actionData,
+                      actualData: t.actualData,
+                      scheduledDate: t.scheduledDate,
+                      status: t.status,
+                      completedAt: t.completedAt,
+                      actualHours: t.actualHours,
+                      estimatedHours: t.estimatedHours,
+                      notes: t.notes,
+                      createdAt: new Date(),
+                      updatedAt: new Date(),
+                    })),
+                  );
+                }
               }
 
               // NOTE: Racking, filter, and carbonation operations are NOT copied to child batches.
@@ -6682,7 +6749,7 @@ export const appRouter = router({
 
   // COGS and Reporting
   reports: router({
-    cogsPerBatch: createRbacProcedure("list", "reports").query(async () => {
+    cogsPerBatch: createRbacProcedure("list", "report").query(async () => {
       try {
         // TODO: Implement when batchCosts and cogsItems tables are created
         return {
@@ -6768,7 +6835,7 @@ export const appRouter = router({
       }
     }),
 
-    cogsBatchDetail: createRbacProcedure("list", "reports")
+    cogsBatchDetail: createRbacProcedure("list", "report")
       .input(z.object({ batchId: z.string().uuid() }))
       .query(async ({ input }) => {
         try {

@@ -83,7 +83,7 @@ export default function HomePage() {
               </div>
             </div>
             <h1 className="text-5xl font-bold text-gray-900 mb-4">
-              Welcome to <span className="text-amber-600">CideryCraft</span>
+              Welcome to <span className="text-amber-600">CiderPilot</span>
             </h1>
             <p className="text-xl text-gray-600 mb-8 leading-relaxed">
               Your complete cidery management system. Track everything from
