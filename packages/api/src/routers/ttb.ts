@@ -1683,6 +1683,11 @@ export const ttbRouter = router({
         let beginningInventorySource: "snapshot" | "ttb_opening_balance" | "calculated" = "calculated";
         let beginningPommeauBulkGallons = 0;
         let beginningWineUnder16BulkGallons = 0;
+        // Phase 3 C6: carbonated/sparkling beginning bulk, extracted so their bulk
+        // columns balance and so hardCider's beginning (derived by subtraction from
+        // the bulk total) no longer silently absorbs them.
+        let beginningCarbonatedBulkGallons = 0;
+        let beginningSparklingBulkGallons = 0;
         let brandyOpening = 0; // Spirits opening balance (excluded from wine beginningInventory)
         const beginningBottledByClass: Record<string, number> = {};
 
@@ -1707,6 +1712,8 @@ export const ttbRouter = router({
         let beginningPommeauBulkLiters = 0;
         let beginningWineUnder16BulkLiters = 0;
         let beginningBrandyBulkLiters = 0;
+        let beginningCarbonatedBulkLiters = 0;
+        let beginningSparklingBulkLiters = 0;
 
         if (previousSnapshot) {
           // Use previous snapshot's ending inventory (sum of all tax class columns)
@@ -1737,6 +1744,12 @@ export const ttbRouter = router({
           );
           beginningWineUnder16BulkGallons = roundGallons(
             parseFloat(previousSnapshot.bulkWineUnder16 || "0")
+          );
+          beginningCarbonatedBulkGallons = roundGallons(
+            parseFloat(previousSnapshot.bulkCarbonatedWine || "0")
+          );
+          beginningSparklingBulkGallons = roundGallons(
+            parseFloat(previousSnapshot.bulkSparklingWine || "0")
           );
           // Extract spirits opening from snapshot
           brandyOpening = parseFloat(previousSnapshot.spiritsAppleBrandy || "0");
@@ -1801,6 +1814,12 @@ export const ttbRouter = router({
             beginningWineUnder16BulkGallons = roundGallons(
               Number(balances.bulk?.wineUnder16 || 0)
             );
+            beginningCarbonatedBulkGallons = roundGallons(
+              Number(balances.bulk?.carbonatedWine || 0)
+            );
+            beginningSparklingBulkGallons = roundGallons(
+              Number(balances.bulk?.sparklingWine || 0)
+            );
             // Extract spirits opening (not included in wine bulk/bottled totals)
             brandyOpening = Number(balances.spirits?.appleBrandy || 0);
             // Extract per-class beginning bottled inventory
@@ -1850,6 +1869,8 @@ export const ttbRouter = router({
               beginningPommeauBulkLiters = begByClass["wine16To21"] || 0;
               beginningWineUnder16BulkLiters = begByClass["wineUnder16"] || 0;
               beginningBrandyBulkLiters = begByClass["appleBrandy"] || 0;
+              beginningCarbonatedBulkLiters = begByClass["carbonatedWine"] || 0;
+              beginningSparklingBulkLiters = begByClass["sparklingWine"] || 0;
             }
 
             beginningPommeauBulkGallons = roundGallons(
@@ -1857,6 +1878,12 @@ export const ttbRouter = router({
             );
             beginningWineUnder16BulkGallons = roundGallons(
               litersToWineGallons(beginningWineUnder16BulkLiters)
+            );
+            beginningCarbonatedBulkGallons = roundGallons(
+              litersToWineGallons(beginningCarbonatedBulkLiters)
+            );
+            beginningSparklingBulkGallons = roundGallons(
+              litersToWineGallons(beginningSparklingBulkLiters)
             );
 
             // Bottled inventory as of dayBeforeStart (batched)
@@ -2573,6 +2600,10 @@ export const ttbRouter = router({
         let endingPommeauBulkLiters = 0;
         let endingWineUnder16BulkLiters = 0;
         let endingBrandyBulkLiters = 0;
+        // Phase 3 C6: carbonated/sparkling bulk endings — small (these classes are
+        // mostly packaged), but extracted so their bulk columns can balance.
+        let endingCarbonatedBulkLiters = 0;
+        let endingSparklingBulkLiters = 0;
 
         // SBD is used for past-year ending inventory and to surface any batch that
         // reconstructs to a negative period-end volume (a data-quality signal now
@@ -2589,6 +2620,8 @@ export const ttbRouter = router({
             endingPommeauBulkLiters = endByClass["wine16To21"] || 0;
             endingWineUnder16BulkLiters = endByClass["wineUnder16"] || 0;
             endingBrandyBulkLiters = endByClass["appleBrandy"] || 0;
+            endingCarbonatedBulkLiters = endByClass["carbonatedWine"] || 0;
+            endingSparklingBulkLiters = endByClass["sparklingWine"] || 0;
           } else {
             // Current year: use live currentVolumeLiters (reflects physical inventory now)
             const endingLiveByClass: Record<string, number> = {};
@@ -2603,6 +2636,8 @@ export const ttbRouter = router({
             endingPommeauBulkLiters = endingLiveByClass["wine16To21"] || 0;
             endingWineUnder16BulkLiters = endingLiveByClass["wineUnder16"] || 0;
             endingBrandyBulkLiters = endingLiveByClass["appleBrandy"] || 0;
+            endingCarbonatedBulkLiters = endingLiveByClass["carbonatedWine"] || 0;
+            endingSparklingBulkLiters = endingLiveByClass["sparklingWine"] || 0;
           }
           // Per-batch negative period-end reconstructions, grouped by tax class.
           // These are itemized (not absorbed) as negativeBatchEnding variance
@@ -2751,6 +2786,8 @@ export const ttbRouter = router({
         const endingPommeauBulkGallons = roundGallons(litersToWineGallons(endingPommeauBulkLiters));
         const endingWineUnder16BulkGallons = roundGallons(litersToWineGallons(endingWineUnder16BulkLiters));
         const endingCiderBulkGallons = roundGallons(litersToWineGallons(endingBulkLiters));
+        const endingCarbonatedBulkGallons = roundGallons(litersToWineGallons(endingCarbonatedBulkLiters));
+        const endingSparklingBulkGallons = roundGallons(litersToWineGallons(endingSparklingBulkLiters));
         const endingBottledGallons = roundGallons(
           mlToWineGallons(endingBottledML) + litersToWineGallons(kegsInStockLiters + orphanBottleLiters)
         );
@@ -3452,7 +3489,13 @@ export const ttbRouter = router({
 
         // Build per-tax-class bulk wines columns
         // Hard cider column: excludes pommeau, wineUnder16, and brandy volumes
-        const ciderBeginning = roundGallons(beginningInventory.bulk - beginningPommeauBulkGallons - beginningWineUnder16BulkGallons);
+        // hardCider beginning = total bulk minus every other class's beginning bulk.
+        // Phase 3 C6: subtract carbonated/sparkling too (were 0 for 2024/2025, so no
+        // golden shift; matters once those classes carry a bulk opening).
+        const ciderBeginning = roundGallons(
+          beginningInventory.bulk - beginningPommeauBulkGallons - beginningWineUnder16BulkGallons
+          - beginningCarbonatedBulkGallons - beginningSparklingBulkGallons
+        );
         const ciderGains = roundGallons(gainsByTaxClass["hardCider"] || 0);
         const ciderBottled = roundGallons(bottledByTaxClass["hardCider"] || 0);
         const ciderKegFilled = roundGallons(kegFilledByTaxClass["hardCider"] || 0);
@@ -3630,13 +3673,59 @@ export const ttbRouter = router({
           line32_total: 0,
         };
 
+        // Carbonated / Sparkling bulk columns (Phase 3 C6). These classes are mostly
+        // PACKAGED (their volume lives in Part I Section B); their bulk column is small
+        // but real. Built from the same per-tax-class aggregates the other classes use
+        // (all dynamically keyed, so carbonatedWine/sparklingWine entries already exist):
+        // gains, bottled/keg/bottlingLoss, distillation, change-of-class, recorded losses.
+        // No direct bulk production path for these classes -> line2/line4 = 0 (their
+        // volume arrives via change-of-class in from cider / carbonation).
+        function buildEffervescentBulkColumn(
+          cls: "carbonatedWine" | "sparklingWine",
+          beginning: number,
+          ending: number,
+        ): { section: BulkWinesSection; lossesRaw: number; recorded: number } {
+          const changeIn = roundGallons(changeOfClassIn[cls] || 0);
+          const changeOut = roundGallons(changeOfClassOut[cls] || 0);
+          const gains = roundGallons(gainsByTaxClass[cls] || 0);
+          const bottled = roundGallons(bottledByTaxClass[cls] || 0);
+          const kegFilled = roundGallons(kegFilledByTaxClass[cls] || 0);
+          const bottlingLoss = roundGallons(bottlingLossByTaxClass[cls] || 0);
+          const packed = roundGallons(bottled + kegFilled - bottlingLoss);
+          const distillation = roundGallons(distillationByTaxClass[cls] || 0);
+          const recorded = roundGallons(lossesByTaxClass[cls] || 0);
+          const line12 = roundGallons(beginning + changeIn + gains);
+          const lossesRaw = roundGallons(line12 - packed - distillation - changeOut - ending);
+          const line32 = roundGallons(packed + distillation + changeOut + recorded + ending);
+          const section: BulkWinesSection = {
+            ...emptyBulkWines,
+            line1_onHandBeginning: beginning,
+            line9_inventoryGains: gains,
+            line10_writeIn: changeIn,
+            line10_writeInDesc: changeIn > 0 ? "CHANGE OF CLASS IN" : undefined,
+            line12_total: line12,
+            line13_bottled: packed,
+            line16_distillingMaterial: distillation,
+            line24_writeIn1: changeOut,
+            line24_writeIn1Desc: changeOut > 0 ? "CHANGE OF CLASS OUT" : undefined,
+            line29_losses: recorded,
+            line31_onHandEnd: ending,
+            line32_total: line32,
+          };
+          return { section, lossesRaw, recorded };
+        }
+        const carbonatedCol = buildEffervescentBulkColumn(
+          "carbonatedWine", beginningCarbonatedBulkGallons, endingCarbonatedBulkGallons);
+        const sparklingCol = buildEffervescentBulkColumn(
+          "sparklingWine", beginningSparklingBulkGallons, endingSparklingBulkGallons);
+
         const bulkWinesByTaxClass: Record<string, BulkWinesSection> = {
           hardCider: ciderBulkWines,
           wineUnder16: wineUnder16BulkWines,
           wine16To21: pommeauBulkWines,
           wine21To24: { ...emptyBulkWines },
-          carbonatedWine: { ...emptyBulkWines },
-          sparklingWine: { ...emptyBulkWines },
+          carbonatedWine: carbonatedCol.section,
+          sparklingWine: sparklingCol.section,
         };
 
         // ============================================
@@ -3739,6 +3828,11 @@ export const ttbRouter = router({
           ["hardCider", ciderLossesRaw, ciderRecordedLosses],
           ["wineUnder16", wineUnder16LossesRaw, wineUnder16RecordedLosses],
           ["wine16To21", pommeauLossesRaw, pommeauRecordedLosses],
+          // Phase 3 C6: carbonated/sparkling now carry real bulk columns, so their
+          // unexplained (line12-line32 beyond recorded losses) joins totalUnexplained
+          // exactly like every other class instead of hiding in an empty column.
+          ["carbonatedWine", carbonatedCol.lossesRaw, carbonatedCol.recorded],
+          ["sparklingWine", sparklingCol.lossesRaw, sparklingCol.recorded],
         ];
         for (const [cls, lossesRaw, recorded] of classRawInputs) {
           // unexplained = what Line 29 would absorb beyond real losses

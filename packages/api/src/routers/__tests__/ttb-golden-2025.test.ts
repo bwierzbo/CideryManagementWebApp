@@ -417,7 +417,12 @@ describe("TTB Golden 2025 — Form 5120.17", () => {
       // physically still on hand at year-end but not booked until early 2026, so
       // the 2025 period reads as if that volume left unaccounted. Pinned to the
       // measured value — surfaced honestly (balanced=false), never forced green.
-      const KNOWN_2025_UNEXPLAINED = 1154.0; // measured: HC ~1096 + W<16 ~27 + W16-21 ~45 + carbonated ~-14
+      // Phase 3 C6: carbonated/sparkling now carry REAL bulk columns (were empty).
+      // Their line12−line32 gaps (carbonated −27.5, sparkling −5.0) join the form
+      // variance and totalUnexplained like every other class, netted through the
+      // bottled section: 1154.0 − 17.7 = 1136.3. (The move is the full carb/sparkling
+      // column gap, not just their 14.5 recorded losses.)
+      const KNOWN_2025_UNEXPLAINED = 1136.3; // HC ~1096 + W<16 ~27 + W16-21 ~45 + carbonated -27.5 + sparkling -5.0
       const recon = formResult.reconciliation;
       expect(recon).toBeDefined();
       const variance = recon?.variance ?? 0;
