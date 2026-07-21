@@ -584,8 +584,7 @@ export const pressRunRouter = router({
                   vesselId: assignment.toVesselId,
                   name: batchName,
                   batchNumber: batchName,
-                  initialVolume: netVolumeL.toString(),
-                  initialVolumeUnit: "L",
+                  initialVolumeLiters: netVolumeL.toString(),
                   currentVolume: netVolumeL.toString(),
                   currentVolumeLiters: netVolumeL.toString(),
                   currentVolumeUnit: "L",
@@ -1255,8 +1254,7 @@ export const pressRunRouter = router({
               vesselId: input.vesselId,
               name: batchName,
               batchNumber: batchName, // Using batch name as batch number for now
-              initialVolume: totalJuiceVolumeL.toString(),
-              initialVolumeUnit: "L",
+              initialVolumeLiters: totalJuiceVolumeL.toString(),
               currentVolume: totalJuiceVolumeL.toString(),
               currentVolumeLiters: totalJuiceVolumeL.toString(),
               currentVolumeUnit: "L",
@@ -1693,8 +1691,7 @@ export const pressRunRouter = router({
                 name: batches.name,
                 currentVolume: batches.currentVolume,
                 currentVolumeUnit: batches.currentVolumeUnit,
-                initialVolume: batches.initialVolume,
-                initialVolumeUnit: batches.initialVolumeUnit,
+                initialVolume: batches.initialVolumeLiters,
                 transferLossL: batches.transferLossL,
                 transferLossNotes: batches.transferLossNotes,
               })
@@ -1837,8 +1834,7 @@ export const pressRunRouter = router({
                   vesselId: assignment.toVesselId,
                   name: batchName,
                   batchNumber: batchName, // Add batch_number for database compatibility
-                  initialVolume: netVolumeL.toString(),
-                  initialVolumeUnit: "L",
+                  initialVolumeLiters: netVolumeL.toString(),
                   currentVolume: netVolumeL.toString(),
                   currentVolumeLiters: netVolumeL.toString(),
                   currentVolumeUnit: "L",
@@ -2292,7 +2288,7 @@ export const pressRunRouter = router({
               batchId: batches.id,
               pressRunId: batches.originPressRunId,
               vesselId: batches.vesselId,
-              initialVolume: batches.initialVolume,
+              initialVolume: batches.initialVolumeLiters,
               name: batches.name,
             })
             .from(batches)
@@ -2610,7 +2606,7 @@ export const pressRunRouter = router({
             batchId: batches.id,
             batchName: batches.name,
             vesselId: batches.vesselId,
-            initialVolume: batches.initialVolume,
+            initialVolume: batches.initialVolumeLiters,
             startDate: batches.startDate,
           })
           .from(batches)

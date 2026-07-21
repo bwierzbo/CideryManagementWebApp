@@ -38,8 +38,6 @@ async function createTestBatch(opts: {
     .values({
       name: opts.name,
       batchNumber: `${opts.name}-${Math.random().toString(36).slice(2, 8)}`,
-      initialVolume: opts.initialL.toFixed(3),
-      initialVolumeUnit: "L",
       initialVolumeLiters: opts.initialL.toFixed(3),
       currentVolume: opts.currentL.toFixed(3),
       currentVolumeUnit: "L",

@@ -2340,8 +2340,7 @@ export const appRouter = router({
             vesselId: batches.vesselId,
             startDate: batches.startDate,
             endDate: batches.endDate,
-            initialVolume: batches.initialVolume,
-            initialVolumeUnit: batches.initialVolumeUnit,
+            initialVolume: batches.initialVolumeLiters,
             currentVolume: batches.currentVolume,
             currentVolumeUnit: batches.currentVolumeUnit,
             createdAt: batches.createdAt,
@@ -3808,14 +3807,9 @@ export const appRouter = router({
             if (isBackdated) {
               // For backdated transfers, reconstruct the historical volume at that point in time
               // Start from the batch's initial volume in liters
-              const initialVolumeL = parseFloat(
-                sourceBatch[0].initialVolumeLiters?.toString() ||
-                sourceBatch[0].initialVolume?.toString() || "0",
+              const initialInLiters = parseFloat(
+                sourceBatch[0].initialVolumeLiters?.toString() || "0",
               );
-              let initialInLiters = initialVolumeL;
-              if (!sourceBatch[0].initialVolumeLiters && sourceBatch[0].initialVolumeUnit === "gal") {
-                initialInLiters = initialVolumeL * 3.78541;
-              }
 
               // Get all transfers OUT from this batch that occurred on or before the backdated date
               const transfersOut = await tx
@@ -4038,8 +4032,6 @@ export const appRouter = router({
                   name: transferredBatchName,
                   batchNumber: transferredBatchNumber,
                   customName: sourceBatch[0].customName, // Inherit parent's custom name
-                  initialVolume: input.volumeL.toString(),
-                  initialVolumeUnit: "L",
                   initialVolumeLiters: input.volumeL.toString(),
                   currentVolume: input.volumeL.toString(),
                   currentVolumeUnit: "L",
@@ -5020,8 +5012,6 @@ export const appRouter = router({
                     name: transferredBatchName,
                     batchNumber: transferredBatchNumber,
                     customName: sourceBatch[0].customName,
-                    initialVolume: "0",
-                    initialVolumeUnit: "L",
                     initialVolumeLiters: "0",
                     currentVolume: input.volumeL.toString(),
                     currentVolumeUnit: "L",
@@ -5467,7 +5457,7 @@ export const appRouter = router({
                 id: batches.id,
                 name: batches.name,
                 customName: batches.customName,
-                initialVolume: batches.initialVolume,
+                initialVolume: batches.initialVolumeLiters,
                 currentVolume: batches.currentVolume,
                 status: batches.status,
                 startDate: batches.startDate,
@@ -6650,8 +6640,7 @@ export const appRouter = router({
             costPerBottle: string | null;
             costPerL: string | null;
             calculatedAt: Date | null;
-            initialVolume: string | null;
-            initialVolumeUnit: string | null;
+            initialVolumeLiters: string | null;
             currentVolume: string | null;
             currentVolumeUnit: string | null;
           }>,

@@ -87,8 +87,6 @@ async function makeVesselAndBatch(opts: {
       status: opts.status ?? "aging",
       vesselId: vessel.id,
       startDate: new Date(),
-      initialVolume: opts.volumeL.toString(),
-      initialVolumeUnit: "L",
       initialVolumeLiters: opts.volumeL.toString(),
       currentVolume: opts.volumeL.toString(),
       currentVolumeUnit: "L",

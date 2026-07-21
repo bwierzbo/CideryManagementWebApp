@@ -1070,8 +1070,7 @@ export const batchRouter = router({
             vesselCapacityUnit: vessels.capacityUnit,
             currentVolume: batches.currentVolume,
             currentVolumeUnit: batches.currentVolumeUnit,
-            initialVolume: batches.initialVolume,
-            initialVolumeUnit: batches.initialVolumeUnit,
+            initialVolume: batches.initialVolumeLiters,
             startDate:
               sql<string>`COALESCE(${pressRuns.dateCompleted}, ${batches.startDate})`.as(
                 "startDate",
@@ -1173,7 +1172,7 @@ export const batchRouter = router({
             currentVolume: currentVolumeValue,
             currentVolumeUnit: batch.currentVolumeUnit,
             initialVolume: batch.initialVolume ? parseFloat(batch.initialVolume.toString()) : null,
-            initialVolumeUnit: batch.initialVolumeUnit,
+            initialVolumeUnit: "L",
             vesselCapacityUnit: batch.vesselCapacityUnit,
             daysActive,
             latestMeasurement: measurement,
@@ -3695,8 +3694,6 @@ export const batchRouter = router({
             name: batches.name,
             customName: batches.customName,
             createdAt: batches.startDate,
-            initialVolume: batches.initialVolume,
-            initialVolumeUnit: batches.initialVolumeUnit,
             initialVolumeLiters: batches.initialVolumeLiters,
             currentVolume: batches.currentVolume,
             currentVolumeUnit: batches.currentVolumeUnit,
@@ -4314,9 +4311,9 @@ export const batchRouter = router({
           timestamp: creationTimestamp,
           description: creationDescription,
           details:
-            batch[0].initialVolume || creationVessel
+            batch[0].initialVolumeLiters || creationVessel
               ? {
-                  initialVolume: batch[0].initialVolume ? `${parseFloat(batch[0].initialVolume).toFixed(1)}${batch[0].initialVolumeUnit || 'L'}` : null,
+                  initialVolume: batch[0].initialVolumeLiters ? `${parseFloat(batch[0].initialVolumeLiters).toFixed(1)}L` : null,
                   vessel: creationVessel || null,
                 }
               : {},
@@ -5897,9 +5894,7 @@ export const batchRouter = router({
                 name: childBatchName,
                 customName: batch[0].customName, // Inherit parent's custom name without suffix
                 batchNumber: childBatchNumber,
-                initialVolume: "0", // Volume comes from transfer, not initial production
-                initialVolumeUnit: 'L',
-                initialVolumeLiters: "0",
+                initialVolumeLiters: "0", // Volume comes from transfer, not initial production
                 currentVolume: volumeRackedL.toString(),
                 currentVolumeUnit: 'L',
                 currentVolumeLiters: volumeRackedL.toString(),
@@ -6482,8 +6477,6 @@ export const batchRouter = router({
                 vesselId: input.vesselId,
                 name: newBatchName,
                 batchNumber: newBatchName,
-                initialVolume: transferVolumeL.toString(),
-                initialVolumeUnit: "L",
                 initialVolumeLiters: transferVolumeL.toString(),
                 currentVolume: transferVolumeL.toString(),
                 currentVolumeUnit: "L",
@@ -7044,8 +7037,6 @@ export const batchRouter = router({
               batchNumber,
               vesselId: input.vesselId || null,
               originJuicePurchaseItemId: input.juicePurchaseItemId,
-              initialVolume: input.volumeL.toString(),
-              initialVolumeUnit: "L",
               initialVolumeLiters: input.volumeL.toString(),
               currentVolume: input.volumeL.toString(),
               currentVolumeUnit: "L",
@@ -7219,8 +7210,6 @@ export const batchRouter = router({
               name: batchName,
               batchNumber,
               vesselId: input.vesselId,
-              initialVolume: estimatedVolumeL.toString(),
-              initialVolumeUnit: "L",
               initialVolumeLiters: estimatedVolumeL.toString(),
               currentVolume: estimatedVolumeL.toString(),
               currentVolumeUnit: "L",
@@ -7518,8 +7507,6 @@ export const batchRouter = router({
           name,
           batchNumber,
           customName: customNameValue,
-          initialVolume: volumeLiters.toFixed(3),
-          initialVolumeUnit: "L",
           initialVolumeLiters: volumeLiters.toFixed(3),
           currentVolume: volumeLiters.toFixed(3),
           currentVolumeLiters: volumeLiters.toFixed(3),
@@ -7583,7 +7570,7 @@ export const batchRouter = router({
         name: batches.name,
         batchNumber: batches.batchNumber,
         customName: batches.customName,
-        initialVolumeLiters: batches.initialVolume,
+        initialVolumeLiters: batches.initialVolumeLiters,
         currentVolumeLiters: batches.currentVolumeLiters,
         status: batches.status,
         productType: batches.productType,

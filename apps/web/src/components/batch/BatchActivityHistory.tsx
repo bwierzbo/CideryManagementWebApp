@@ -1115,7 +1115,7 @@ export function BatchActivityHistory({ batchId, bottleRunId }: BatchActivityHist
                 </div>
                 <div>
                   {(() => {
-                    const initial = parseFloat(String(batch.initialVolume || 0));
+                    const initial = parseFloat(String(batch.initialVolumeLiters || 0));
                     const current = batch.currentVolume !== null && batch.currentVolume !== undefined
                       ? parseFloat(String(batch.currentVolume))
                       : null;

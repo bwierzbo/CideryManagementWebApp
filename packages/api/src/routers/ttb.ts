@@ -6431,7 +6431,7 @@ export const ttbRouter = router({
       // Subtract juice-only batches from audit production (juice that was never fermented)
       const auditJuiceOnlyBatches = await db
         .select({
-          totalLiters: sql<number>`COALESCE(SUM(CAST(${batches.initialVolume} AS DECIMAL)), 0)`,
+          totalLiters: sql<number>`COALESCE(SUM(CAST(${batches.initialVolumeLiters} AS DECIMAL)), 0)`,
         })
         .from(batches)
         .where(
@@ -6467,7 +6467,7 @@ export const ttbRouter = router({
       const legacyBatchData = await db
         .select({
           customName: batches.customName,
-          initialVolumeLiters: batches.initialVolume,
+          initialVolumeLiters: batches.initialVolumeLiters,
         })
         .from(batches)
         .where(
@@ -6513,7 +6513,7 @@ export const ttbRouter = router({
           batchNumber: batches.batchNumber,
           customName: batches.customName,
           productType: batches.productType,
-          initialVolume: batches.initialVolume,
+          initialVolume: batches.initialVolumeLiters,
           currentVolume: batches.currentVolume,
           startDate: batches.startDate,
         })

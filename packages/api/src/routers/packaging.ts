@@ -841,7 +841,7 @@ export const packagingRouter = router({
             batchCustomName: batches.customName,
             batchNumber: batches.batchNumber,
             batchStatus: batches.status,
-            batchInitialVolume: batches.initialVolume,
+            batchInitialVolume: batches.initialVolumeLiters,
             batchCurrentVolume: batches.currentVolume,
             batchStartDate: batches.startDate,
             batchEndDate: batches.endDate,

@@ -739,11 +739,6 @@ export const batches = pgTable(
     name: text("name").notNull().unique(),
     customName: text("custom_name"),
     batchNumber: text("batch_number").notNull(),
-    initialVolume: decimal("initial_volume", {
-      precision: 10,
-      scale: 3,
-    }).notNull(),
-    initialVolumeUnit: unitEnum("initial_volume_unit").notNull().default("L"),
     initialVolumeLiters: decimal("initial_volume_liters", {
       precision: 10,
       scale: 3,

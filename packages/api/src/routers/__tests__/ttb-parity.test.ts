@@ -261,8 +261,6 @@ async function createTestBatch(opts: {
     name: batchName,
     customName: `${TEST_PREFIX}_${opts.name}`,
     batchNumber: `T-${testBatchIds.length + 1}-${Date.now()}`,
-    initialVolume: opts.initialVolumeLiters.toString(),
-    initialVolumeUnit: "L",
     initialVolumeLiters: opts.initialVolumeLiters.toString(),
     currentVolume: opts.currentVolumeLiters.toString(),
     currentVolumeUnit: "L",

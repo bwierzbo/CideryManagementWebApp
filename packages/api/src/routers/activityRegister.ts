@@ -243,7 +243,7 @@ export const activityRegisterRouter = router({
               jsonb_build_object(
                 'batchCode', b.name,
                 'batchName', COALESCE(b.custom_name, b.name),
-                'targetVolume', b.initial_volume,
+                'targetVolume', b.initial_volume_liters,
                 'status', b.status
               ) as metadata
             FROM batches b

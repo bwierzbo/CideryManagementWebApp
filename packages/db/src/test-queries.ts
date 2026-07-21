@@ -77,7 +77,7 @@ async function testQueries() {
       .select({
         batchNumber: batches.batchNumber,
         status: batches.status,
-        initialVolume: batches.initialVolume,
+        initialVolume: batches.initialVolumeLiters,
         currentVolume: batches.currentVolume,
         startDate: batches.startDate,
       })
