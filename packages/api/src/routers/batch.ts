@@ -3503,6 +3503,102 @@ export const batchRouter = router({
     }),
 
   /**
+   * Safely delete a transfer and correct both endpoint batches (Phase 2).
+   *
+   * Blocked for a year on "auto-reversal is unsafe" — delta-reversal heuristics
+   * could not distinguish duplicates from real transfers. With the Phase 1/2
+   * authoritative recompute this is now trivial and safe: soft-delete the
+   * transfer row (+ its recipe-blend merge mirror, if any), then recompute
+   * BOTH endpoints from event history. No heuristics; pinned
+   * (volume_manually_corrected) endpoints keep their pinned value and are
+   * reported back for awareness.
+   */
+  deleteTransfer: adminProcedure
+    .input(z.object({
+      transferId: z.string().uuid(),
+      reason: z.string().min(10, "Reason must be at least 10 characters"),
+    }))
+    .mutation(async ({ input }) => {
+      return await db.transaction(async (tx) => {
+        const [transfer] = await tx
+          .select()
+          .from(batchTransfers)
+          .where(and(eq(batchTransfers.id, input.transferId), isNull(batchTransfers.deletedAt)))
+          .limit(1);
+        if (!transfer) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Transfer not found (or already deleted)" });
+        }
+
+        await tx
+          .update(batchTransfers)
+          .set({ deletedAt: new Date() })
+          .where(eq(batchTransfers.id, input.transferId));
+
+        // Recipe-blend transfers carry a display mirror in batch_merge_history
+        // (source_type = 'batch_transfer', same endpoints/volume/timestamp) —
+        // soft-delete it too so activity timelines stay consistent.
+        const mirrors = await tx
+          .select({ id: batchMergeHistory.id })
+          .from(batchMergeHistory)
+          .where(and(
+            eq(batchMergeHistory.sourceType, "batch_transfer"),
+            isNull(batchMergeHistory.deletedAt),
+            eq(batchMergeHistory.targetBatchId, transfer.destinationBatchId),
+            transfer.sourceBatchId
+              ? eq(batchMergeHistory.sourceBatchId, transfer.sourceBatchId)
+              : isNull(batchMergeHistory.sourceBatchId),
+            transfer.transferredAt
+              ? eq(batchMergeHistory.mergedAt, transfer.transferredAt)
+              : sql`true`,
+          ))
+          .limit(1);
+        if (mirrors.length > 0) {
+          await tx
+            .update(batchMergeHistory)
+            .set({ deletedAt: new Date() })
+            .where(eq(batchMergeHistory.id, mirrors[0].id));
+        }
+
+        await tx.insert(auditLogs).values({
+          tableName: "batch_transfers",
+          recordId: input.transferId,
+          operation: "soft_delete",
+          oldData: {
+            sourceBatchId: transfer.sourceBatchId,
+            destinationBatchId: transfer.destinationBatchId,
+            volumeTransferred: transfer.volumeTransferred,
+            transferredAt: transfer.transferredAt,
+          },
+          newData: { deletedAt: new Date().toISOString() },
+          changedAt: new Date(),
+          reason: `Transfer deleted: ${input.reason}`,
+        });
+
+        // Recompute BOTH endpoints from event history — the whole point.
+        const results: Array<{ batchId: string; changed: boolean; skipped: string | null; volumeL: number }> = [];
+        const endpointIds = [transfer.sourceBatchId, transfer.destinationBatchId]
+          .filter((id): id is string => !!id);
+        for (const id of new Set(endpointIds)) {
+          const r = await recomputeBatchVolume(tx, id, {
+            reason: `Recompute after transfer ${input.transferId} deleted: ${input.reason}`,
+          });
+          results.push({
+            batchId: id,
+            changed: r.changed,
+            skipped: r.skipped,
+            volumeL: r.skipped ? r.storedL : r.expectedL,
+          });
+        }
+
+        return {
+          success: true,
+          deletedMirrorRow: mirrors.length > 0,
+          endpoints: results,
+        };
+      });
+    }),
+
+  /**
    * Validate batches and auto-verify those that pass all checks.
    * Batches with only warnings can be force-verified.
    */
