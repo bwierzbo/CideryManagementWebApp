@@ -529,7 +529,7 @@ async function computeReconciliationFromBatches(
     SELECT b.id, b.name, b.batch_number, b.product_type, b.start_date,
            b.initial_volume_liters, b.parent_batch_id, b.current_volume_liters,
            b.is_racking_derivative, b.vessel_id, b.reconciliation_status,
-           b.transfer_loss_l,
+           b.transfer_loss_l, b.transfer_created,
            v.name AS vessel_name, v.capacity_liters AS vessel_capacity_liters
     FROM batches b
     LEFT JOIN vessels v ON b.vessel_id = v.id
@@ -562,6 +562,7 @@ async function computeReconciliationFromBatches(
     vesselCapacityLiters: number | null;
     reconciliationStatus: string;
     pressTransferLossL: number;
+    transferCreated: boolean;
   }
 
   const batchInfoMap = new Map<string, BatchInfo>();
@@ -585,8 +586,16 @@ async function computeReconciliationFromBatches(
       vesselCapacityLiters: b.vessel_capacity_liters ? parseFloat(b.vessel_capacity_liters) : null,
       reconciliationStatus: b.reconciliation_status || "pending",
       pressTransferLossL: parseFloat(b.transfer_loss_l || "0"),
+      transferCreated: b.transfer_created === true,
     });
   }
+
+  // Phase 1: opening/ending/drift volume states come from THE shared reducer
+  // (same fetcher+formula as per-batch validation and SBD). Period-activity
+  // columns below stay on this function's own partitioned fetches — they feed
+  // the (still plugged, Phase 3) form lines and need fields the shared fetcher
+  // doesn't carry (vessel ids, distributions, volume_before/after).
+  const sharedVolumeInputs = await fetchBatchVolumeEvents(batchIds);
 
   // Build set of batch IDs that have children (used to detect fully-transferred sources)
   const batchesWithChildren = new Set<string>();
@@ -701,7 +710,7 @@ async function computeReconciliationFromBatches(
       SELECT batch_id, volume_loss, volume_before, volume_after, racked_at, source_vessel_id, destination_vessel_id
       FROM batch_racking_operations
       WHERE batch_id IN (${idList}) AND deleted_at IS NULL
-        AND (notes IS NULL OR notes NOT LIKE '%Historical Record%')
+        AND is_historical_record = false
     `),
     // 2i. Filter losses
     db.execute(sql`
@@ -1002,12 +1011,9 @@ async function computeReconciliationFromBatches(
   for (const batchId of batchIds) {
     const info = batchInfoMap.get(batchId)!;
 
-    // Determine if transfer-created (effective initial = 0)
-    // Only zero initial if transfers account for most of the initial volume (>= 90%).
-    // Small top-up transfers should NOT zero out the initial volume.
-    const allTransfersIn = transfersInByBatch.get(batchId) || [];
-    const totalTransfersInAllTime = allTransfersIn.reduce((s, r) => s + num(r.volume_transferred), 0);
-    const isTransferCreated = !!(info.parentBatchId && totalTransfersInAllTime >= info.initialVolumeLiters * 0.9);
+    // Transfer-created = the explicit batches.transfer_created flag (migration
+    // 0143) — the fragile 90%-of-initial cliff is gone (plan §2.5).
+    const isTransferCreated = info.transferCreated;
     const effectiveInitialL = isTransferCreated ? 0 : info.initialVolumeLiters;
 
     // Detect fully-transferred source batches: depleted batches that transferred all their
@@ -1066,24 +1072,12 @@ async function computeReconciliationFromBatches(
     const [mergesOutBefore, mergesOutDuring, mergesOutAfter] = partitionByDate(mergesOutByBatch.get(batchId) || [], "merged_at");
 
     // --- OPENING VOLUME (total volume at startDate) ---
-    const openingInitialL = batchStartedBefore ? effectiveInitialL : 0;
-    const openingMergesL = sumField(mergesBefore, "volume_added");
-    const openingTransfersInL = sumField(tInBefore, "volume_transferred");
-    const openingTransfersOutL = sumField(tOutBefore, "volume_transferred");
-    const openingTransferLossL = sumField(tOutBefore, "loss");
-    const openingBottlingTakenL = bottlingTakenL(bottlesBefore);
-    const openingKeggingTakenL = keggingTakenL(kegsBefore);
-    const openingDistillationL = sumField(distBefore, "source_volume_liters");
-    const openingAdjustmentsL = sumField(adjsBefore, "adjustment_amount");
-    const openingRackingLossL = sumField(racksBefore, "volume_loss");
-    const openingMergesOutL = sumField(mergesOutBefore, "volume_merged_out");
-    const openingFilterLossL = sumField(filtersBefore, "volume_loss");
-
-    const openingL = openingInitialL + openingMergesL + openingTransfersInL
-      - openingTransfersOutL - openingTransferLossL
-      - openingBottlingTakenL - openingKeggingTakenL
-      - openingDistillationL + openingAdjustmentsL
-      - openingRackingLossL - openingMergesOutL - openingFilterLossL;
+    // THE shared reducer, as-of the period start. Batches that started mid-
+    // period contribute 0 to opening (their initial belongs to production).
+    const sharedInputs = sharedVolumeInputs.get(batchId);
+    const openingL = batchStartedBefore && sharedInputs
+      ? computeBatchVolumeFromHistory(sharedInputs, { asOfDate: startDate }).volumeL
+      : 0;
 
     const openingClampedL = openingL;
 
@@ -1140,11 +1134,11 @@ async function computeReconciliationFromBatches(
     const periodDistillationL = sumField(distDuring, "source_volume_liters");
 
     // --- ENDING VOLUME (bulk — what should match currentVolumeLiters) ---
-    const endingL = openingClampedL + periodProductionL + periodPositiveAdjL
-      + periodTransfersInL - periodTransfersOutL - periodTransferLossL
-      - periodBottlingTakenL - periodKeggingTakenL
-      - periodRackingLossL - periodMergesOutL - periodFilterLossL - periodNegativeAdjL
-      - periodDistillationL;
+    // THE shared reducer, as-of the period end — identical formula/scoping to
+    // per-batch validation and SBD (this kills the third-replica drift).
+    const endingL = sharedInputs
+      ? computeBatchVolumeFromHistory(sharedInputs, { asOfDate: endDate }).volumeL
+      : 0;
 
     // No clamping — negative endings indicate data quality issues that should be
     // investigated, not hidden. All batch gaps have been reconciled to ~0.
@@ -1171,13 +1165,10 @@ async function computeReconciliationFromBatches(
     const reconstructedEndingLiters = endingL;
     const driftLiters = reconstructedEndingLiters - storedAtEndDateL;
 
-    // Initial volume anomaly: transfer-created batch should have initialVolume = 0
-    // Only flag if transfers account for most of the initial volume (the batch was
-    // truly created by transfer but initialVolumeLiters wasn't zeroed).
-    // Small top-up transfers (< 90% of initial) are not anomalies.
+    // Initial volume anomaly: a transfer-created batch (explicit flag) should
+    // have initialVolume = 0; a nonzero one that also drifts is flagged.
     const hasInitialVolumeAnomaly = !!(
-      info.parentBatchId && info.initialVolumeLiters > 0
-      && totalTransfersInAllTime >= info.initialVolumeLiters * 0.9
+      info.transferCreated && info.initialVolumeLiters > 0
       && (Math.abs(driftLiters) >= 0.5 || Math.abs(identityL) >= 0.95)
     );
 
@@ -2365,7 +2356,7 @@ export const ttbRouter = router({
               isNull(batches.deletedAt),
               gte(batchRackingOperations.rackedAt, startDate),
               lte(batchRackingOperations.rackedAt, endDate),
-              sql`(${batchRackingOperations.notes} IS NULL OR ${batchRackingOperations.notes} NOT LIKE '%Historical Record%')`
+              sql`${batchRackingOperations.isHistoricalRecord} = false`
             )
           )
           .groupBy(batchRackingOperations.batchId);
@@ -5183,7 +5174,7 @@ export const ttbRouter = router({
             sql`COALESCE(${batches.reconciliationStatus}, 'pending') NOT IN ('duplicate', 'excluded')`,
             sql`${batchRackingOperations.rackedAt}::date > ${openingDate}::date`,
             sql`${batchRackingOperations.rackedAt}::date <= ${reconciliationDate}::date`,
-            sql`(${batchRackingOperations.notes} IS NULL OR ${batchRackingOperations.notes} NOT LIKE '%Historical Record%')`
+            sql`${batchRackingOperations.isHistoricalRecord} = false`
           )
         );
 
@@ -5821,7 +5812,7 @@ export const ttbRouter = router({
             isNull(batches.deletedAt),
             sql`${batchRackingOperations.rackedAt}::date > ${openingDate}::date`,
             sql`${batchRackingOperations.rackedAt}::date <= ${reconciliationDate}::date`,
-            sql`(${batchRackingOperations.notes} IS NULL OR ${batchRackingOperations.notes} NOT LIKE '%Historical Record%')`
+            sql`${batchRackingOperations.isHistoricalRecord} = false`
           )
         )
         .groupBy(batches.id, batches.productType);
