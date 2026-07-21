@@ -25,6 +25,7 @@ import {
 import { eq, and, desc, isNull, sql, like, or, inArray } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { writeLedgerEntry } from "../lib/volume-ledger";
+import { recomputeBatchVolume } from "../services/batch-volume-recompute";
 
 /**
  * Reverse the batch-volume effect of a keg fill (shared by void + delete).
@@ -1229,6 +1230,9 @@ export const kegsRouter = router({
           }
         }
 
+        // Phase 2: self-heal — snap volume to event history (no-op when consistent)
+        await recomputeBatchVolume(tx, input.batchId);
+
         return {
           success: true,
           fills: fillRecords,
@@ -1691,6 +1695,9 @@ export const kegsRouter = router({
           // Restore the deducted volume to the batch (reconciliation depends on it)
           await restoreBatchVolumeFromKegFill(tx, fill);
 
+          // Phase 2: self-heal — snap volume to event history (no-op when consistent)
+          if (fill.batchId) await recomputeBatchVolume(tx, fill.batchId);
+
           return { success: true };
         });
       } catch (error) {
@@ -1758,6 +1765,11 @@ export const kegsRouter = router({
               updatedAt: new Date(),
             })
             .where(eq(kegs.id, fill.kegId));
+
+          // Phase 2: self-heal — snap volume to event history (no-op when consistent).
+          // Runs AFTER the kegFills row is hard-deleted so the reducer no longer
+          // sees the fill; the restore above and this recompute agree.
+          if (fill.batchId) await recomputeBatchVolume(tx, fill.batchId);
 
           return { success: true };
         });

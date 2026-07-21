@@ -47,6 +47,7 @@ import {
 } from "lib";
 import { correctSgForTemperature } from "lib/src/calc/sg-correction";
 import { writeLedgerEntry } from "../lib/volume-ledger";
+import { recomputeBatchVolume } from "../services/batch-volume-recompute";
 
 /**
  * Recalculates composition fractions for a batch based on juice volumes.
@@ -6128,6 +6129,14 @@ export const batchRouter = router({
             reason: resultMessage,
           });
 
+          // Phase 2: self-heal — snap volume to event history (no-op when consistent)
+          const rackTouchedBatchIds = new Set<string>([input.batchId]);
+          if (newChildBatch?.id) rackTouchedBatchIds.add(newChildBatch.id);
+          if (updatedBatch?.[0]?.id) rackTouchedBatchIds.add(updatedBatch[0].id);
+          for (const id of rackTouchedBatchIds) {
+            await recomputeBatchVolume(tx, id);
+          }
+
           return {
             success: true,
             message: resultMessage,
@@ -6457,6 +6466,9 @@ export const batchRouter = router({
                 "This juice was just allocated by another operation. Refresh to see the remaining volume.",
             });
           }
+
+          // Phase 2: self-heal — snap volume to event history (no-op when consistent)
+          await recomputeBatchVolume(tx, batchId);
 
           return {
             success: true,
@@ -10416,6 +10428,9 @@ export const batchRouter = router({
               .where(eq(vessels.id, batch.vesselId));
           }
 
+          // Phase 2: self-heal — snap volume to event history (no-op when consistent)
+          await recomputeBatchVolume(tx, input.batchId);
+
           return {
             adjustment,
             batch: {
@@ -10557,6 +10572,9 @@ export const batchRouter = router({
                 updatedAt: new Date(),
               })
               .where(eq(batches.id, adjustment.batchId));
+
+            // Phase 2: self-heal — snap volume to event history (no-op when consistent)
+            await recomputeBatchVolume(tx, adjustment.batchId);
           }
 
           return {

@@ -89,6 +89,7 @@ import {
   type CiderBrandyReconciliation,
 } from "lib";
 import { fetchBatchVolumeEvents } from "../services/batch-volume-events";
+import { recomputeBatchVolume } from "../services/batch-volume-recompute";
 
 /**
  * TTB tax-year membership timestamp for `batches` (Phase 1, migration 0144):
@@ -9213,6 +9214,11 @@ export const ttbRouter = router({
               updatedAt: new Date(),
             })
             .where(eq(batches.id, batchId));
+
+          // Phase 2: self-heal — snap volume to event history (no-op when consistent).
+          // This mutation is NOT transactional; recompute runs on the root db after
+          // the committed adjustment insert + update above (see report — non-atomic).
+          await recomputeBatchVolume(db, batchId);
         }
       }
 

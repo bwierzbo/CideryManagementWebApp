@@ -25,6 +25,7 @@ import {
   publishDeleteEvent,
 } from "lib";
 import { generateBatchNameFromComposition, type BatchComposition } from "lib";
+import { recomputeBatchVolume } from "../services/batch-volume-recompute";
 
 // Input validation schemas
 const createPressRunSchema = z.object({
@@ -650,6 +651,11 @@ export const pressRunRouter = router({
             ctx.session?.user?.id,
             "Press run created and completed via Build Press Run UI",
           );
+
+          // Phase 2: self-heal — snap volume to event history (no-op when consistent)
+          for (const id of createdBatchIds) {
+            await recomputeBatchVolume(tx, id);
+          }
 
           return {
             success: true,
@@ -2098,6 +2104,11 @@ export const pressRunRouter = router({
             ctx.session?.user?.id,
             "Press run completed with batch creation",
           );
+
+          // Phase 2: self-heal — snap volume to event history (no-op when consistent)
+          for (const id of createdBatchIds) {
+            await recomputeBatchVolume(tx, id);
+          }
 
           return {
             pressRunId: input.pressRunId,

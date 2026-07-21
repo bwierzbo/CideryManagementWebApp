@@ -44,6 +44,7 @@ import { recipeExecutionRouter } from "./recipeExecution";
 import { planningRouter } from "./planning";
 import { MIN_WORKING_VOLUME_L } from "lib";
 import { writeLedgerEntry } from "../lib/volume-ledger";
+import { recomputeBatchVolume } from "../services/batch-volume-recompute";
 import {
   db,
   vendors,
@@ -3800,6 +3801,9 @@ export const appRouter = router({
                 }
               }
 
+              // Phase 2: self-heal — snap volume to event history (no-op when consistent)
+              await recomputeBatchVolume(tx, sourceBatch[0].id);
+
               return {
                 message: `Rack to self complete — ${totalLoss.toFixed(2)}L ${input.lossType || "sediment"} loss recorded`,
                 volumeTransferred: 0,
@@ -5516,6 +5520,13 @@ export const appRouter = router({
             const message = isBlending
               ? `Successfully blended ${input.volumeL}L${adjustedLoss > 0 ? ` (${adjustedLoss.toFixed(2)}L loss)` : ""} from ${sourceVessel[0].name || "Unknown"} into ${destVessel[0].name || "Unknown"}. ${blendNote}${remainingVolumeL > 0 ? ` Remaining batch created with ${remainingVolumeL.toFixed(2)}L` : ""}.`
               : `Successfully transferred ${input.volumeL}L${adjustedLoss > 0 ? ` (${adjustedLoss.toFixed(2)}L loss)` : ""} from ${sourceVessel[0].name || "Unknown"} to ${destVessel[0].name || "Unknown"}. Batch moved to new vessel${renameSuffix}${remainingVolumeL > 0 ? `, remaining batch created with ${remainingVolumeL.toFixed(2)}L` : ""}.`;
+
+            // Phase 2: self-heal — snap volume to event history (no-op when consistent)
+            const transferTouchedBatchIds = new Set<string>([sourceBatch[0].id]);
+            if (updatedBatch[0]?.id) transferTouchedBatchIds.add(updatedBatch[0].id);
+            for (const id of transferTouchedBatchIds) {
+              await recomputeBatchVolume(tx, id);
+            }
 
             return {
               success: true,

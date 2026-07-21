@@ -18,6 +18,7 @@ import {
 } from "lib/src/calc/abv";
 import { convertVolume } from "lib/src/units/conversions";
 import { writeLedgerEntry } from "../lib/volume-ledger";
+import { recomputeBatchVolume } from "../services/batch-volume-recompute";
 
 // Constants
 const LITERS_PER_GALLON = 3.785411784;
@@ -155,6 +156,11 @@ export const distillationRouter = router({
               .where(eq(batches.id, batchInput.sourceBatchId));
           }
         }
+      }
+
+      // Phase 2: self-heal — snap volume to event history (no-op when consistent)
+      for (const batchInput of input.batches) {
+        await recomputeBatchVolume(tx, batchInput.sourceBatchId);
       }
 
       return {
@@ -296,6 +302,11 @@ export const distillationRouter = router({
             })
             .where(eq(batches.id, input.sourceBatchId));
         }
+
+        // Phase 2: self-heal — snap volume to event history (no-op when consistent).
+        // This mutation is NOT transactional; recompute runs on the root db after
+        // the committed writes above (see report — non-atomic site).
+        await recomputeBatchVolume(db, input.sourceBatchId);
       }
 
       return record;
@@ -840,6 +851,9 @@ export const distillationRouter = router({
               .update(batches)
               .set(updates)
               .where(eq(batches.id, record.sourceBatchId));
+
+            // Phase 2: self-heal — snap volume to event history (no-op when consistent)
+            await recomputeBatchVolume(tx, record.sourceBatchId);
           }
         }
 

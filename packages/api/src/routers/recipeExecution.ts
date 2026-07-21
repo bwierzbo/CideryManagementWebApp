@@ -33,6 +33,7 @@ import {
 } from "db";
 import { buildStepSchedule, rescheduleWithActuals } from "lib";
 import { router, createRbacProcedure } from "../trpc";
+import { recomputeBatchVolume } from "../services/batch-volume-recompute";
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
@@ -569,6 +570,15 @@ export const recipeExecutionRouter = router({
           })
           .where(eq(batchStepTasks.id, task.id));
         await recomputeSchedule(tx, task.executionId);
+
+        // Phase 2: self-heal — snap volume to event history (no-op when consistent).
+        // Destination fill and every source draw are backed by batch_transfers rows.
+        const transferTouchedBatchIds = new Set<string>([task.batchId]);
+        for (const draw of draws) transferTouchedBatchIds.add(draw.batchId);
+        for (const id of transferTouchedBatchIds) {
+          await recomputeBatchVolume(tx, id);
+        }
+
         return { tasks: await tasksForExecution(tx, task.executionId) };
       });
     }),
