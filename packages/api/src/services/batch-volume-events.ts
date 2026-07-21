@@ -168,6 +168,16 @@ export async function fetchBatchVolumeEvents(
         at: bottleRuns.packagedAt,
       })
       .from(bottleRuns)
+      // NOTE (Phase 2B2 investigation): keg-linked bottle runs (kegFillId set)
+      // are counted like any other run. In principle a true partial
+      // keg-re-bottle would double-debit (keg fill + bottle run), but the 4
+      // active-fill keg-linked rows in the data are demonstrably MISLINKED
+      // vessel runs (two RB runs share one 19.5L fill; LS balances only when
+      // counted) — excluding them broke real batches. Genuine keg-empties
+      // delete their fill, which already prevents the double-count. Follow-up
+      // captured: verify/clear the 4 bogus kegFillId links, then bottling-
+      // from-keg can stop debiting the batch and the packaging keg-branch
+      // recompute can be un-gated.
       .where(and(inArray(bottleRuns.batchId, batchIds), isNull(bottleRuns.voidedAt))),
 
     executor

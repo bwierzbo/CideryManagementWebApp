@@ -2468,161 +2468,10 @@ export const appRouter = router({
         }
       }),
 
-    transfer: createRbacProcedure("update", "batch")
-      .input(
-        z.object({
-          batchId: z.string().uuid("Invalid batch ID"),
-          newVesselId: z.string().uuid("Invalid vessel ID"),
-          volumeTransferredL: z
-            .number()
-            .positive("Volume transferred must be positive"),
-          notes: z.string().optional(),
-        }),
-      )
-      .mutation(async ({ input, ctx }) => {
-        try {
-          return await db.transaction(async (tx) => {
-            // Verify batch exists
-            const batch = await tx
-              .select()
-              .from(batches)
-              .where(
-                and(eq(batches.id, input.batchId), isNull(batches.deletedAt)),
-              )
-              .limit(1);
+    // (batch.transfer removed in Phase 2B2: dead API surface — no web callers —
+    // that rewrote currentVolume with no event row, silently swallowing any
+    // difference as untracked loss. Whole-batch vessel moves use vessel.transfer.)
 
-            if (!batch.length) {
-              throw new TRPCError({
-                code: "NOT_FOUND",
-                message: "Batch not found",
-              });
-            }
-
-            // Verify new vessel is available
-            const newVessel = await tx
-              .select()
-              .from(vessels)
-              .where(
-                and(
-                  eq(vessels.id, input.newVesselId),
-                  isNull(vessels.deletedAt),
-                ),
-              )
-              .limit(1);
-
-            if (!newVessel.length) {
-              throw new TRPCError({
-                code: "NOT_FOUND",
-                message: "New vessel not found",
-              });
-            }
-
-            if (newVessel[0].status !== "available") {
-              throw new TRPCError({
-                code: "BAD_REQUEST",
-                message: "New vessel is not available",
-              });
-            }
-
-            // Check if new vessel already has an active batch
-            const existingBatch = await tx
-              .select({ id: batches.id, name: batches.name })
-              .from(batches)
-              .where(
-                and(
-                  eq(batches.vesselId, input.newVesselId),
-                  inArray(batches.status, ["fermentation", "aging", "conditioning"]),
-                  isNull(batches.deletedAt),
-                ),
-              )
-              .limit(1);
-
-            if (existingBatch.length > 0) {
-              throw new TRPCError({
-                code: "BAD_REQUEST",
-                message: `Destination vessel already has an active batch (${existingBatch[0].name}). Each vessel can only hold one batch at a time.`,
-              });
-            }
-
-            // Check capacity
-            const newVesselCapacityL = parseFloat(newVessel[0].capacity?.toString() || "0");
-            if (input.volumeTransferredL > newVesselCapacityL) {
-              throw new TRPCError({
-                code: "BAD_REQUEST",
-                message: "Volume exceeds new vessel capacity",
-              });
-            }
-
-            const currentVolumeL = parseFloat(batch[0].currentVolume?.toString() || "0");
-            if (input.volumeTransferredL > currentVolumeL) {
-              throw new TRPCError({
-                code: "BAD_REQUEST",
-                message: "Not enough volume in batch for transfer",
-              });
-            }
-
-            // Update batch vessel and volume
-            const updatedBatch = await tx
-              .update(batches)
-              .set({
-                vesselId: input.newVesselId,
-                currentVolume: input.volumeTransferredL.toString(),
-                currentVolumeLiters: input.volumeTransferredL.toString(),
-                currentVolumeUnit: "L",
-                updatedAt: new Date(),
-              })
-              .where(eq(batches.id, input.batchId))
-              .returning();
-
-            // Update old vessel to available
-            if (batch[0].vesselId) {
-              await tx
-                .update(vessels)
-                .set({
-                  status: "available",
-                  updatedAt: new Date(),
-                })
-                .where(eq(vessels.id, batch[0].vesselId));
-            }
-
-            // Update new vessel to in_use
-            await tx
-              .update(vessels)
-              .set({
-                status: "available",
-                updatedAt: new Date(),
-              })
-              .where(eq(vessels.id, input.newVesselId));
-
-            // Publish audit event
-            await publishUpdateEvent(
-              "batches",
-              input.batchId,
-              batch[0],
-              {
-                vesselId: input.newVesselId,
-                currentVolume: input.volumeTransferredL,
-                currentVolumeUnit: "L",
-              },
-              ctx.session?.user?.id,
-              "Batch transferred to new vessel via API",
-            );
-
-            return {
-              success: true,
-              batch: updatedBatch[0],
-              message: `Batch transferred to new vessel with ${input.volumeTransferredL}L`,
-            };
-          });
-        } catch (error) {
-          if (error instanceof TRPCError) throw error;
-          console.error("Error transferring batch:", error);
-          throw new TRPCError({
-            code: "INTERNAL_SERVER_ERROR",
-            message: "Failed to transfer batch",
-          });
-        }
-      }),
 
     getById: createRbacProcedure("read", "batch")
       .input(z.object({ id: z.string().uuid() }))
@@ -6189,6 +6038,26 @@ export const appRouter = router({
               })
               .returning({ id: batchVolumeAdjustments.id });
 
+            // 1b. Partial destroy: the batch still ends (discarded, vessel to
+            // cleaning), so any residual beyond the destroyed volume is written
+            // off EXPLICITLY as its own adjustment row — previously it vanished
+            // silently when the volume was forced to 0 while the destruction
+            // adjustment recorded only -volumeL (Phase 2B2 event-model fix).
+            const residualL = volumeBefore - input.volumeL;
+            if (residualL > 0.01) {
+              await tx.insert(batchVolumeAdjustments).values({
+                batchId: batch.id,
+                vesselId: input.vesselId,
+                adjustmentDate: destroyedAt,
+                adjustmentType: "correction_down",
+                volumeBefore: residualL.toFixed(3),
+                volumeAfter: "0",
+                adjustmentAmount: (-residualL).toFixed(3),
+                reason: `Residual ${residualL.toFixed(1)}L written off at batch destruction (destroyed ${input.volumeL}L of ${volumeBefore.toFixed(1)}L)`,
+                adjustedBy: ctx.user.id,
+              });
+            }
+
             // 2. Mark batch as discarded + populate destruction fields
             await tx
               .update(batches)
@@ -6203,6 +6072,9 @@ export const appRouter = router({
                 updatedAt: new Date(),
               })
               .where(eq(batches.id, batch.id));
+
+            // Phase 2: self-heal — snap volume to event history (no-op when consistent)
+            await recomputeBatchVolume(tx, batch.id);
 
             // 3. Vessel → cleaning
             await tx

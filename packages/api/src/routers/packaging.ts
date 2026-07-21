@@ -760,9 +760,11 @@ export const packagingRouter = router({
           });
 
           // Phase 2: self-heal — snap volume to event history (no-op when consistent).
-          // Vessel path only: bottling from a keg was already deducted at keg-fill
-          // time, and the reducer counts keg-linked bottle_runs on top of the
-          // keg_fill event, so recompute would double-subtract here.
+          // Vessel path only. Bottling FROM a keg doesn't debit the batch (the
+          // keg fill already did) but its bottleRuns row still counts in the
+          // reducer, so a recompute here would double-subtract. Un-gate once
+          // the 4 mislinked historical kegFillId rows are resolved and keg-
+          // sourced runs stop counting against the batch (captured follow-up).
           if (!isBottlingFromKeg) {
             await recomputeBatchVolume(tx, input.batchId);
           }
