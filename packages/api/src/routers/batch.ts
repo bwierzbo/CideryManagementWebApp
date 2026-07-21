@@ -3413,6 +3413,96 @@ export const batchRouter = router({
     }),
 
   /**
+   * Pin (or unpin) a batch's volume as manually corrected (Phase 2).
+   *
+   * SET: writes the corrected volume, flags volume_manually_corrected, and
+   * records an audit row with the required reason. While flagged, the
+   * self-heal recompute and the volume-balance check skip/annotate the batch
+   * instead of fighting or flagging it.
+   * CLEAR: unflags and immediately recomputes from event history, snapping
+   * the volume back to what the ledger says.
+   */
+  setVolumeManualCorrection: adminProcedure
+    .input(z.object({
+      batchId: z.string().uuid(),
+      corrected: z.boolean(),
+      correctedVolumeLiters: z.number().min(0).optional(),
+      reason: z.string().min(10, "Reason must be at least 10 characters"),
+    }).refine((v) => !v.corrected || v.correctedVolumeLiters !== undefined, {
+      message: "correctedVolumeLiters is required when setting a correction",
+      path: ["correctedVolumeLiters"],
+    }))
+    .mutation(async ({ input }) => {
+      return await db.transaction(async (tx) => {
+        const [batch] = await tx
+          .select({
+            id: batches.id,
+            currentVolumeLiters: batches.currentVolumeLiters,
+            volumeManuallyCorrected: batches.volumeManuallyCorrected,
+          })
+          .from(batches)
+          .where(and(eq(batches.id, input.batchId), isNull(batches.deletedAt)))
+          .limit(1);
+        if (!batch) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Batch not found" });
+        }
+        const oldVolume = batch.currentVolumeLiters ?? "0";
+
+        if (input.corrected) {
+          const newVolume = input.correctedVolumeLiters!.toFixed(3);
+          await tx
+            .update(batches)
+            .set({
+              currentVolume: newVolume,
+              currentVolumeLiters: newVolume,
+              currentVolumeUnit: "L",
+              volumeManuallyCorrected: true,
+              updatedAt: new Date(),
+            })
+            .where(eq(batches.id, input.batchId));
+          await tx.insert(auditLogs).values({
+            tableName: "batches",
+            recordId: input.batchId,
+            operation: "update",
+            oldData: { currentVolumeLiters: oldVolume, volumeManuallyCorrected: batch.volumeManuallyCorrected },
+            newData: { currentVolumeLiters: newVolume, volumeManuallyCorrected: true },
+            diffData: {
+              currentVolumeLiters: { old: oldVolume, new: newVolume },
+              volumeManuallyCorrected: { old: batch.volumeManuallyCorrected, new: true },
+            },
+            changedAt: new Date(),
+            reason: `Manual volume correction: ${input.reason}`,
+          });
+          return { success: true, corrected: true, volumeLiters: parseFloat(newVolume) };
+        }
+
+        // CLEAR: unflag, then snap back to event history.
+        await tx
+          .update(batches)
+          .set({ volumeManuallyCorrected: false, updatedAt: new Date() })
+          .where(eq(batches.id, input.batchId));
+        await tx.insert(auditLogs).values({
+          tableName: "batches",
+          recordId: input.batchId,
+          operation: "update",
+          oldData: { volumeManuallyCorrected: true },
+          newData: { volumeManuallyCorrected: false },
+          diffData: { volumeManuallyCorrected: { old: true, new: false } },
+          changedAt: new Date(),
+          reason: `Manual volume correction cleared: ${input.reason}`,
+        });
+        const recompute = await recomputeBatchVolume(tx, input.batchId, {
+          reason: "Recompute after clearing manual volume correction",
+        });
+        return {
+          success: true,
+          corrected: false,
+          volumeLiters: recompute.changed ? recompute.expectedL : parseFloat(oldVolume),
+        };
+      });
+    }),
+
+  /**
    * Validate batches and auto-verify those that pass all checks.
    * Batches with only warnings can be force-verified.
    */
@@ -3435,6 +3525,7 @@ export const batchRouter = router({
           vesselId: batches.vesselId,
           actualAbv: batches.actualAbv,
           estimatedAbv: batches.estimatedAbv,
+          volumeManuallyCorrected: batches.volumeManuallyCorrected,
         })
         .from(batches)
         .where(and(inArray(batches.id, input.batchIds), isNull(batches.deletedAt)));

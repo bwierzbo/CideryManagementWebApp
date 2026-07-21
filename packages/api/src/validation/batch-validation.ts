@@ -35,6 +35,8 @@ export interface BatchForValidation {
   vesselId: string | null;
   actualAbv: string | null;
   estimatedAbv: string | null;
+  /** Optional: when true, volume checks annotate instead of flag (Phase 2). */
+  volumeManuallyCorrected?: boolean | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -109,6 +111,18 @@ function checkVolumeBalance(
   batch: BatchForValidation,
   volume: BatchVolumeResult,
 ): ValidationCheck {
+  // Owner-pinned volumes are annotated, not flagged (Phase 2): the flag says
+  // "I know better than the event history here" — recompute skips these
+  // batches and validation must not nag about them forever (plan §2.2).
+  if (batch.volumeManuallyCorrected) {
+    return {
+      id: "volume_balance",
+      status: "pass",
+      message: "Volume manually corrected — reconstruction check skipped",
+      details: "volume_manually_corrected is set; clear it to re-enable history reconciliation",
+    };
+  }
+
   const current = num(batch.currentVolumeLiters);
   const expectedCurrent = volume.volumeL;
 
