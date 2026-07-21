@@ -755,6 +755,39 @@ export interface FermentersSection {
 }
 
 /**
+ * Phase 3: per-class variance itemization — every gallon a balancing
+ * mechanism would otherwise silently absorb, under an honest name.
+ * `unexplained` is SIGNED: positive = volume missing (would have been plugged
+ * into Line 29 losses), negative = surplus (would have been flipped into
+ * Line 9 gains).
+ */
+export interface TTBVarianceComponent {
+  kind: "outOfScopeInflow" | "negativeBatchEnding" | "roundingResidual" | "sectionBalancing" | "other";
+  /** Signed gallons. */
+  amount: number;
+  batchId?: string;
+  note: string;
+}
+
+export interface TTBVarianceClassAnalysis {
+  /** Signed unexplained gallons for this class. */
+  unexplained: number;
+  /** Real recorded operational losses (racking/filter/bottling/etc.). */
+  recordedLosses: number;
+  /** Manual ttb_waterfall_adjustments applied for this class (0 until applied server-side). */
+  manualAdjustments: number;
+  components: TTBVarianceComponent[];
+}
+
+export interface TTBVarianceAnalysis {
+  byTaxClass: Record<string, TTBVarianceClassAnalysis>;
+  /** Sum of |per-class unexplained| direction-preserving total (signed sum). */
+  totalUnexplained: number;
+  /** Headline data-quality metric: stored vs reconstructed drift, gallons. */
+  sbdDriftGal?: number;
+}
+
+/**
  * Complete TTB Form 5120.17 data structure
  */
 export interface TTBForm512017Data {
@@ -813,6 +846,14 @@ export interface TTBForm512017Data {
     /** Whether the books balance */
     balanced: boolean;
   };
+
+  /**
+   * Phase 3 variance itemization: what the form's balancing mechanisms
+   * absorb, per tax class, under honest names. While the plugs are still
+   * active (Phase 3 C1) this REPORTS what they absorb; after de-plug it IS
+   * the unexplained variance.
+   */
+  varianceAnalysis?: TTBVarianceAnalysis;
 
   /** Distillery operations (cider sent, brandy received) */
   distilleryOperations?: DistilleryOperations;
