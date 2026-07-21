@@ -98,6 +98,17 @@ Not a problem (verified correct): juice is excluded until it becomes cider/pomme
 - Fix the formula gaps while consolidating: apply merge/keg **units** (§2.7); resolve the `initial_volume_liters` vs merge-history double-count (§2.3); replace the 90% cliff with an explicit transfer-created flag (§2.5); replace the `"Historical Record"` string match and `<2L` bottling-loss heuristic with real columns/flags (§2.4); ensure distillation status coverage (§2.6).
 
 ### Phase 2 — Make live volume trustworthy + revive the manual-correction flag
+> **STATUS: DONE 2026-07-21** (commits Phase 2A–2E on `recon/phase0-diagnostic`). Stance (a) chosen:
+> delta-driven live volume + `recomputeBatchVolume` self-heal (audit-logged overwrites, pinned-batch
+> skip) wired at the end of every volume-mutating transaction. `volume_manually_corrected` is a real
+> flag: pin/unpin mutation with reason + audit, validation annotates instead of flagging, Pin/Unpin UI
+> on the reconciliation page. The reverted transfer-delete shipped (`batch.deleteTransfer`: soft-delete
+> + recompute both endpoints, Volume Trace UI). Legacy `initial_volume`/`initial_volume_unit` DROPPED
+> (migration 0145) along with the redundant 0039 normalize trigger that kept re-deriving liters from
+> them; dead `batch.transfer` mutation removed; `destroyBatch` partial-destroy residual now an explicit
+> adjustment. Deferred with notes: `createPommeau` cider-debit event row (coupled to pommeau TTB
+> attribution), 4 mislinked historical `bottle_runs.keg_fill_id` values (see batch-volume-events.ts
+> comment).
 - Add `recomputeBatchVolume(tx, batchId)` built on the Phase-1 function; **respect `volume_manually_corrected`**.
 - Make `volume_manually_corrected` a **real, settable flag**: an API mutation sets it (with reason) when a user hand-corrects a volume; `checkVolumeBalance` and recompute must skip/annotate those batches instead of flagging them forever.
 - Decide the architectural stance (a real decision to make): **(a)** keep delta-driven live volume but call `recomputeBatchVolume` after every volume-mutating op (self-healing), or **(b)** make `currentVolume` a derived read. Recommend (a) — smaller blast radius.
