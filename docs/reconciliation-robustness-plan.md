@@ -83,6 +83,17 @@ Not a problem (verified correct): juice is excluded until it becomes cider/pomme
 - Build it as a small read-only script using the real `checkVolumeBalance`/SBD functions (not a re-derivation), run via `pnpm --filter db exec tsx` (see `.claude/skills/db-query`).
 
 ### Phase 1 — One authoritative volume-from-history function
+> **STATUS: DONE 2026-07-21** (branch `recon/phase0-diagnostic`, commits Phase 1A–1G). All THREE
+> replicas (per-batch `checkVolumeBalance`, SBD `computeSystemCalculatedOnHand`, batch-derived
+> `computeReconciliationFromBatches` — one more than this plan knew about) now call
+> `computeBatchVolumeFromHistory` (packages/lib/src/calculations/batch-volume.ts) via the shared
+> fetcher `packages/api/src/services/batch-volume-events.ts`. Heuristics replaced by columns
+> (migration 0143: transfer_created, is_historical_record, loss_included_in_volume_taken).
+> TTB membership via ttb_origin_year >= 2025 (migration 0144 backfilled the 40-batch fall-2025
+> cohort). Results: 2025 HC production recomputes to EXACTLY the filed 4,808; the Line-29 plug
+> shrank 173 gal; 2024/2026 outputs frozen; golden suite re-pinned as filed + 13 documented
+> permanent deltas (73/73). Remaining 2025 ending gap (~1,156 gal) = un-redated backlog EVENTS —
+> owner-accepted, documented in KNOWN_DELTA, not a goal.
 - Extract the volume reduction into a **single pure function** in `packages/lib` (e.g. `computeBatchVolumeFromHistory(events)`), and make BOTH `checkVolumeBalance` and `computeSystemCalculatedOnHand` call it. Kills the two-engine drift. Unit-test exhaustively.
 - Fix the formula gaps while consolidating: apply merge/keg **units** (§2.7); resolve the `initial_volume_liters` vs merge-history double-count (§2.3); replace the 90% cliff with an explicit transfer-created flag (§2.5); replace the `"Historical Record"` string match and `<2L` bottling-loss heuristic with real columns/flags (§2.4); ensure distillation status coverage (§2.6).
 
