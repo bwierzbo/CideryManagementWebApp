@@ -1,15 +1,11 @@
-import {
-  db,
-  batches,
-  batchTransfers,
-  batchFilterOperations,
-  batchRackingOperations,
-  batchVolumeAdjustments,
-  batchMergeHistory,
-} from "db";
-import { bottleRuns, kegFills } from "db/src/schema/packaging";
+import { db } from "db";
 import { batchCarbonationOperations } from "db/src/schema/carbonation";
-import { eq, and, isNull, inArray, sql } from "drizzle-orm";
+import { and, isNull, inArray } from "drizzle-orm";
+import {
+  computeBatchVolumeFromHistory,
+  type BatchVolumeResult,
+} from "lib";
+import { fetchBatchVolumeEvents } from "../services/batch-volume-events";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -44,47 +40,10 @@ export interface BatchForValidation {
 // ---------------------------------------------------------------------------
 // Bulk data fetching
 // ---------------------------------------------------------------------------
-
-interface TransferOut {
-  sourceBatchId: string;
-  volumeTransferred: string | null;
-  loss: string | null;
-}
-
-interface TransferIn {
-  destinationBatchId: string;
-  volumeTransferred: string | null;
-}
-
-interface BottleRunRow {
-  batchId: string;
-  volumeTakenLiters: string | null;
-  loss: string | null;
-  unitsProduced: number | null;
-  packageSizeML: number | null;
-}
-
-interface KegFillRow {
-  batchId: string;
-  volumeTaken: string | null;
-  loss: string | null;
-}
-
-interface AdjustmentRow {
-  batchId: string;
-  adjustmentAmount: string | null;
-}
-
-interface RackingRow {
-  batchId: string;
-  volumeLoss: string | null;
-  notes: string | null;
-}
-
-interface FilterRow {
-  batchId: string;
-  volumeLoss: string | null;
-}
+// Volume events come from the shared fetcher (services/batch-volume-events.ts)
+// feeding THE authoritative reducer in lib — the same pair every recon engine
+// uses (Phase 1, reconciliation plan §3). Only carbonation rows (classification
+// check, not volume) are fetched here.
 
 interface CarbonationRow {
   batchId: string;
@@ -92,248 +51,30 @@ interface CarbonationRow {
   carbonationProcess: string | null;
 }
 
-interface MergeHistoryRow {
-  targetBatchId: string;
-  volumeAdded: string | null;
-  volumeAddedUnit: string | null;
-}
-
-interface MergeOutRow {
-  sourceBatchId: string;
-  volumeAdded: string | null;
-}
-
-interface DistillationRow {
-  source_batch_id: string;
-  source_volume_liters: string | null;
-}
-
-function groupBy<T>(rows: T[], keyFn: (r: T) => string): Map<string, T[]> {
-  const map = new Map<string, T[]>();
+async function fetchCarbonationsByBatch(
+  batchIds: string[],
+): Promise<Map<string, CarbonationRow[]>> {
+  const map = new Map<string, CarbonationRow[]>();
+  if (batchIds.length === 0) return map;
+  const rows = await db
+    .select({
+      batchId: batchCarbonationOperations.batchId,
+      finalCo2Volumes: batchCarbonationOperations.finalCo2Volumes,
+      carbonationProcess: batchCarbonationOperations.carbonationProcess,
+    })
+    .from(batchCarbonationOperations)
+    .where(
+      and(
+        inArray(batchCarbonationOperations.batchId, batchIds),
+        isNull(batchCarbonationOperations.deletedAt),
+      ),
+    );
   for (const row of rows) {
-    const key = keyFn(row);
-    const arr = map.get(key);
-    if (arr) {
-      arr.push(row);
-    } else {
-      map.set(key, [row]);
-    }
+    const arr = map.get(row.batchId);
+    if (arr) arr.push(row);
+    else map.set(row.batchId, [row]);
   }
   return map;
-}
-
-async function fetchBulkVolumeData(batchIds: string[]) {
-  if (batchIds.length === 0) {
-    return {
-      transfersOutByBatch: new Map<string, TransferOut[]>(),
-      transfersInByBatch: new Map<string, TransferIn[]>(),
-      mergeHistoryByBatch: new Map<string, MergeHistoryRow[]>(),
-      mergeOutByBatch: new Map<string, MergeOutRow[]>(),
-      bottleRunsByBatch: new Map<string, BottleRunRow[]>(),
-      kegFillsByBatch: new Map<string, KegFillRow[]>(),
-      adjustmentsByBatch: new Map<string, AdjustmentRow[]>(),
-      rackingsByBatch: new Map<string, RackingRow[]>(),
-      filtersByBatch: new Map<string, FilterRow[]>(),
-      carbonationsByBatch: new Map<string, CarbonationRow[]>(),
-      distillationsByBatch: new Map<string, DistillationRow[]>(),
-    };
-  }
-
-  const [
-    transfersOut,
-    transfersIn,
-    mergeHistory,
-    mergeOuts,
-    bottles,
-    kegs_,
-    adjustments,
-    rackings,
-    filters,
-    carbonations,
-    distillations,
-  ] = await Promise.all([
-    // 1. Transfers out (source = our batch, destination ≠ source)
-    db
-      .select({
-        sourceBatchId: batchTransfers.sourceBatchId,
-        volumeTransferred: batchTransfers.volumeTransferred,
-        loss: batchTransfers.loss,
-      })
-      .from(batchTransfers)
-      .where(
-        and(
-          inArray(batchTransfers.sourceBatchId, batchIds),
-          sql`${batchTransfers.sourceBatchId} != ${batchTransfers.destinationBatchId}`,
-          isNull(batchTransfers.deletedAt),
-        ),
-      ),
-
-    // 2. Transfers in (destination = our batch, source ≠ destination)
-    db
-      .select({
-        destinationBatchId: batchTransfers.destinationBatchId,
-        volumeTransferred: batchTransfers.volumeTransferred,
-      })
-      .from(batchTransfers)
-      .where(
-        and(
-          inArray(batchTransfers.destinationBatchId, batchIds),
-          sql`${batchTransfers.sourceBatchId} != ${batchTransfers.destinationBatchId}`,
-          isNull(batchTransfers.deletedAt),
-        ),
-      ),
-
-    // 2b. Merge history (juice added from press runs, juice purchases, etc.)
-    // Exclude source_type = 'batch_transfer' — those are already tracked via batchTransfers above.
-    db
-      .select({
-        targetBatchId: batchMergeHistory.targetBatchId,
-        volumeAdded: batchMergeHistory.volumeAdded,
-        volumeAddedUnit: batchMergeHistory.volumeAddedUnit,
-      })
-      .from(batchMergeHistory)
-      .where(
-        and(
-          inArray(batchMergeHistory.targetBatchId, batchIds),
-          isNull(batchMergeHistory.deletedAt),
-          sql`${batchMergeHistory.sourceType} != 'batch_transfer'`,
-        ),
-      ),
-
-    // 2c. Merge-outs (volume leaving this batch as source of a merge, e.g. pommeau creation)
-    // Only count source_type = 'batch' (not 'batch_transfer' which is tracked via batchTransfers)
-    db
-      .select({
-        sourceBatchId: batchMergeHistory.sourceBatchId,
-        volumeAdded: batchMergeHistory.volumeAdded,
-      })
-      .from(batchMergeHistory)
-      .where(
-        and(
-          inArray(batchMergeHistory.sourceBatchId, batchIds),
-          isNull(batchMergeHistory.deletedAt),
-          sql`${batchMergeHistory.sourceType} = 'batch'`,
-        ),
-      ),
-
-    // 3. Bottle runs (non-voided) — volumeTakenLiters is trigger-maintained
-    //    Need units/size to detect if loss is already included in volumeTaken (batch.ts:6694-6696)
-    db
-      .select({
-        batchId: bottleRuns.batchId,
-        volumeTakenLiters: bottleRuns.volumeTakenLiters,
-        loss: bottleRuns.loss,
-        unitsProduced: bottleRuns.unitsProduced,
-        packageSizeML: bottleRuns.packageSizeML,
-      })
-      .from(bottleRuns)
-      .where(
-        and(
-          inArray(bottleRuns.batchId, batchIds),
-          isNull(bottleRuns.voidedAt),
-        ),
-      ),
-
-    // 4. Keg fills (non-voided) — volumeTaken defaults to liters
-    db
-      .select({
-        batchId: kegFills.batchId,
-        volumeTaken: kegFills.volumeTaken,
-        loss: kegFills.loss,
-      })
-      .from(kegFills)
-      .where(
-        and(
-          inArray(kegFills.batchId, batchIds),
-          isNull(kegFills.voidedAt),
-          isNull(kegFills.deletedAt),
-        ),
-      ),
-
-    // 5. Volume adjustments — adjustmentAmount is always in liters
-    db
-      .select({
-        batchId: batchVolumeAdjustments.batchId,
-        adjustmentAmount: batchVolumeAdjustments.adjustmentAmount,
-      })
-      .from(batchVolumeAdjustments)
-      .where(
-        and(
-          inArray(batchVolumeAdjustments.batchId, batchIds),
-          isNull(batchVolumeAdjustments.deletedAt),
-        ),
-      ),
-
-    // 6. Racking losses (need notes to exclude "Historical Record")
-    db
-      .select({
-        batchId: batchRackingOperations.batchId,
-        volumeLoss: batchRackingOperations.volumeLoss,
-        notes: batchRackingOperations.notes,
-      })
-      .from(batchRackingOperations)
-      .where(
-        and(
-          inArray(batchRackingOperations.batchId, batchIds),
-          isNull(batchRackingOperations.deletedAt),
-        ),
-      ),
-
-    // 7. Filter losses
-    db
-      .select({
-        batchId: batchFilterOperations.batchId,
-        volumeLoss: batchFilterOperations.volumeLoss,
-      })
-      .from(batchFilterOperations)
-      .where(
-        and(
-          inArray(batchFilterOperations.batchId, batchIds),
-          isNull(batchFilterOperations.deletedAt),
-        ),
-      ),
-
-    // 8. Carbonation operations (for classification check)
-    db
-      .select({
-        batchId: batchCarbonationOperations.batchId,
-        finalCo2Volumes: batchCarbonationOperations.finalCo2Volumes,
-        carbonationProcess: batchCarbonationOperations.carbonationProcess,
-      })
-      .from(batchCarbonationOperations)
-      .where(
-        and(
-          inArray(batchCarbonationOperations.batchId, batchIds),
-          isNull(batchCarbonationOperations.deletedAt),
-        ),
-      ),
-
-    // 9. Distillation records (sent or received — both mean cider left the cidery)
-    db.execute(sql`
-      SELECT source_batch_id, source_volume_liters
-      FROM distillation_records
-      WHERE source_batch_id IN (${sql.join(batchIds.map((id) => sql`${id}`), sql`, `)})
-        AND deleted_at IS NULL
-        AND status IN ('sent', 'received')
-    `),
-  ]);
-
-  return {
-    transfersOutByBatch: groupBy(transfersOut as TransferOut[], (r) => r.sourceBatchId),
-    transfersInByBatch: groupBy(transfersIn as TransferIn[], (r) => r.destinationBatchId),
-    mergeHistoryByBatch: groupBy(mergeHistory as MergeHistoryRow[], (r) => r.targetBatchId),
-    mergeOutByBatch: groupBy(mergeOuts as MergeOutRow[], (r) => r.sourceBatchId),
-    bottleRunsByBatch: groupBy(bottles as BottleRunRow[], (r) => r.batchId),
-    kegFillsByBatch: groupBy(kegs_ as KegFillRow[], (r) => r.batchId),
-    adjustmentsByBatch: groupBy(adjustments as AdjustmentRow[], (r) => r.batchId),
-    rackingsByBatch: groupBy(rackings as RackingRow[], (r) => r.batchId),
-    filtersByBatch: groupBy(filters as FilterRow[], (r) => r.batchId),
-    carbonationsByBatch: groupBy(carbonations as CarbonationRow[], (r) => r.batchId),
-    distillationsByBatch: groupBy(
-      ((distillations as any).rows ?? distillations) as unknown as DistillationRow[],
-      (r) => r.source_batch_id,
-    ),
-  };
 }
 
 // ---------------------------------------------------------------------------
@@ -366,66 +107,19 @@ function checkRequiredFields(batch: BatchForValidation): ValidationCheck {
 
 function checkVolumeBalance(
   batch: BatchForValidation,
-  data: ReturnType<typeof getBatchVolumeData>,
+  volume: BatchVolumeResult,
 ): ValidationCheck {
-  const initial = num(batch.initialVolumeLiters);
   const current = num(batch.currentVolumeLiters);
-
-  const transfersIn = data.transfersIn.reduce((s, t) => s + num(t.volumeTransferred), 0);
-  const transfersOut = data.transfersOut.reduce((s, t) => s + num(t.volumeTransferred), 0);
-  const transferLosses = data.transfersOut.reduce((s, t) => s + num(t.loss), 0);
-  // Merge history: juice added post-creation from press runs, juice purchases, etc.
-  // These volumes update currentVolumeLiters but NOT initialVolumeLiters.
-  const mergeVolume = data.mergeHistory.reduce((s, m) => s + num(m.volumeAdded), 0);
-  const bottling = data.bottleRuns.reduce((s, b) => s + num(b.volumeTakenLiters), 0);
-  // Bottling loss: match getBatchVolumeTrace logic (batch.ts:6694-6696) —
-  // if volumeTaken ≈ productVolume + loss (within 2L), loss is already in volumeTaken
-  const bottlingLoss = data.bottleRuns.reduce((s, b) => {
-    const volumeTaken = num(b.volumeTakenLiters);
-    const lossValue = num(b.loss);
-    const productVolume = ((b.unitsProduced || 0) * (b.packageSizeML || 0)) / 1000;
-    const lossIncludedInVolumeTaken = Math.abs(volumeTaken - (productVolume + lossValue)) < 2;
-    return s + (lossIncludedInVolumeTaken ? 0 : lossValue);
-  }, 0);
-  const kegging = data.kegFills.reduce((s, k) => s + num(k.volumeTaken), 0);
-  const keggingLoss = data.kegFills.reduce((s, k) => s + num(k.loss), 0);
-  const adjustments = data.adjustments.reduce((s, a) => s + num(a.adjustmentAmount), 0);
-  const rackingLosses = data.rackings
-    .filter((r) => !r.notes?.includes("Historical Record"))
-    .reduce((s, r) => s + num(r.volumeLoss), 0);
-  const filterLosses = data.filters.reduce((s, f) => s + num(f.volumeLoss), 0);
-  const distillation = data.distillations.reduce((s, d) => s + num(d.source_volume_liters), 0);
-  // Merge-outs: volume leaving this batch as source of a merge (e.g. pommeau creation)
-  const mergeOuts = data.mergeOuts.reduce((s, m) => s + num(m.volumeAdded), 0);
-
-  // Transfer-created batches use 0 initial (volume comes from transfer-in).
-  // Only zero initial if transfers account for most of the initial volume (>= 90%).
-  // Small top-up transfers should NOT zero out the initial volume.
-  const isTransferCreated = batch.parentBatchId && transfersIn >= initial * 0.9;
-  const effectiveInitial = isTransferCreated ? 0 : initial;
-
-  // accountedVolume = initial + inflow (transfers + merges) - outflow - loss
-  const expectedCurrent =
-    effectiveInitial +
-    transfersIn +
-    mergeVolume -
-    transfersOut -
-    transferLosses -
-    bottling -
-    bottlingLoss -
-    kegging -
-    keggingLoss -
-    distillation +
-    adjustments - // adjustments can be positive (gain) or negative (loss)
-    rackingLosses -
-    filterLosses -
-    mergeOuts;
+  const expectedCurrent = volume.volumeL;
 
   const discrepancy = current - expectedCurrent;
   const absDiscrepancy = Math.abs(discrepancy);
 
   // Threshold: 5% of total inflow or 2L, whichever is larger
-  const baseVolume = Math.max(effectiveInitial + mergeVolume, transfersIn);
+  const baseVolume = Math.max(
+    volume.breakdown.initialL + volume.breakdown.mergesInL,
+    volume.breakdown.transfersInL,
+  );
   const threshold = Math.max(baseVolume * 0.05, 2.0);
 
   if (absDiscrepancy <= threshold) {
@@ -444,6 +138,38 @@ function checkVolumeBalance(
     status,
     message: "Volume discrepancy detected",
     details,
+    link: `/batch/${batch.id}?tab=volume-trace`,
+  };
+}
+
+/**
+ * Surfaces the reducer's §2.3 split-of-truth signal (initial volume AND
+ * same-day press-run/juice merges both present). Only escalates to a warning
+ * when the volume balance ALSO fails — if the batch balances, the overlap
+ * pattern did not double-count and is informational.
+ */
+function checkInitialMergeOverlap(
+  batch: BatchForValidation,
+  volume: BatchVolumeResult,
+  volumeBalanceStatus: "pass" | "warning" | "fail",
+): ValidationCheck {
+  const overlap = volume.warnings.find((w) => w.code === "initial_merge_overlap");
+  if (!overlap) {
+    return { id: "initial_merge_overlap", status: "pass", message: "No initial/merge overlap" };
+  }
+  if (volumeBalanceStatus === "pass") {
+    return {
+      id: "initial_merge_overlap",
+      status: "pass",
+      message: "Initial/merge overlap pattern present but volumes balance",
+      details: overlap.message,
+    };
+  }
+  return {
+    id: "initial_merge_overlap",
+    status: "warning",
+    message: "Possible double-count: initial volume vs merge history",
+    details: overlap.message,
     link: `/batch/${batch.id}?tab=volume-trace`,
   };
 }
@@ -482,7 +208,7 @@ function checkClassificationData(
 
 function checkActiveVolume(
   batch: BatchForValidation,
-  data: ReturnType<typeof getBatchVolumeData>,
+  volume: BatchVolumeResult,
 ): ValidationCheck {
   const current = num(batch.currentVolumeLiters);
 
@@ -498,10 +224,10 @@ function checkActiveVolume(
 
   if (current === 0 && num(batch.initialVolumeLiters) > 0) {
     const totalConsumed =
-      data.transfersOut.reduce((s, t) => s + num(t.volumeTransferred), 0) +
-      data.bottleRuns.reduce((s, b) => s + num(b.volumeTakenLiters), 0) +
-      data.kegFills.reduce((s, k) => s + num(k.volumeTaken), 0) +
-      data.distillations.reduce((s, d) => s + num(d.source_volume_liters), 0);
+      volume.breakdown.transfersOutL +
+      volume.breakdown.bottlingL +
+      volume.breakdown.keggingL +
+      volume.breakdown.distillationL;
 
     if (totalConsumed === 0) {
       return {
@@ -541,24 +267,6 @@ function checkDateSanity(batch: BatchForValidation, year: number): ValidationChe
 // Helpers
 // ---------------------------------------------------------------------------
 
-function getBatchVolumeData(
-  batchId: string,
-  bulkData: Awaited<ReturnType<typeof fetchBulkVolumeData>>,
-) {
-  return {
-    transfersOut: bulkData.transfersOutByBatch.get(batchId) || [],
-    transfersIn: bulkData.transfersInByBatch.get(batchId) || [],
-    mergeHistory: bulkData.mergeHistoryByBatch.get(batchId) || [],
-    mergeOuts: bulkData.mergeOutByBatch.get(batchId) || [],
-    bottleRuns: bulkData.bottleRunsByBatch.get(batchId) || [],
-    kegFills: bulkData.kegFillsByBatch.get(batchId) || [],
-    adjustments: bulkData.adjustmentsByBatch.get(batchId) || [],
-    rackings: bulkData.rackingsByBatch.get(batchId) || [],
-    filters: bulkData.filtersByBatch.get(batchId) || [],
-    distillations: bulkData.distillationsByBatch.get(batchId) || [],
-  };
-}
-
 function overallStatus(checks: ValidationCheck[]): "pass" | "warning" | "fail" {
   if (checks.some((c) => c.status === "fail")) return "fail";
   if (checks.some((c) => c.status === "warning")) return "warning";
@@ -574,18 +282,29 @@ export async function validateBatches(
   year: number,
 ): Promise<Map<string, BatchValidation>> {
   const batchIds = batchList.map((b) => b.id);
-  const bulkData = await fetchBulkVolumeData(batchIds);
+  const [volumeInputs, carbonationsByBatch] = await Promise.all([
+    fetchBatchVolumeEvents(batchIds),
+    fetchCarbonationsByBatch(batchIds),
+  ]);
   const results = new Map<string, BatchValidation>();
 
   for (const batch of batchList) {
-    const volumeData = getBatchVolumeData(batch.id, bulkData);
-    const carbonations = bulkData.carbonationsByBatch.get(batch.id) || [];
+    const inputs = volumeInputs.get(batch.id) ?? {
+      initialVolumeL: 0,
+      transferCreated: false,
+      startDate: null,
+      events: [],
+    };
+    const volume = computeBatchVolumeFromHistory(inputs); // all-time = expected current
+    const carbonations = carbonationsByBatch.get(batch.id) || [];
 
+    const volumeBalance = checkVolumeBalance(batch, volume);
     const checks: ValidationCheck[] = [
       checkRequiredFields(batch),
-      checkVolumeBalance(batch, volumeData),
+      volumeBalance,
+      checkInitialMergeOverlap(batch, volume, volumeBalance.status),
       checkClassificationData(batch, carbonations),
-      checkActiveVolume(batch, volumeData),
+      checkActiveVolume(batch, volume),
       checkDateSanity(batch, year),
     ];
 
