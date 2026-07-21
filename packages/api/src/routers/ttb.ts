@@ -7035,7 +7035,37 @@ export const ttbRouter = router({
       // Signed sum of per-class (physical − formula ending). This is the honest,
       // REPORTED discrepancy that the deleted reconAdj plug used to absorb.
       // ============================================
-      const totalUnexplained = waterfallData.reduce((s, w) => s + w.unexplainedVariance, 0);
+      // Query waterfall adjustments for the period year
+      const periodYear = reconciliationDateObj.getFullYear();
+      const waterfallAdjs = await db
+        .select({
+          id: ttbWaterfallAdjustments.id,
+          waterfallLine: ttbWaterfallAdjustments.waterfallLine,
+          amountGallons: ttbWaterfallAdjustments.amountGallons,
+          reason: ttbWaterfallAdjustments.reason,
+          notes: ttbWaterfallAdjustments.notes,
+          adjustedAt: ttbWaterfallAdjustments.adjustedAt,
+        })
+        .from(ttbWaterfallAdjustments)
+        .where(
+          and(
+            eq(ttbWaterfallAdjustments.periodYear, periodYear),
+            isNull(ttbWaterfallAdjustments.deletedAt),
+          ),
+        )
+        .orderBy(asc(ttbWaterfallAdjustments.adjustedAt));
+
+      // Phase 3 C4: apply manual adjustments SERVER-SIDE. Each row adjusts a
+      // waterfall line; its effect on the calculated ending is +amount for
+      // opening/production/other and -amount for losses/distillation. Applied
+      // adjustments EXPLAIN variance: unexplained = physical - (formula + effect).
+      const manualAdjustmentsGal = waterfallAdjs.reduce((s, a) => {
+        const amt = parseFloat(a.amountGallons || "0") || 0;
+        return a.waterfallLine === "losses" || a.waterfallLine === "distillation" ? s - amt : s + amt;
+      }, 0);
+
+      const totalUnexplainedRaw = waterfallData.reduce((s, w) => s + w.unexplainedVariance, 0);
+      const totalUnexplained = totalUnexplainedRaw - manualAdjustmentsGal;
       if (Math.abs(totalUnexplained) > 1.0) {
         const perClassDetail: Record<string, number> = {};
         for (const w of waterfallData) {
@@ -7346,25 +7376,8 @@ export const ttbRouter = router({
         ? new Date(finalizedPeriods[finalizedPeriods.length - 1].periodEnd).toISOString().split("T")[0]
         : null;
 
-      // Query waterfall adjustments for the period year
-      const periodYear = reconciliationDateObj.getFullYear();
-      const waterfallAdjs = await db
-        .select({
-          id: ttbWaterfallAdjustments.id,
-          waterfallLine: ttbWaterfallAdjustments.waterfallLine,
-          amountGallons: ttbWaterfallAdjustments.amountGallons,
-          reason: ttbWaterfallAdjustments.reason,
-          notes: ttbWaterfallAdjustments.notes,
-          adjustedAt: ttbWaterfallAdjustments.adjustedAt,
-        })
-        .from(ttbWaterfallAdjustments)
-        .where(
-          and(
-            eq(ttbWaterfallAdjustments.periodYear, periodYear),
-            isNull(ttbWaterfallAdjustments.deletedAt),
-          ),
-        )
-        .orderBy(asc(ttbWaterfallAdjustments.adjustedAt));
+      // (waterfall adjustments are queried earlier — Phase 3 C4 applies them
+      // server-side before the unexplained-variance computation)
 
       // ============================================
       // TOP-LEVEL IDENTITY ASSERTION
@@ -7470,6 +7483,8 @@ export const ttbRouter = router({
           // Honest unexplained variance (physical − per-batch formula ending) and the
           // SBD per-batch reconstruction drift — both surfaced for the reconciliation UI.
           totalUnexplained: parseFloat(totalUnexplained.toFixed(2)),
+          totalUnexplainedRaw: parseFloat(totalUnexplainedRaw.toFixed(2)),
+          manualAdjustmentsGal: parseFloat(manualAdjustmentsGal.toFixed(2)),
           sbdDriftGal: parseFloat(sbdTotalDriftGal.toFixed(2)),
           // Legacy fields for backwards compatibility
           ttbBalance: parseFloat(totalTtb.toFixed(1)),
