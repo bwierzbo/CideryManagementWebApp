@@ -480,6 +480,9 @@ describe("TTB Golden 2025 — Reconciliation Summary", () => {
         return;
       }
 
+      // Phase 3 C3: honest identity — the formula components sum to calculatedEnding
+      // (no reconAdj plug term). calculatedEnding is the pure formula value, NOT forced
+      // equal to physical; the physical gap is reported as unexplainedVariance.
       // opening + production + transfersIn - transfersOut + positiveAdj
       //   - losses - distillation - sales = calculatedEnding
       const expectedEnding =
@@ -487,8 +490,7 @@ describe("TTB Golden 2025 — Reconciliation Summary", () => {
         (w.production ?? 0) +
         (w.transfersIn ?? 0) -
         (w.transfersOut ?? 0) +
-        (w.positiveAdj ?? 0) +
-        (w.reconAdj ?? 0) -
+        (w.positiveAdj ?? 0) -
         (w.losses ?? 0) -
         (w.distillation ?? 0) -
         (w.sales ?? 0);
@@ -497,9 +499,10 @@ describe("TTB Golden 2025 — Reconciliation Summary", () => {
       const diff = Math.abs(expectedEnding - calculatedEnding);
 
       console.log(`[GOLDEN] Waterfall: opening=${w.opening}, production=${w.production}, ` +
-        `transfers=${w.transfersIn}-${w.transfersOut}, adj=${w.positiveAdj}, reconAdj=${w.reconAdj}, ` +
+        `transfers=${w.transfersIn}-${w.transfersOut}, adj=${w.positiveAdj}, ` +
         `losses=${w.losses}, distill=${w.distillation}, sales=${w.sales}, ` +
-        `calcEnding=${calculatedEnding}, derived=${expectedEnding.toFixed(1)}, diff=${diff.toFixed(2)}`);
+        `calcEnding=${calculatedEnding}, derived=${expectedEnding.toFixed(1)}, diff=${diff.toFixed(2)}, ` +
+        `unexplained=${w.unexplainedVariance}`);
 
       expect(diff, `Waterfall identity gap: ${diff.toFixed(2)}`).toBeLessThan(1.0);
     });
@@ -509,13 +512,14 @@ describe("TTB Golden 2025 — Reconciliation Summary", () => {
       for (const tc of byClass) {
         const tcKey = tc.taxClass ?? tc.key;
         if (!tcKey) continue;
+        // Phase 3 C3: honest identity, no reconAdj term (calculatedEnding is the pure
+        // formula value; the physical gap is reported as tc.unexplainedVariance).
         const expected =
           (tc.opening ?? 0) +
           (tc.production ?? 0) +
           (tc.transfersIn ?? 0) -
           (tc.transfersOut ?? 0) +
-          (tc.positiveAdj ?? 0) +
-          (tc.reconAdj ?? 0) -
+          (tc.positiveAdj ?? 0) -
           (tc.losses ?? 0) -
           (tc.distillation ?? 0) -
           (tc.sales ?? 0);
@@ -545,18 +549,22 @@ describe("TTB Golden 2025 — Reconciliation Summary", () => {
     });
   });
 
-  describe("Variance", () => {
-    it("should have documented waterfall variance (known SBD drift)", () => {
-      // The reconciliation summary's waterfall uses different aggregate queries than the
-      // TTB form — production, losses, and distributions aren't fully aligned with the
-      // form's corrected queries (juice subtraction, racking derivative filters, etc.).
-      // The ~288 gal variance is a known structural issue from SBD reconstruction drift.
-      // TODO: Align reconciliation summary queries with form queries to reduce variance.
+  describe("Unexplained Variance", () => {
+    it("should have documented waterfall unexplained variance (Phase 3 C3, no plug)", () => {
+      // Phase 3 C3: the reconAdj plug is deleted. unexplainedVariance = physical −
+      // formula ending, reported honestly instead of absorbed. For 2025 it is small
+      // (≈ −2.6 gal total, the C0 plug baseline) because the waterfall uses SBD-derived
+      // physical inventory that nearly matches the per-batch formula ending.
       const w = reconResult.waterfall?.totals;
-      if (w?.variance !== undefined) {
-        console.log(`[GOLDEN] Waterfall variance: ${w.variance}`);
-        expect(Math.abs(w.variance), `Variance = ${w.variance}`).toBeLessThan(300);
-      }
+      expect(w?.unexplainedVariance, "waterfall.totals.unexplainedVariance present").not.toBeUndefined();
+      console.log(`[GOLDEN] Waterfall unexplained variance: ${w.unexplainedVariance} (expected ≈ -2.6)`);
+      expect(Math.abs(w.unexplainedVariance), `Unexplained = ${w.unexplainedVariance}`).toBeLessThan(10);
+      // totals.variance is now the same real quantity (no longer hardcoded 0)
+      expect(reconResult.totals?.totalUnexplained, "totals.totalUnexplained present").not.toBeUndefined();
+      expect(
+        Math.abs((reconResult.totals.totalUnexplained ?? 0) - w.unexplainedVariance),
+        "totals.totalUnexplained matches waterfall totals",
+      ).toBeLessThan(0.5);
     });
   });
 
@@ -825,7 +833,7 @@ describe("TTB Golden 2025 — Reconciliation Summary", () => {
           `xfOut=${tc.transfersOut?.toFixed(1)}, adj=${tc.positiveAdj?.toFixed(1)}, ` +
           `losses=${tc.losses?.toFixed(1)}, distill=${tc.distillation?.toFixed(1)}, ` +
           `sales=${tc.sales?.toFixed(1)}, calcEnd=${tc.calculatedEnding?.toFixed(1)}, ` +
-          `physical=${tc.physical?.toFixed(1)}, variance=${tc.variance?.toFixed(1)}`);
+          `physical=${tc.physical?.toFixed(1)}, unexplained=${tc.unexplainedVariance?.toFixed(1)}`);
       }
       // This test always passes — it's for audit logging
       expect(byClass.length).toBeGreaterThan(0);

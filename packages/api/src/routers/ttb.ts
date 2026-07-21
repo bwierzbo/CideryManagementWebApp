@@ -5005,7 +5005,7 @@ export const ttbRouter = router({
               sales: 0,
               calculatedEnding: 0,
               physical: 0,
-              variance: 0,
+              unexplainedVariance: 0,
             },
           },
           batchReconciliation: {
@@ -6830,14 +6830,13 @@ export const ttbRouter = router({
         transfersIn: number;
         transfersOut: number;
         positiveAdj: number;
-        reconAdj: number;
         packaging: number;
         losses: number;
         distillation: number;
         sales: number;
         calculatedEnding: number;
         physical: number;
-        variance: number;
+        unexplainedVariance: number;
         bulk: number;
         packaged: number;
         bulkEnding: number;
@@ -6904,14 +6903,14 @@ export const ttbRouter = router({
       }
 
       // Use Phase 1 byTaxClass aggregation from computeReconciliationFromBatches
-      // for consistent physical inventory (eliminates reconAdj gap between SBD impls)
+      // for consistent physical inventory (keeps unexplained variance small between SBD impls)
       const batchReconByTaxClass = batchRecon.byTaxClass;
 
       for (const key of waterfallTaxClasses) {
         const sbdTc = sbdWaterfallByTaxClass[key];
         const reconTc = batchReconByTaxClass[key];
         // ALL waterfall values are SBD-derived from per-batch reconstruction.
-        // Physical inventory also uses SBD ending + packaged, ensuring reconAdj ≈ 0.
+        // Physical inventory also uses SBD ending + packaged, keeping unexplained variance small.
         const opening = sbdTc?.opening || 0;
         const production = sbdTc?.production || 0;
         // Transfers + merges: when summed by tax class, same-class flows cancel
@@ -6940,17 +6939,17 @@ export const ttbRouter = router({
         const endPkg = packagedByTaxClass[key] || 0;
         const physical = sbdBulkEnding + Math.max(0, endPkg);
 
-        // Formula: opening(total) + inflows - outflows = ending(total)
-        // reconAdj absorbs any residual from rounding, cross-period packaging flows, etc.
-        const formulaWithoutAdj = openingTotal + production + transfersIn - transfersOut
+        // Formula: opening(total) + inflows - outflows = ending(total).
+        // Phase 3 C3: no reconAdj plug. calculatedEnding is the PURE formula value
+        // and is NO LONGER forced equal to physical inventory.
+        const calculatedEnding = openingTotal + production + transfersIn - transfersOut
           + positiveAdj - losses - distillation - actualSales;
-        const reconAdj = physical - formulaWithoutAdj;
 
-        // TTB Calculated Ending: universal identity that accounts for all volume flows
-        const calculatedEnding = formulaWithoutAdj + reconAdj; // = physical by construction
-
-        // Variance = 0 by construction (reconAdj absorbs any orphan residual)
-        const variance = calculatedEnding - physical;
+        // Unexplained variance = physical inventory − formula ending, reported under
+        // its honest name (never absorbed). Non-zero means the per-batch reconstruction
+        // doesn't fully account for physical on-hand volume (positive = unexplained
+        // inflow / inventory gain; negative = unexplained shortage).
+        const unexplainedVariance = physical - calculatedEnding;
 
         // Include tax classes with any activity (including negative ending from losses/sales)
         const hasActivity = openingTotal !== 0 || production > 0 || transfersIn > 0 || physical > 0 ||
@@ -6973,14 +6972,13 @@ export const ttbRouter = router({
             transfersIn: parseFloat(transfersIn.toFixed(2)),
             transfersOut: parseFloat(transfersOut.toFixed(2)),
             positiveAdj: parseFloat(positiveAdj.toFixed(2)),
-            reconAdj: parseFloat(reconAdj.toFixed(2)),
             packaging: parseFloat(pkg.toFixed(2)),
             losses: parseFloat(losses.toFixed(2)),
             distillation: parseFloat(distillation.toFixed(2)),
             sales: parseFloat(actualSales.toFixed(2)),
             calculatedEnding: parseFloat(calculatedEnding.toFixed(2)),
             physical: parseFloat(physical.toFixed(2)),
-            variance: parseFloat(variance.toFixed(2)),
+            unexplainedVariance: parseFloat(unexplainedVariance.toFixed(2)),
             bulk: parseFloat((bulkByTaxClass[key] || 0).toFixed(2)),
             packaged: parseFloat((packagedByTaxClass[key] || 0).toFixed(2)),
             bulkEnding: parseFloat(bulkEnding.toFixed(2)),
@@ -7002,8 +7000,11 @@ export const ttbRouter = router({
       }> = [];
 
       for (const entry of waterfallData) {
+        // Honest identity: the formula components must sum to calculatedEnding
+        // (a self-consistency / rounding check). unexplainedVariance is a REPORTED
+        // quantity below, not a balancing term here.
         const expectedEnding = entry.opening + entry.production + entry.transfersIn
-          - entry.transfersOut + entry.positiveAdj + entry.reconAdj - entry.losses - entry.distillation - entry.sales;
+          - entry.transfersOut + entry.positiveAdj - entry.losses - entry.distillation - entry.sales;
         const identityGap = Math.abs(expectedEnding - entry.calculatedEnding);
         if (identityGap > 0.05) {
           const msg = `Waterfall identity violation for ${entry.label}: gap ${identityGap.toFixed(2)} gal`;
@@ -7027,6 +7028,32 @@ export const ttbRouter = router({
             },
           });
         }
+      }
+
+      // ============================================
+      // UNEXPLAINED VARIANCE (Phase 3 C3)
+      // Signed sum of per-class (physical − formula ending). This is the honest,
+      // REPORTED discrepancy that the deleted reconAdj plug used to absorb.
+      // ============================================
+      const totalUnexplained = waterfallData.reduce((s, w) => s + w.unexplainedVariance, 0);
+      if (Math.abs(totalUnexplained) > 1.0) {
+        const perClassDetail: Record<string, number> = {};
+        for (const w of waterfallData) {
+          if (Math.abs(w.unexplainedVariance) > 0.05) {
+            perClassDetail[w.taxClass] = parseFloat(w.unexplainedVariance.toFixed(2));
+          }
+        }
+        const msg = `Unexplained variance ${totalUnexplained.toFixed(1)} gal: physical inventory differs from the per-batch formula ending across ${Object.keys(perClassDetail).length} tax class(es)`;
+        console.warn(`[TTB Parity] ${msg}`);
+        parityWarnings.push({
+          level: "warning",
+          category: "unexplainedVariance",
+          message: msg,
+          detail: {
+            ...perClassDetail,
+            total: parseFloat(totalUnexplained.toFixed(2)),
+          },
+        });
       }
 
       // 5. Build reconciliation by tax class
@@ -7352,13 +7379,12 @@ export const ttbRouter = router({
       const wfTotalTransfersIn = waterfallData.reduce((s, w) => s + w.transfersIn, 0);
       const wfTotalTransfersOut = waterfallData.reduce((s, w) => s + w.transfersOut, 0);
       const wfTotalPositiveAdj = waterfallData.reduce((s, w) => s + w.positiveAdj, 0);
-      const wfTotalReconAdj = waterfallData.reduce((s, w: any) => s + (w.reconAdj || 0), 0);
       const wfTotalSales = waterfallData.reduce((s, w) => s + w.sales, 0);
       const wfTotalLosses = waterfallData.reduce((s, w) => s + w.losses, 0);
       const wfTotalDistillation = waterfallData.reduce((s, w) => s + w.distillation, 0);
       const wfTotalCalcEnding = waterfallData.reduce((s, w) => s + w.calculatedEnding, 0);
       const topExpectedEnding = wfTotalOpening + wfTotalProduction + wfTotalTransfersIn - wfTotalTransfersOut
-        + wfTotalPositiveAdj + wfTotalReconAdj - wfTotalLosses - wfTotalDistillation - wfTotalSales;
+        + wfTotalPositiveAdj - wfTotalLosses - wfTotalDistillation - wfTotalSales;
       const topIdentityGap = Math.abs(topExpectedEnding - wfTotalCalcEnding);
       if (topIdentityGap > 0.5) {
         const msg = `Top-level identity failure: expected ending ${topExpectedEnding.toFixed(1)} vs calculated ${wfTotalCalcEnding.toFixed(1)} (gap ${topIdentityGap.toFixed(2)} gal)`;
@@ -7438,9 +7464,13 @@ export const ttbRouter = router({
           systemCalculatedOnHand: parseFloat(systemCalculatedOnHand.toFixed(1)),
           // Batch reconstruction (for data quality review)
           systemReconstructedOnHand: parseFloat(systemReconstructedOnHand.toFixed(1)),
-          // Variance: aggregate calculated ending vs physical inventory
-          // Non-zero means the waterfall identity doesn't match what's physically in tanks.
-          variance: 0, // Computed per-tax-class in waterfall; total shown here for legacy compat
+          // Variance: signed sum of per-class unexplained variance (physical − formula
+          // ending). Phase 3 C3: this is the REAL discrepancy, no longer hardcoded 0.
+          variance: parseFloat(totalUnexplained.toFixed(1)),
+          // Honest unexplained variance (physical − per-batch formula ending) and the
+          // SBD per-batch reconstruction drift — both surfaced for the reconciliation UI.
+          totalUnexplained: parseFloat(totalUnexplained.toFixed(2)),
+          sbdDriftGal: parseFloat(sbdTotalDriftGal.toFixed(2)),
           // Legacy fields for backwards compatibility
           ttbBalance: parseFloat(totalTtb.toFixed(1)),
           currentInventory: parseFloat(totalInventoryByTaxClass.toFixed(1)),
@@ -7562,14 +7592,13 @@ export const ttbRouter = router({
             transfersIn: parseFloat(waterfallData.reduce((sum, w) => sum + w.transfersIn, 0).toFixed(2)),
             transfersOut: parseFloat(waterfallData.reduce((sum, w) => sum + w.transfersOut, 0).toFixed(2)),
             positiveAdj: parseFloat(waterfallData.reduce((sum, w) => sum + w.positiveAdj, 0).toFixed(2)),
-            reconAdj: parseFloat(waterfallData.reduce((sum, w: any) => sum + (w.reconAdj || 0), 0).toFixed(2)),
             packaging: parseFloat(waterfallData.reduce((sum, w) => sum + w.packaging, 0).toFixed(2)),
             losses: parseFloat(waterfallData.reduce((sum, w) => sum + w.losses, 0).toFixed(2)),
             distillation: parseFloat(waterfallData.reduce((sum, w) => sum + w.distillation, 0).toFixed(2)),
             sales: parseFloat(waterfallData.reduce((sum, w) => sum + w.sales, 0).toFixed(2)),
             calculatedEnding: parseFloat(waterfallData.reduce((sum, w) => sum + w.calculatedEnding, 0).toFixed(2)),
             physical: parseFloat(waterfallData.reduce((sum, w) => sum + w.physical, 0).toFixed(2)),
-            variance: parseFloat(waterfallData.reduce((sum, w) => sum + w.variance, 0).toFixed(2)),
+            unexplainedVariance: parseFloat(waterfallData.reduce((sum, w) => sum + w.unexplainedVariance, 0).toFixed(2)),
           },
         },
         // DEBUG: Trace variance source

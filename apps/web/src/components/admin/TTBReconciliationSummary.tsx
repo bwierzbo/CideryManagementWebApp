@@ -1059,11 +1059,11 @@ export function TTBReconciliationSummary() {
                     <TableHead className="text-right font-semibold text-xs text-red-700">-Sales</TableHead>
                     <TableHead className="text-right font-semibold bg-gray-100">=Calc End</TableHead>
                     <TableHead className="text-right font-semibold bg-gray-100">Physical</TableHead>
-                    <TableHead className="text-right font-semibold">Variance</TableHead>
+                    <TableHead className="text-right font-semibold">Unexplained</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {data.waterfall.byTaxClass.map((w: { taxClass: string; label: string; opening: number; production: number; transfersIn: number; transfersOut: number; losses: number; distillation: number; sales: number; calculatedEnding: number; physical: number; variance: number }) => {
+                  {data.waterfall.byTaxClass.map((w: { taxClass: string; label: string; opening: number; production: number; transfersIn: number; transfersOut: number; losses: number; distillation: number; sales: number; calculatedEnding: number; physical: number; unexplainedVariance: number }) => {
                     return (
                       <TableRow key={w.taxClass}>
                         <TableCell className="font-medium text-sm whitespace-nowrap">{w.label}</TableCell>
@@ -1094,11 +1094,11 @@ export function TTBReconciliationSummary() {
                         </TableCell>
                         <TableCell className={cn(
                           "text-right font-mono text-sm font-semibold",
-                          w.variance > 0.5 && "text-amber-600",
-                          w.variance < -0.5 && "text-red-600",
-                          Math.abs(w.variance) <= 0.5 && "text-green-600"
+                          w.unexplainedVariance < -0.5 && "text-amber-600",
+                          w.unexplainedVariance > 0.5 && "text-red-600",
+                          Math.abs(w.unexplainedVariance) <= 0.5 && "text-green-600"
                         )}>
-                          {w.variance > 0 ? "+" : ""}{w.variance.toFixed(1)}
+                          {w.unexplainedVariance > 0 ? "+" : ""}{w.unexplainedVariance.toFixed(1)}
                         </TableCell>
                       </TableRow>
                     );
@@ -1119,11 +1119,11 @@ export function TTBReconciliationSummary() {
                     <TableCell className="text-right font-mono font-bold bg-gray-200">{data.waterfall.totals.physical.toFixed(1)}</TableCell>
                     <TableCell className={cn(
                       "text-right font-mono font-bold",
-                      data.waterfall.totals.variance > 0.5 && "text-amber-600",
-                      data.waterfall.totals.variance < -0.5 && "text-red-600",
-                      Math.abs(data.waterfall.totals.variance) <= 0.5 && "text-green-600"
+                      data.waterfall.totals.unexplainedVariance < -0.5 && "text-amber-600",
+                      data.waterfall.totals.unexplainedVariance > 0.5 && "text-red-600",
+                      Math.abs(data.waterfall.totals.unexplainedVariance) <= 0.5 && "text-green-600"
                     )}>
-                      {data.waterfall.totals.variance > 0 ? "+" : ""}{data.waterfall.totals.variance.toFixed(1)}
+                      {data.waterfall.totals.unexplainedVariance > 0 ? "+" : ""}{data.waterfall.totals.unexplainedVariance.toFixed(1)}
                     </TableCell>
                   </TableRow>
                 </TableBody>
@@ -1133,7 +1133,7 @@ export function TTBReconciliationSummary() {
               {data.waterfall.hasLastReconciliation
                 ? "Opening = Last reconciliation ending. "
                 : "Opening = Configured TTB opening balances. "}
-              Variance = Calculated - Physical (positive = missing inventory).
+              Unexplained = Physical - Calculated (negative = missing inventory, positive = unexplained gain).
             </p>
           </div>
         )}

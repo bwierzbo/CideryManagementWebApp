@@ -820,10 +820,10 @@ export function BatchReconciliation() {
     { enabled: reconciliationData !== undefined && !isOpeningYear },
   );
 
-  // TTB Balance card metrics — ALL values from per-batch SBD (single source of truth).
-  // Using a single accounting system (computeReconciliationFromBatches) for the entire
-  // waterfall guarantees ~0 variance by the SBD identity. Mixing aggregate and per-batch
-  // sources creates structural variance because they scope batches differently.
+  // TTB Balance card metrics — derived from the de-plugged Form 5120.17 (Phase 3 C2).
+  // The residual below is the form's honest arithmetic gap (ending vs formula), which
+  // is a REAL, reported quantity — not forced to zero. It measures the same-class
+  // scope mismatch / backlog the balancing plugs used to hide.
   type TtbTotals = {
     ttbOpeningBalance: number;
     systemCalculatedOnHand: number;
@@ -903,7 +903,6 @@ export function BatchReconciliation() {
       systemCalculated: ending,
       variance: residual,
       systemVariance: residual,
-      waterfallAdjustments: [],
       useFormData: true,
     };
   }, [reconciliationData, formData512017]);
@@ -1227,7 +1226,7 @@ export function BatchReconciliation() {
       lines.push(`Losses,${yearMetrics.losses}`);
       lines.push(`Distillation,${yearMetrics.distillation}`);
       lines.push(`Ending (On Premises),${yearMetrics.ending}`);
-      if (Math.abs(yearMetrics.variance) > 1) lines.push(`Residual,${yearMetrics.variance}`);
+      if (Math.abs(yearMetrics.variance) >= 0.05) lines.push(`Unexplained variance,${yearMetrics.variance}`);
       lines.push("");
     }
 
@@ -1675,15 +1674,20 @@ export function BatchReconciliation() {
               : "?";
             bannerStyle = "bg-amber-50 border-amber-200";
             icon = <AlertTriangle className="w-5 h-5 text-amber-600" />;
-            title = `${yearFilter} — ${Math.abs(yearMetrics.systemVariance).toFixed(0)} gal variance (${variancePct}%) between TTB and system`;
+            title = `${yearFilter} — ${Math.abs(yearMetrics.systemVariance).toFixed(0)} gal unexplained (${variancePct}%) — review before filing`;
           } else if (statusCounts.verified === statusCounts.total && statusCounts.total > 0) {
             bannerStyle = "bg-green-50 border-green-200";
             icon = <ShieldCheck className="w-5 h-5 text-green-600" />;
-            title = `${yearFilter} — Fully Reconciled`;
+            // State the tolerated residual rather than swallowing it silently.
+            title = yearMetrics && Math.abs(yearMetrics.systemVariance) >= 0.05
+              ? `${yearFilter} — Reconciled — ${Math.abs(yearMetrics.systemVariance).toFixed(1)} gal unexplained, within tolerance`
+              : `${yearFilter} — Fully Reconciled`;
           } else {
             bannerStyle = "bg-green-50 border-green-200";
             icon = <CheckCircle className="w-5 h-5 text-green-600" />;
-            title = `${yearFilter} — All checks passing`;
+            title = yearMetrics && Math.abs(yearMetrics.systemVariance) >= 0.05
+              ? `${yearFilter} — All checks passing — ${Math.abs(yearMetrics.systemVariance).toFixed(1)} gal unexplained, within tolerance`
+              : `${yearFilter} — All checks passing`;
           }
 
           return (
@@ -1748,9 +1752,9 @@ export function BatchReconciliation() {
                           <td className="pr-2 pt-1">= Ending (On Premises)</td>
                           <td className="text-right pt-1">{yearMetrics.ending.toLocaleString()} gal</td>
                         </tr>
-                        {Math.abs(yearMetrics.variance) > 1.0 && (
+                        {Math.abs(yearMetrics.variance) >= 0.05 && (
                           <tr className={`text-xs ${Math.abs(yearMetrics.variance) < 10 ? "text-amber-600" : "text-red-600"}`}>
-                            <td className="pr-2 pt-1">Residual</td>
+                            <td className="pr-2 pt-1">Unexplained variance</td>
                             <td className="text-right pt-1">{yearMetrics.variance > 0 ? "+" : ""}{yearMetrics.variance.toFixed(1)} gal</td>
                           </tr>
                         )}

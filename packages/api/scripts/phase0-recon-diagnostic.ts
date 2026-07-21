@@ -239,7 +239,7 @@ for (const year of YEARS) {
       p.reconAdjByClass = {};
       if (wf) {
         for (const [cls, row] of Object.entries<any>(wf)) {
-          const adj = Number(row?.reconAdj ?? 0);
+          const adj = Number(row?.unexplainedVariance ?? row?.reconAdj ?? 0);
           if (Math.abs(adj) > 0.05) p.reconAdjByClass[cls] = r1(adj);
         }
       }
