@@ -90,6 +90,22 @@ import {
 } from "lib";
 import { fetchBatchVolumeEvents } from "../services/batch-volume-events";
 
+/**
+ * TTB tax-year membership timestamp for `batches` (Phase 1, migration 0144):
+ * backlog-entered batches (physically pressed in an earlier year, data-entered
+ * later — ttb_origin_year < year(start_date)) belong to Dec 31 of their origin
+ * year; everyone else to their raw start_date. Use for PERIOD MEMBERSHIP
+ * comparisons only — events always keep their real dates. The ELSE branch is
+ * the raw timestamp so boundary-day semantics are unchanged (day-boundary fix
+ * is Phase 3).
+ *
+ * Origin years BEFORE 2025 are deliberately ignored: 2024 and earlier are
+ * closed, filed years whose recompute must stay frozen (owner constraint,
+ * 2026-07-20); a few stray pre-2025 ttb_origin_year values exist from earlier
+ * experiments and honoring them regressed the 2024 recompute vs the filing.
+ */
+const ttbMembershipTs = sql`(CASE WHEN ${batches.ttbOriginYear} >= 2025 AND ${batches.ttbOriginYear} < EXTRACT(YEAR FROM ${batches.startDate}) THEN make_date(${batches.ttbOriginYear}, 12, 31)::timestamp ELSE ${batches.startDate} END)`;
+
 // ============================================
 // Batch Classification Map Builder
 // ============================================
@@ -529,7 +545,7 @@ async function computeReconciliationFromBatches(
     SELECT b.id, b.name, b.batch_number, b.product_type, b.start_date,
            b.initial_volume_liters, b.parent_batch_id, b.current_volume_liters,
            b.is_racking_derivative, b.vessel_id, b.reconciliation_status,
-           b.transfer_loss_l, b.transfer_created,
+           b.transfer_loss_l, b.transfer_created, b.ttb_origin_year,
            v.name AS vessel_name, v.capacity_liters AS vessel_capacity_liters
     FROM batches b
     LEFT JOIN vessels v ON b.vessel_id = v.id
@@ -540,7 +556,13 @@ async function computeReconciliationFromBatches(
         OR b.parent_batch_id IS NOT NULL
       )
       AND COALESCE(b.product_type, 'cider') != 'juice'
-      AND b.start_date::date <= ${endDate}::date
+      -- TTB tax-year membership date: backlog-entered batches carry the year
+      -- the cider physically originated (ttb_origin_year, migration 0144),
+      -- pinned to Dec 31 of that year. Events keep their real dates.
+      AND (CASE WHEN b.ttb_origin_year >= 2025
+                 AND b.ttb_origin_year < EXTRACT(YEAR FROM b.start_date)
+            THEN make_date(b.ttb_origin_year, 12, 31)
+            ELSE b.start_date::date END) <= ${endDate}::date
   `);
 
   const batchRows = eligibleBatches.rows as any[];
@@ -563,6 +585,8 @@ async function computeReconciliationFromBatches(
     reconciliationStatus: string;
     pressTransferLossL: number;
     transferCreated: boolean;
+    /** TTB tax-year membership date (Dec 31 of ttb_origin_year for backlog batches, else startDate). */
+    membershipDate: string;
   }
 
   const batchInfoMap = new Map<string, BatchInfo>();
@@ -587,6 +611,16 @@ async function computeReconciliationFromBatches(
       reconciliationStatus: b.reconciliation_status || "pending",
       pressTransferLossL: parseFloat(b.transfer_loss_l || "0"),
       transferCreated: b.transfer_created === true,
+      membershipDate: (() => {
+        const startStr = b.start_date ? new Date(b.start_date).toISOString().split("T")[0] : "";
+        const startYear = startStr ? parseInt(startStr.slice(0, 4), 10) : 0;
+        const originYear = b.ttb_origin_year != null ? Number(b.ttb_origin_year) : null;
+        // Origin years before 2025 deliberately ignored — closed filed years
+        // stay frozen (see ttbMembershipTs).
+        return originYear !== null && originYear >= 2025 && originYear < startYear
+          ? `${originYear}-12-31`
+          : startStr;
+      })(),
     });
   }
 
@@ -1031,8 +1065,10 @@ async function computeReconciliationFromBatches(
       && allKegs.length === 0
       && !batchesWithChildren.has(batchId);
 
-    // Check if batch existed before period or was created during period
-    const batchStartedBefore = info.startDate <= startDate;
+    // Check if batch existed before period or was created during period —
+    // by TTB membership date, so fall-2025 backlog batches (2026 start_date,
+    // ttb_origin_year=2025) are carried-forward for 2026 and production for 2025.
+    const batchStartedBefore = info.membershipDate <= startDate;
     const isCarriedForward = batchStartedBefore;
     const isNewInPeriod = !batchStartedBefore;
 
@@ -1790,7 +1826,7 @@ export const ttbRouter = router({
                   sql`COALESCE(${batches.reconciliationStatus}, 'pending') NOT IN ('duplicate', 'excluded')`,
                   // Exclude juice batches — they are not taxable inventory
                   sql`COALESCE(${batches.productType}, 'cider') != 'juice'`,
-                  lte(batches.startDate, dayBeforeStart),
+                  sql`${ttbMembershipTs} <= ${dayBeforeStart}`,
                   or(isNull(batches.endDate), gte(batches.endDate, startDate)),
                   sql`NOT (${batches.status} = 'discarded' AND ${batches.updatedAt} <= ${dayBeforeStart})`
                 )
@@ -1968,7 +2004,7 @@ export const ttbRouter = router({
               sql`COALESCE(${batches.reconciliationStatus}, 'pending') NOT IN ('duplicate', 'excluded')`,
               eq(batches.productType, "juice"),
               gte(batches.startDate, startDate),
-              lte(batches.startDate, endDate)
+              sql`${ttbMembershipTs} <= ${endDate}`
             )
           );
         const juiceOnlyLiters = Number(juiceOnlyData[0]?.totalLiters || 0);
@@ -2009,7 +2045,7 @@ export const ttbRouter = router({
               eq(batches.productType, "pommeau"),
               sql`CAST(${batches.initialVolumeLiters} AS DECIMAL) > 0`,
               gte(batches.startDate, startDate),
-              lte(batches.startDate, endDate)
+              sql`${ttbMembershipTs} <= ${endDate}`
             )
           );
         let juiceToPommeauLiters = 0;
@@ -2048,8 +2084,8 @@ export const ttbRouter = router({
               sql`dest_batch.product_type = 'pommeau'`,
               sql`dest_batch.deleted_at IS NULL`,
               // Only new pommeau batches created in the period
-              sql`dest_batch.start_date >= ${startDate}`,
-              sql`dest_batch.start_date <= ${endDate}`,
+              sql`(CASE WHEN dest_batch.ttb_origin_year >= 2025 AND dest_batch.ttb_origin_year < EXTRACT(YEAR FROM dest_batch.start_date) THEN make_date(dest_batch.ttb_origin_year, 12, 31)::timestamp ELSE dest_batch.start_date END) >= ${startDate}`,
+              sql`(CASE WHEN dest_batch.ttb_origin_year >= 2025 AND dest_batch.ttb_origin_year < EXTRACT(YEAR FROM dest_batch.start_date) THEN make_date(dest_batch.ttb_origin_year, 12, 31)::timestamp ELSE dest_batch.start_date END) <= ${endDate}`,
               // Exclude brandy and pommeau-to-pommeau transfers (racking between pommeau vessels)
               sql`source_batch.product_type NOT IN ('brandy', 'pommeau')`,
               gte(batchTransfers.transferredAt, startDate),
@@ -2083,7 +2119,7 @@ export const ttbRouter = router({
               ),
               sql`CAST(${batches.initialVolumeLiters} AS DECIMAL) > 0`,
               gte(batches.startDate, startDate),
-              lte(batches.startDate, endDate)
+              sql`${ttbMembershipTs} <= ${endDate}`
             )
           );
         // Pommeau batches built via transfers (initial = 0): sum incoming transfers as production
@@ -2109,8 +2145,8 @@ export const ttbRouter = router({
               sql`COALESCE(dest_batch.reconciliation_status, 'pending') NOT IN ('duplicate', 'excluded')`,
               sql`CAST(dest_batch.initial_volume_liters AS DECIMAL) = 0`,
               // Only count transfers to pommeau batches created in this period
-              sql`dest_batch.start_date >= ${startDate}`,
-              sql`dest_batch.start_date <= ${endDate}`,
+              sql`(CASE WHEN dest_batch.ttb_origin_year >= 2025 AND dest_batch.ttb_origin_year < EXTRACT(YEAR FROM dest_batch.start_date) THEN make_date(dest_batch.ttb_origin_year, 12, 31)::timestamp ELSE dest_batch.start_date END) >= ${startDate}`,
+              sql`(CASE WHEN dest_batch.ttb_origin_year >= 2025 AND dest_batch.ttb_origin_year < EXTRACT(YEAR FROM dest_batch.start_date) THEN make_date(dest_batch.ttb_origin_year, 12, 31)::timestamp ELSE dest_batch.start_date END) <= ${endDate}`,
               sql`source_batch.product_type != 'pommeau'`,
               gte(batchTransfers.transferredAt, startDate),
               lte(batchTransfers.transferredAt, endDate)
@@ -2141,7 +2177,7 @@ export const ttbRouter = router({
               // the system via the source batch's press run, not as separate production.
               isNull(batches.parentBatchId),
               gte(batches.startDate, startDate),
-              lte(batches.startDate, endDate)
+              sql`${ttbMembershipTs} <= ${endDate}`
             )
           );
         const fruitWineProducedLiters = Number(fruitWineProductionData[0]?.totalLiters || 0);
@@ -2448,7 +2484,7 @@ export const ttbRouter = router({
               isNotNull(batches.transferLossL),
               sql`CAST(${batches.transferLossL} AS DECIMAL) > 0`,
               gte(batches.startDate, startDate),
-              lte(batches.startDate, endDate)
+              sql`${ttbMembershipTs} <= ${endDate}`
             )
           );
 
@@ -2511,7 +2547,7 @@ export const ttbRouter = router({
               sql`COALESCE(${batches.reconciliationStatus}, 'pending') NOT IN ('duplicate', 'excluded')`,
               // Exclude juice batches — they are not taxable inventory
               sql`COALESCE(${batches.productType}, 'cider') != 'juice'`,
-              lte(batches.startDate, endDate),
+              sql`${ttbMembershipTs} <= ${endDate}`,
               // Exclude batches that ended before the period end
               or(isNull(batches.endDate), gte(batches.endDate, endDate)),
               // Exclude discarded/completed batches that were finished before endDate
@@ -3212,7 +3248,7 @@ export const ttbRouter = router({
               isNull(batches.deletedAt),
               sql`COALESCE(${batches.reconciliationStatus}, 'pending') NOT IN ('duplicate', 'excluded')`,
               eq(batches.status, "fermentation"),
-              lte(batches.startDate, endDate)
+              sql`${ttbMembershipTs} <= ${endDate}`
             )
           );
 
@@ -5122,8 +5158,8 @@ export const ttbRouter = router({
             isNull(batchTransfers.deletedAt),
             sql`dest_batch.product_type = 'pommeau'`,
             sql`source_batch.product_type NOT IN ('pommeau', 'brandy')`,
-            sql`dest_batch.start_date::date > ${openingDate}::date`,
-            sql`dest_batch.start_date::date <= ${reconciliationDate}::date`,
+            sql`(CASE WHEN dest_batch.ttb_origin_year >= 2025 AND dest_batch.ttb_origin_year < EXTRACT(YEAR FROM dest_batch.start_date) THEN make_date(dest_batch.ttb_origin_year, 12, 31) ELSE dest_batch.start_date::date END) > ${openingDate}::date`,
+            sql`(CASE WHEN dest_batch.ttb_origin_year >= 2025 AND dest_batch.ttb_origin_year < EXTRACT(YEAR FROM dest_batch.start_date) THEN make_date(dest_batch.ttb_origin_year, 12, 31) ELSE dest_batch.start_date::date END) <= ${reconciliationDate}::date`,
             sql`${batchTransfers.transferredAt}::date > ${openingDate}::date`,
             sql`${batchTransfers.transferredAt}::date <= ${reconciliationDate}::date`
           )
@@ -6173,7 +6209,7 @@ export const ttbRouter = router({
             LEFT JOIN vessels v ON v.id = b.vessel_id
             WHERE b.deleted_at IS NULL
               AND b.reconciliation_status = 'verified'
-              AND b.start_date <= ${reconciliationDate}::date
+              AND (CASE WHEN b.ttb_origin_year >= 2025 AND b.ttb_origin_year < EXTRACT(YEAR FROM b.start_date) THEN make_date(b.ttb_origin_year, 12, 31)::timestamp ELSE b.start_date END) <= ${reconciliationDate}::date
               AND COALESCE(b.current_volume_liters, 0) > 0
               AND NOT (b.batch_number LIKE 'LEGACY-%')
             ORDER BY CAST(b.current_volume_liters AS DECIMAL) DESC
@@ -8677,7 +8713,7 @@ export const ttbRouter = router({
             eq(batches.isArchived, false),
             isNull(batches.deletedAt),
             eq(batches.reconciliationStatus, "verified"),
-            lte(batches.startDate, asOfDate)
+            sql`${ttbMembershipTs} <= ${asOfDate}`
           )
         );
 
