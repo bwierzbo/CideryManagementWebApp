@@ -183,6 +183,29 @@ for (const year of YEARS) {
     yearOut.formTopLevelKeys = Object.keys(form);
     yearOut.form = form;
     console.log(`generateForm512017 OK — keys: ${Object.keys(form).join(", ")}`);
+
+    // --- Phase 3 C0: plug instrumentation ------------------------------
+    // Quantifies what each plug/flip/clamp currently absorbs so every
+    // de-plug commit can be measured against this baseline.
+    const plug: any = { byClass: {} };
+    const recorded = form.reconciliation?.recordedLosses?.byTaxClass ?? {};
+    for (const [cls, lines] of Object.entries<any>(form.bulkWinesByTaxClass ?? {})) {
+      const line29 = Number(lines.line29_losses ?? 0);
+      const line9 = Number(lines.line9_inventoryGains ?? 0);
+      const rec = Number(recorded[cls] ?? 0);
+      if (Math.abs(line29) > 0.05 || Math.abs(line9) > 0.05 || Math.abs(rec) > 0.05) {
+        plug.byClass[cls] = {
+          line29_plugged: r1(line29),
+          recordedLosses: r1(rec),
+          line29_plugExcess: r1(line29 - rec), // what the plug absorbs beyond real losses
+          line9_gainsFlip: r1(line9),
+        };
+      }
+    }
+    plug.formVariance = form.reconciliation?.variance ?? null;
+    plug.clampedVolume = null; // filled from recon summary below if exposed
+    yearOut.plugInstrumentation = plug;
+    console.log("plug instrumentation:", JSON.stringify(plug, null, 1));
   } catch (e: any) {
     yearOut.formError = e.message;
     console.log(`generateForm512017 FAILED: ${e.message}`);
@@ -207,6 +230,28 @@ for (const year of YEARS) {
     console.log(`getReconciliationSummary OK — keys: ${Object.keys(recon).join(", ")}`);
     console.log("totals:", JSON.stringify(recon.totals, null, 2));
     if (yearOut.parityWarnings) console.log("parityWarnings:", JSON.stringify(yearOut.parityWarnings, null, 2));
+
+    // --- Phase 3 C0: waterfall plug instrumentation --------------------
+    if (yearOut.plugInstrumentation) {
+      const p = yearOut.plugInstrumentation;
+      p.clampedVolume = recon.clampedVolume ?? null;
+      const wf = recon.waterfall?.byTaxClass ?? recon.waterfall ?? null;
+      p.reconAdjByClass = {};
+      if (wf) {
+        for (const [cls, row] of Object.entries<any>(wf)) {
+          const adj = Number(row?.reconAdj ?? 0);
+          if (Math.abs(adj) > 0.05) p.reconAdjByClass[cls] = r1(adj);
+        }
+      }
+      p.waterfallAdjustmentRows = Array.isArray(recon.waterfallAdjustments)
+        ? recon.waterfallAdjustments.length
+        : null;
+      console.log("waterfall plug instrumentation:", JSON.stringify({
+        clampedVolume: p.clampedVolume,
+        reconAdjByClass: p.reconAdjByClass,
+        waterfallAdjustmentRows: p.waterfallAdjustmentRows,
+      }, null, 1));
+    }
   } catch (e: any) {
     yearOut.reconError = e.message;
     console.log(`getReconciliationSummary FAILED: ${e.message}`);
