@@ -10,6 +10,7 @@
 
 import { relations } from "drizzle-orm";
 import {
+  jsonb,
   pgTable,
   uuid,
   text,
@@ -200,6 +201,9 @@ export const ttbReportingPeriods = pgTable(
     submittedAt: timestamp("submitted_at"),
     submittedBy: uuid("submitted_by").references(() => users.id),
     notes: text("notes"),
+    // Phase 3 C7: the varianceAnalysis at filing time — a filed period records
+    // what was unexplained when it was generated (feeds Phase 4 drift compare).
+    varianceAnalysis: jsonb("variance_analysis"),
 
     // Audit
     createdAt: timestamp("created_at").notNull().defaultNow(),

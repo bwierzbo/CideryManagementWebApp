@@ -268,6 +268,11 @@ const saveReportSnapshotInput = z.object({
     smallProducerCreditAmount: z.number().optional(),
     taxOwed: z.number().optional(),
   }),
+  // Phase 3 C7: persist the variance itemization with the snapshot
+  varianceAnalysis: z
+    .object({ byTaxClass: z.record(z.string(), z.any()), totalUnexplained: z.number() })
+    .passthrough()
+    .optional(),
   notes: z.string().optional(),
 });
 
@@ -4166,6 +4171,7 @@ export const ttbRouter = router({
             smallProducerCreditAmount:
               input.data.smallProducerCreditAmount?.toString(),
             taxOwed: input.data.taxOwed?.toString(),
+            varianceAnalysis: input.varianceAnalysis ?? null,
             notes: input.notes,
             generatedBy: ctx.user.id,
             status: "draft",
