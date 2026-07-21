@@ -77,6 +77,65 @@ const sectionBorder = "border-x-2 border-b-2 border-gray-600";
 const reservedText = "px-3 py-2 text-xs text-gray-400 italic";
 
 // ---------------------------------------------------------------------------
+// Variance state (Phase 3 C2 — plugs removed, variance is real)
+// ---------------------------------------------------------------------------
+
+// Human-readable tax-class labels for the variance breakdown.
+const TAX_CLASS_LABELS: Record<string, string> = {
+  hardCider: "Hard Cider",
+  wineUnder16: "Wine ≤16%",
+  wine16To21: "Wine 16–21%",
+  wine21To24: "Wine 21–24%",
+  carbonatedWine: "Carbonated Wine",
+  sparklingWine: "Sparkling Wine",
+};
+
+// 3-state classification: within tolerance is "balanced"; a real signed gap is
+// "unexplained" (amber — review, don't hide); only null/NaN is "broken" (red).
+type VarianceState = "balanced" | "unexplained" | "broken";
+const getVarianceState = (v: number | null | undefined, threshold: number): VarianceState => {
+  if (v == null || Number.isNaN(v)) return "broken";
+  return Math.abs(v) <= threshold ? "balanced" : "unexplained";
+};
+
+// Discrepancy cell color for the cider/brandy reconciliation (0.5-gal tolerance).
+const discCellClass = (v: number): string => {
+  const s = getVarianceState(v, 0.5);
+  return s === "balanced" ? "text-green-700"
+    : s === "unexplained" ? "text-amber-600 font-semibold"
+    : "text-red-600 font-semibold";
+};
+
+// Per-class breakdown of the honest unexplained variance (recorded losses,
+// signed unexplained gallons, and the itemized components behind it).
+function VarianceBreakdown({ analysis }: { analysis: TTBForm512017Data["varianceAnalysis"] }) {
+  if (!analysis) return null;
+  const rows = Object.entries(analysis.byTaxClass).filter(
+    ([, c]) => Math.abs(c.unexplained) >= 0.1 || c.components.length > 0
+  );
+  if (rows.length === 0) return null;
+  return (
+    <div className="border border-amber-300 bg-amber-50 rounded p-2 text-[10px] text-amber-900 space-y-1.5">
+      <p className="font-semibold uppercase text-amber-800">Unexplained variance by tax class</p>
+      {rows.map(([cls, c]) => (
+        <div key={cls} className="space-y-0.5">
+          <div className="flex justify-between font-semibold">
+            <span>{TAX_CLASS_LABELS[cls] ?? cls}</span>
+            <span className="tabular-nums">{fmtAlways(c.unexplained)} gal unexplained</span>
+          </div>
+          <div className="text-amber-700">Recorded losses: {fmtAlways(c.recordedLosses)} gal</div>
+          {c.components.map((comp, i) => (
+            <div key={i} className="text-amber-700 pl-2">
+              • {comp.note} ({fmtAlways(comp.amount)} gal)
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
@@ -247,19 +306,42 @@ export function TTBFormPreview({ formData, periodLabel, orgInfo }: TTBFormPrevie
             <span className="text-gray-500">through</span>
             <span className="font-mono">{periodTo}</span>
             <span className="ml-4 text-gray-500">({periodLabel})</span>
-            {/* Balance badge */}
-            <span className="ml-auto">
-              {formData.reconciliation.balanced ? (
-                <Badge variant="default" className="bg-green-600 text-[10px] py-0">
-                  <CheckCircle className="w-3 h-3 mr-1" />Balanced
-                </Badge>
-              ) : (
-                <Badge variant="destructive" className="text-[10px] py-0">
-                  <AlertTriangle className="w-3 h-3 mr-1" />
-                  Variance: {fmtAlways(formData.reconciliation.variance)} gal
-                </Badge>
-              )}
-            </span>
+            {/* Balance badge — 3 state: balanced / unexplained (amber) / broken (red) */}
+            {(() => {
+              const state = getVarianceState(formData.reconciliation.variance, 1);
+              if (state === "balanced") {
+                return (
+                  <span className="ml-auto">
+                    <Badge variant="default" className="bg-green-600 text-[10px] py-0">
+                      <CheckCircle className="w-3 h-3 mr-1" />Balanced
+                    </Badge>
+                  </span>
+                );
+              }
+              if (state === "broken") {
+                return (
+                  <span className="ml-auto">
+                    <Badge variant="destructive" className="text-[10px] py-0">
+                      <AlertTriangle className="w-3 h-3 mr-1" />Reconciliation error
+                    </Badge>
+                  </span>
+                );
+              }
+              // Unexplained variance — amber, with expandable per-class breakdown.
+              return (
+                <details className="ml-auto relative">
+                  <summary className="list-none cursor-pointer">
+                    <Badge variant="outline" className="border-amber-500 bg-amber-50 text-amber-700 text-[10px] py-0">
+                      <AlertTriangle className="w-3 h-3 mr-1" />
+                      Unexplained variance: {fmtAlways(formData.reconciliation.variance)} gal — review before filing
+                    </Badge>
+                  </summary>
+                  <div className="absolute right-0 top-full z-10 mt-1 w-72">
+                    <VarianceBreakdown analysis={formData.varianceAnalysis} />
+                  </div>
+                </details>
+              );
+            })()}
           </div>
         </div>
       </div>
@@ -647,19 +729,37 @@ export function TTBFormPreview({ formData, periodLabel, orgInfo }: TTBFormPrevie
                   <td className={`${cellLeft} font-medium`}>Total Accounted For (Removals + Ending Inventory)</td>
                   <td className={`${cellRight} w-32 font-semibold`}>{fmtAlways(formData.reconciliation.totalAccountedFor)}</td>
                 </tr>
-                <tr className={formData.reconciliation.balanced ? "bg-green-50" : "bg-red-50"}>
-                  <td className={`${cellLeft} font-bold`}>
-                    VARIANCE
-                    {formData.reconciliation.balanced && (
-                      <span className="ml-2 text-green-700 font-normal">(Books balance)</span>
-                    )}
-                  </td>
-                  <td className={`${cellRight} w-32 font-bold ${formData.reconciliation.balanced ? "text-green-700" : "text-red-700"}`}>
-                    {fmtAlways(formData.reconciliation.variance)}
-                  </td>
-                </tr>
+                {(() => {
+                  const state = getVarianceState(formData.reconciliation.variance, 0.5);
+                  const rowBg = state === "balanced" ? "bg-green-50" : state === "unexplained" ? "bg-amber-50" : "bg-red-50";
+                  const textColor = state === "balanced" ? "text-green-700" : state === "unexplained" ? "text-amber-700" : "text-red-700";
+                  return (
+                    <tr className={rowBg}>
+                      <td className={`${cellLeft} font-bold`}>
+                        VARIANCE
+                        {state === "balanced" && (
+                          <span className="ml-2 text-green-700 font-normal">(Books balance)</span>
+                        )}
+                        {state === "unexplained" && (
+                          <span className="ml-2 text-amber-700 font-normal">(Unexplained — review before filing)</span>
+                        )}
+                        {state === "broken" && (
+                          <span className="ml-2 text-red-700 font-normal">(Reconciliation error)</span>
+                        )}
+                      </td>
+                      <td className={`${cellRight} w-32 font-bold ${textColor}`}>
+                        {fmtAlways(formData.reconciliation.variance)}
+                      </td>
+                    </tr>
+                  );
+                })()}
               </tbody>
             </table>
+            {getVarianceState(formData.reconciliation.variance, 0.5) === "unexplained" && (
+              <div className="mt-2">
+                <VarianceBreakdown analysis={formData.varianceAnalysis} />
+              </div>
+            )}
           </div>
 
           {/* Cider/Brandy Reconciliation */}
@@ -680,7 +780,7 @@ export function TTBFormPreview({ formData, periodLabel, orgInfo }: TTBFormPrevie
                     <td className={`${cellLeft} font-medium`}>Cider</td>
                     <td className={cellRight}>{fmtAlways(formData.ciderBrandyReconciliation.cider.expectedEnding)}</td>
                     <td className={cellRight}>{fmtAlways(formData.ciderBrandyReconciliation.cider.actualEnding)}</td>
-                    <td className={`${cellRight} ${formData.ciderBrandyReconciliation.cider.discrepancy !== 0 ? "text-red-600 font-semibold" : "text-green-700"}`}>
+                    <td className={`${cellRight} ${discCellClass(formData.ciderBrandyReconciliation.cider.discrepancy)}`}>
                       {fmtAlways(formData.ciderBrandyReconciliation.cider.discrepancy)}
                     </td>
                   </tr>
@@ -688,7 +788,7 @@ export function TTBFormPreview({ formData, periodLabel, orgInfo }: TTBFormPrevie
                     <td className={`${cellLeft} font-medium`}>Brandy</td>
                     <td className={cellRight}>{fmtAlways(formData.ciderBrandyReconciliation.brandy.expectedEnding)}</td>
                     <td className={cellRight}>{fmtAlways(formData.ciderBrandyReconciliation.brandy.actualEnding)}</td>
-                    <td className={`${cellRight} ${formData.ciderBrandyReconciliation.brandy.discrepancy !== 0 ? "text-red-600 font-semibold" : "text-green-700"}`}>
+                    <td className={`${cellRight} ${discCellClass(formData.ciderBrandyReconciliation.brandy.discrepancy)}`}>
                       {fmtAlways(formData.ciderBrandyReconciliation.brandy.discrepancy)}
                     </td>
                   </tr>
@@ -696,7 +796,7 @@ export function TTBFormPreview({ formData, periodLabel, orgInfo }: TTBFormPrevie
                     <td className={`${cellLeft} font-bold`}>TOTAL</td>
                     <td className={`${cellRight} font-bold`}>{fmtAlways(formData.ciderBrandyReconciliation.total.expectedEnding)}</td>
                     <td className={`${cellRight} font-bold`}>{fmtAlways(formData.ciderBrandyReconciliation.total.actualEnding)}</td>
-                    <td className={`${cellRight} font-bold ${formData.ciderBrandyReconciliation.total.discrepancy !== 0 ? "text-red-600" : "text-green-700"}`}>
+                    <td className={`${cellRight} font-bold ${discCellClass(formData.ciderBrandyReconciliation.total.discrepancy)}`}>
                       {fmtAlways(formData.ciderBrandyReconciliation.total.discrepancy)}
                     </td>
                   </tr>

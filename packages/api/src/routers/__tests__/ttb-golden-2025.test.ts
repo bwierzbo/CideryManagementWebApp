@@ -139,14 +139,21 @@ const PDF = {
 // drifts, the ENGINE changed (investigate) — the data explanation did not.
 const KNOWN_DELTA: Record<string, number> = {
   // Hard Cider — the backlog lands here. Recompute counts fall-2025 volume as
-  // still-on-hand (booked 2026) rather than lost/ended in 2025, inflating Line
-  // 29 losses and deflating Line 31 ending by the same ~1.15k gal.
-  "HC Line 29 Losses": 1111.6, // actual 1349.8 vs filed 238.2
+  // still-on-hand (booked 2026) rather than lost/ended in 2025, deflating Line
+  // 31 ending by ~1.15k gal.
+  // Phase 3 C2 (de-plug): Line 29 is now the REAL recorded operational losses,
+  // no longer the balance-forcing plug. The old +1111.6 delta was the plugged
+  // backlog it absorbed; that discrepancy is now surfaced as the honest
+  // unexplained variance (~1096 gal, see the "gap vs unexplained" balance test),
+  // NOT hidden in losses. Delta is now just the small recorded-loss difference.
+  "HC Line 29 Losses": 15.4, // actual 253.6 (recorded losses) vs filed 238.2
   "HC Line 31 Ending": -1156.1, // actual 2936.2 vs filed 4092.3
   "HC Line 12 Total In": 1.6, // actual 5875.3 vs filed 5873.7 (rounding of backlog inflows)
   // Wine <16% — plum/quince packaging booked 2026, so less packaged/ending in 2025.
   "W<16 Line 13 Packaged": -35.5, // actual 592.7 vs filed 628.2
-  "W<16 Line 29 Losses": 18.0, // actual 64.6 vs filed 46.6
+  // Phase 3 C2 (de-plug): Line 29 = real recorded losses (37.1), not the plug.
+  // The former +18.0 plugged amount is now honest unexplained variance (~27.5).
+  "W<16 Line 29 Losses": -9.5, // actual 37.1 (recorded losses) vs filed 46.6
   "W<16 Line 31 Ending": -5.0, // actual 12.9 vs filed 17.9
   "W<16 Line 12 Total In": -22.4, // actual 675.2 vs filed 697.6
   "W<16-B Line 2 Bottled": -35.5, // actual 592.7 vs filed 628.2 (same event as Line 13)
@@ -217,11 +224,17 @@ describe("TTB Golden 2025 — Form 5120.17", () => {
       expectClose(ending, PDF.sectionA.hardCider.line31_ending, "HC Line 31 Ending");
     });
 
-    it("should balance: Total In = Total Out", () => {
+    it("Line 12 − Line 32 gap equals the honest unexplained variance", () => {
       const hc = formResult.bulkWinesByTaxClass?.hardCider ?? formResult.sectionA?.hardCider;
       const totalIn = hc?.line12_total ?? 0;
       const totalOut = hc?.line32_total ?? 0;
-      expectClose(totalIn, totalOut, "HC Line 12 = Line 32", TIGHT_TOLERANCE);
+      // Phase 3 C2 (de-plug): line 12 no longer force-equals line 32. The gap IS
+      // the class's honest unexplained variance (surfaced in varianceAnalysis,
+      // not plugged into line 9/29). Assert the form gap and the reported
+      // unexplained figure agree.
+      const unexplained = Math.abs(formResult.varianceAnalysis?.byTaxClass?.hardCider?.unexplained ?? 0);
+      const gap = Math.abs(totalIn - totalOut);
+      expect(Math.abs(gap - unexplained), `HC gap=${gap.toFixed(2)} vs |unexplained|=${unexplained.toFixed(2)}`).toBeLessThanOrEqual(TIGHT_TOLERANCE);
       expectClose(totalIn, PDF.sectionA.hardCider.line12_totalIn, "HC Line 12 Total In");
     });
   });
@@ -257,11 +270,14 @@ describe("TTB Golden 2025 — Form 5120.17", () => {
       expectClose(ending, PDF.sectionA.wineUnder16.line31_ending, "W<16 Line 31 Ending");
     });
 
-    it("should balance: Total In = Total Out", () => {
+    it("Line 12 − Line 32 gap equals the honest unexplained variance", () => {
       const w = formResult.bulkWinesByTaxClass?.wineUnder16 ?? formResult.sectionA?.wineUnder16;
       const totalIn = w?.line12_total ?? 0;
       const totalOut = w?.line32_total ?? 0;
-      expectClose(totalIn, totalOut, "W<16 Line 12 = Line 32", TIGHT_TOLERANCE);
+      // Phase 3 C2 (de-plug): the gap IS the class's honest unexplained variance.
+      const unexplained = Math.abs(formResult.varianceAnalysis?.byTaxClass?.wineUnder16?.unexplained ?? 0);
+      const gap = Math.abs(totalIn - totalOut);
+      expect(Math.abs(gap - unexplained), `W<16 gap=${gap.toFixed(2)} vs |unexplained|=${unexplained.toFixed(2)}`).toBeLessThanOrEqual(TIGHT_TOLERANCE);
       expectClose(totalIn, PDF.sectionA.wineUnder16.line12_totalIn, "W<16 Line 12 Total In");
     });
   });
@@ -291,11 +307,14 @@ describe("TTB Golden 2025 — Form 5120.17", () => {
       expectClose(ending, PDF.sectionA.wine16To21.line31_ending, "W16-21 Line 31 Ending");
     });
 
-    it("should balance: Total In = Total Out", () => {
+    it("Line 12 − Line 32 gap equals the honest unexplained variance", () => {
       const p = formResult.bulkWinesByTaxClass?.wine16To21 ?? formResult.sectionA?.wine16To21;
       const totalIn = p?.line12_total ?? 0;
       const totalOut = p?.line32_total ?? 0;
-      expectClose(totalIn, totalOut, "W16-21 Line 12 = Line 32", TIGHT_TOLERANCE);
+      // Phase 3 C2 (de-plug): the gap IS the class's honest unexplained variance.
+      const unexplained = Math.abs(formResult.varianceAnalysis?.byTaxClass?.wine16To21?.unexplained ?? 0);
+      const gap = Math.abs(totalIn - totalOut);
+      expect(Math.abs(gap - unexplained), `W16-21 gap=${gap.toFixed(2)} vs |unexplained|=${unexplained.toFixed(2)}`).toBeLessThanOrEqual(TIGHT_TOLERANCE);
       expectClose(totalIn, PDF.sectionA.wine16To21.line12_totalIn, "W16-21 Line 12 Total In");
     });
   });
@@ -391,29 +410,39 @@ describe("TTB Golden 2025 — Form 5120.17", () => {
   // ============================================
 
   describe("Form Integrity", () => {
-    it("should have overall reconciliation balanced (variance < 2 gal)", () => {
-      // Form-level variance is a cross-column rounding artifact: each per-class column
-      // self-balances (line12=line32), but summing independently-rounded columns across
-      // 3 tax classes × 30+ line items produces a residual. Observed 14.8 gal — larger
-      // than pure rounding because the fall-2025 backlog (booked to 2026) leaves the
-      // 2025 period's independently-computed columns slightly out of cross-column sync.
-      // Threshold set just above the observed value; this is an internal-consistency
-      // signal, NOT forced green with a fake filed delta.
+    it("surfaces the documented 2025 unexplained variance (fall-2025 backlog)", () => {
+      // Phase 3 C2 (de-plug): the form no longer plugs to ~0. reconciliation.variance
+      // is now the REAL available-minus-accounted gap. For 2025 this is the
+      // documented fall-2025 data-entry backlog: ~1.1k gal of hard-cider volume
+      // physically still on hand at year-end but not booked until early 2026, so
+      // the 2025 period reads as if that volume left unaccounted. Pinned to the
+      // measured value — surfaced honestly (balanced=false), never forced green.
+      const KNOWN_2025_UNEXPLAINED = 1154.0; // measured: HC ~1096 + W<16 ~27 + W16-21 ~45 + carbonated ~-14
       const recon = formResult.reconciliation;
-      if (recon) {
-        const variance = Math.abs(recon.variance ?? 0);
-        expect(variance, `Form variance = ${variance}`).toBeLessThan(15.0);
-      }
+      expect(recon).toBeDefined();
+      const variance = recon?.variance ?? 0;
+      expect(
+        Math.abs(variance - KNOWN_2025_UNEXPLAINED),
+        `Form variance = ${variance}, expected ~${KNOWN_2025_UNEXPLAINED}`
+      ).toBeLessThan(2.0);
+      expect(recon?.balanced, "2025 must be flagged unbalanced, not hidden").toBe(false);
     });
 
-    it("should have each bulk tax class line12 = line32", () => {
+    it("each bulk tax class line12 − line32 gap equals its unexplained variance", () => {
+      // Phase 3 C2 (de-plug): columns are no longer force-balanced. Each class's
+      // line12−line32 gap must equal the honest unexplained variance reported for it.
       const classes = formResult.bulkWinesByTaxClass ?? {};
+      const va = formResult.varianceAnalysis?.byTaxClass ?? {};
       for (const [cls, section] of Object.entries(classes) as [string, any][]) {
         const line12 = section.line12_total ?? 0;
         const line32 = section.line32_total ?? 0;
         if (line12 > 0 || line32 > 0) {
           const gap = Math.abs(line12 - line32);
-          expect(gap, `${cls} bulk: line12=${line12.toFixed(1)}, line32=${line32.toFixed(1)}, gap=${gap.toFixed(2)}`).toBeLessThan(TIGHT_TOLERANCE);
+          const unexplained = Math.abs(va[cls]?.unexplained ?? 0);
+          expect(
+            Math.abs(gap - unexplained),
+            `${cls} bulk gap=${gap.toFixed(2)} vs |unexplained|=${unexplained.toFixed(2)}`
+          ).toBeLessThan(TIGHT_TOLERANCE);
         }
       }
     });

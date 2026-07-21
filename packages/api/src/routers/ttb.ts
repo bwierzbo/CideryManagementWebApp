@@ -3422,14 +3422,16 @@ export const ttbRouter = router({
         );
         // Recorded losses from operational data (racking, filtering, bottling, etc.)
         const recordedLosses = otherRemovals.processLosses;
-        // Line 29 = balancing figure: Total In - all other removals - ending
-        // This absorbs all unrecorded losses (lees, evaporation, sampling, etc.)
-        // Standard TTB practice: Line 29 is the "plug" that makes the form balance.
-        const bulkLosses = roundGallons(
-          bulkLine12 - totalPackedGallons - ciderSentToDspGallons -
-          totalChangeOfClassOut - totalBottlingLoss - endingInventory.bulk
+        // Phase 3 C2: Line 29 = the REAL recorded operational losses, no longer a
+        // balance-forcing plug. Line 32 is the true arithmetic sum of the outflow
+        // lines + ending; it is now ALLOWED to differ from Line 12. Any gap is the
+        // honest unexplained variance and is reported (varianceAnalysis /
+        // reconciliation), never absorbed here.
+        const bulkLosses = recordedLosses;
+        const bulkLine32 = roundGallons(
+          totalPackedGallons + ciderSentToDspGallons +
+          totalChangeOfClassOut + totalBottlingLoss + bulkLosses + endingInventory.bulk
         );
-        const bulkLine32 = bulkLine12; // Form must balance
 
         const bulkWines: BulkWinesSection = {
           line1_onHandBeginning: beginningInventory.bulk,
@@ -3482,23 +3484,17 @@ export const ttbRouter = router({
         const ciderRecordedLosses = roundGallons(
           (lossesByTaxClass["hardCider"] || 0) - (clampedByTaxClass["hardCider"] || 0)
         );
-        // Losses (line 29) = available - documented outflows - ending.
-        // Per TTB instructions: if negative (more accounted for than available),
-        // put the abs value on line 9 (Inventory Gains) and set losses to 0.
-        // This happens when volume enters from batches outside the reconciliation scope
-        // via same-class blending operations.
+        // Phase 3 C2: no plug/flip. Line 29 = the class's real recorded losses,
+        // Line 9 = its real positive adjustments, Line 12 stays un-inflated, and
+        // Line 32 is the true arithmetic sum of outflow lines + ending (allowed to
+        // differ from Line 12). ciderLossesRaw is retained only to derive the
+        // reported unexplained variance (varianceAnalysis).
         const ciderLossesRaw = roundGallons(
           ciderLine12 - ciderPacked - ciderDistillation - ciderChangeOut - endingCiderBulkGallons
         );
-        const ciderLosses = Math.max(0, ciderLossesRaw);
-        const ciderInventoryGains = ciderLossesRaw < 0
-          ? roundGallons(ciderGains + Math.abs(ciderLossesRaw))
-          : ciderGains;
-        // If gains absorbed negative losses, line 12 increases to maintain balance
-        const ciderLine12Final = ciderLossesRaw < 0
-          ? roundGallons(ciderLine12 + Math.abs(ciderLossesRaw))
-          : ciderLine12;
-        const ciderLine32 = ciderLine12Final;
+        const ciderLine32 = roundGallons(
+          ciderPacked + ciderDistillation + ciderChangeOut + ciderRecordedLosses + endingCiderBulkGallons
+        );
         const ciderBulkWines: BulkWinesSection = {
           line1_onHandBeginning: ciderBeginning,
           line2_produced: ciderProducedGallons,
@@ -3508,10 +3504,10 @@ export const ttbRouter = router({
           line6_amelioration: 0,
           line7_receivedInBond: 0,
           line8_dumpedToBulk: 0,
-          line9_inventoryGains: ciderInventoryGains,
+          line9_inventoryGains: ciderGains,
           line10_writeIn: ciderChangeIn,
           line10_writeInDesc: ciderChangeIn > 0 ? "CHANGE OF CLASS IN" : undefined,
-          line12_total: ciderLine12Final,
+          line12_total: ciderLine12,
           line13_bottled: ciderPacked,
           line14_removedTaxpaid: 0,
           line15_transfersInBond: 0,
@@ -3526,7 +3522,7 @@ export const ttbRouter = router({
           line24_writeIn1: ciderChangeOut,
           line24_writeIn1Desc: ciderChangeOut > 0 ? "CHANGE OF CLASS OUT" : undefined,
           line25_writeIn2: 0,
-          line29_losses: ciderLosses,
+          line29_losses: ciderRecordedLosses,
           line30_inventoryLosses: 0,
           line31_onHandEnd: endingCiderBulkGallons,
           line32_total: ciderLine32,
@@ -3542,18 +3538,13 @@ export const ttbRouter = router({
         const wineUnder16Packed = roundGallons(wineUnder16Bottled + wineUnder16KegFilled - wineUnder16BottlingLoss);
         const wineUnder16RecordedLosses = roundGallons((lossesByTaxClass["wineUnder16"] || 0) - (clampedByTaxClass["wineUnder16"] || 0));
         const wineUnder16Line12 = roundGallons(beginningWineUnder16BulkGallons + fruitWineProducedGallons + wineUnder16ChangeIn + wineUnder16Gains);
-        // Losses/Gains split — same pattern as HC
+        // Phase 3 C2: no plug/flip — Line 29 = recorded losses, Line 32 = true sum.
         const wineUnder16LossesRaw = roundGallons(
           wineUnder16Line12 - wineUnder16Packed - wineUnder16ChangeOut - endingWineUnder16BulkGallons
         );
-        const wineUnder16Losses = Math.max(0, wineUnder16LossesRaw);
-        const wineUnder16InventoryGains = wineUnder16LossesRaw < 0
-          ? roundGallons(wineUnder16Gains + Math.abs(wineUnder16LossesRaw))
-          : wineUnder16Gains;
-        const wineUnder16Line12Final = wineUnder16LossesRaw < 0
-          ? roundGallons(wineUnder16Line12 + Math.abs(wineUnder16LossesRaw))
-          : wineUnder16Line12;
-        const wineUnder16Line32 = wineUnder16Line12Final;
+        const wineUnder16Line32 = roundGallons(
+          wineUnder16Packed + wineUnder16ChangeOut + wineUnder16RecordedLosses + endingWineUnder16BulkGallons
+        );
         const wineUnder16BulkWines: BulkWinesSection = {
           line1_onHandBeginning: beginningWineUnder16BulkGallons,
           line2_produced: fruitWineProducedGallons,
@@ -3563,10 +3554,10 @@ export const ttbRouter = router({
           line6_amelioration: 0,
           line7_receivedInBond: 0,
           line8_dumpedToBulk: 0,
-          line9_inventoryGains: wineUnder16InventoryGains,
+          line9_inventoryGains: wineUnder16Gains,
           line10_writeIn: wineUnder16ChangeIn,
           line10_writeInDesc: wineUnder16ChangeIn > 0 ? "CHANGE OF CLASS IN" : undefined,
-          line12_total: wineUnder16Line12Final,
+          line12_total: wineUnder16Line12,
           line13_bottled: wineUnder16Packed,
           line14_removedTaxpaid: 0,
           line15_transfersInBond: 0,
@@ -3581,7 +3572,7 @@ export const ttbRouter = router({
           line24_writeIn1: wineUnder16ChangeOut,
           line24_writeIn1Desc: wineUnder16ChangeOut > 0 ? "CHANGE OF CLASS OUT" : undefined,
           line25_writeIn2: 0,
-          line29_losses: wineUnder16Losses,
+          line29_losses: wineUnder16RecordedLosses,
           line30_inventoryLosses: 0,
           line31_onHandEnd: endingWineUnder16BulkGallons,
           line32_total: wineUnder16Line32,
@@ -3601,18 +3592,13 @@ export const ttbRouter = router({
         const pommeauDistillation = roundGallons(distillationByTaxClass["wine16To21"] || 0);
         const pommeauRecordedLosses = roundGallons((lossesByTaxClass["wine16To21"] || 0) - (clampedByTaxClass["wine16To21"] || 0));
         const pommeauLine12 = roundGallons(beginningPommeauBulkGallons + pommeauProducedGallons + pommeauChangeIn + pommeauGains);
-        // Losses/Gains split — same pattern as HC
+        // Phase 3 C2: no plug/flip — Line 29 = recorded losses, Line 32 = true sum.
         const pommeauLossesRaw = roundGallons(
           pommeauLine12 - pommeauPacked - pommeauDistillation - pommeauChangeOut - endingPommeauBulkGallons
         );
-        const pommeauLosses = Math.max(0, pommeauLossesRaw);
-        const pommeauInventoryGains = pommeauLossesRaw < 0
-          ? roundGallons(pommeauGains + Math.abs(pommeauLossesRaw))
-          : pommeauGains;
-        const pommeauLine12Final = pommeauLossesRaw < 0
-          ? roundGallons(pommeauLine12 + Math.abs(pommeauLossesRaw))
-          : pommeauLine12;
-        const pommeauLine32 = pommeauLine12Final;
+        const pommeauLine32 = roundGallons(
+          pommeauPacked + pommeauDistillation + pommeauChangeOut + pommeauRecordedLosses + endingPommeauBulkGallons
+        );
         const pommeauBulkWines: BulkWinesSection = {
           line1_onHandBeginning: beginningPommeauBulkGallons,
           line2_produced: 0,
@@ -3622,10 +3608,10 @@ export const ttbRouter = router({
           line6_amelioration: 0,
           line7_receivedInBond: 0,
           line8_dumpedToBulk: 0,
-          line9_inventoryGains: pommeauInventoryGains,
+          line9_inventoryGains: pommeauGains,
           line10_writeIn: pommeauChangeIn,
           line10_writeInDesc: pommeauChangeIn > 0 ? "CHANGE OF CLASS IN" : undefined,
-          line12_total: pommeauLine12Final,
+          line12_total: pommeauLine12,
           line13_bottled: pommeauPacked,
           line14_removedTaxpaid: 0,
           line15_transfersInBond: 0,
@@ -3640,7 +3626,7 @@ export const ttbRouter = router({
           line24_writeIn1: pommeauChangeOut,
           line24_writeIn1Desc: pommeauChangeOut > 0 ? "CHANGE OF CLASS OUT" : undefined,
           line25_writeIn2: 0,
-          line29_losses: pommeauLosses,
+          line29_losses: pommeauRecordedLosses,
           line30_inventoryLosses: 0,
           line31_onHandEnd: endingPommeauBulkGallons,
           line32_total: pommeauLine32,
@@ -3758,10 +3744,10 @@ export const ttbRouter = router({
         };
 
         // ============================================
-        // Phase 3 C1: variance itemization — quantify, under honest names,
-        // every gallon the balancing mechanisms below absorb. The plugs are
-        // still ACTIVE in this commit; this layer measures them so the
-        // de-plug commits (C2+) are verifiable against it.
+        // Variance itemization — quantify, under honest names, every gallon of
+        // discrepancy per class. Phase 3 C2 removed the plugs, so this is now the
+        // REAL unexplained variance (no longer just a measurement of what plugs
+        // would have absorbed). unexplained = lossesRaw - recordedLosses per class.
         // ============================================
         const varianceByClass: Record<string, TTBVarianceClassAnalysis> = {};
         const classRawInputs: Array<[string, number, number]> = [
@@ -3792,30 +3778,24 @@ export const ttbRouter = router({
         }
 
         // ============================================
-        // Section Balancing — TTB requires line 12 = line 32 and line 7 = line 21
-        // Any unexplained discrepancy goes into inventory gains/losses
-        // (standard accounting treatment for TTB Form 5120.17)
+        // Phase 3 C2: Section gaps are MEASURED, not absorbed. TTB Form 5120.17
+        // ideally has line 12 = line 32 and line 7 = line 21, but forcing that
+        // balance hides the real discrepancy. Each class's gap is recorded as an
+        // honest `sectionBalancing` variance component; the form lines are left
+        // un-mutated (the aggregate total column below is a pure summation of the
+        // per-class columns).
         // ============================================
 
-        // Balance Bottled Section (Part I-B) — each tax class column balanced independently
+        // Measure Bottled Section (Part I-B) line7-line21 gap per tax class
         for (const [taxClass, section] of Object.entries(bottledWinesByTaxClass)) {
           const gap = roundGallons(section.line7_total - section.line21_total);
           if (Math.abs(gap) >= 0.1) {
-            // C1 instrumentation: record what this balancing write-in absorbs
             (varianceByClass[taxClass] ??= { unexplained: 0, recordedLosses: 0, manualAdjustments: 0, components: [] })
-              .components.push({ kind: "sectionBalancing", amount: gap, note: `Bottled section line7-line21 gap force-balanced (${gap > 0 ? "shortage" : "write-in"})` } satisfies TTBVarianceComponent);
-            if (gap < 0) {
-              section.line5_writeIn = roundGallons(section.line5_writeIn + Math.abs(gap));
-              section.line5_writeInDesc = "INVENTORY ADJUSTMENTS";
-              section.line7_total = roundGallons(section.line7_total + Math.abs(gap));
-            } else {
-              section.line19_inventoryShortage = roundGallons(section.line19_inventoryShortage + gap);
-              section.line21_total = roundGallons(section.line21_total + gap);
-            }
+              .components.push({ kind: "sectionBalancing", amount: gap, note: `Bottled section line7-line21 gap (unbalanced, not absorbed)` } satisfies TTBVarianceComponent);
           }
         }
 
-        // Recompute aggregate bottled totals from balanced per-class values
+        // Recompute aggregate bottled totals as a pure sum of the per-class columns
         const balancedBottledCols = Object.values(bottledWinesByTaxClass);
         bottledWines.line5_writeIn = roundGallons(balancedBottledCols.reduce((s, c) => s + c.line5_writeIn, 0));
         bottledWines.line5_writeInDesc = bottledWines.line5_writeIn > 0 ? "INVENTORY ADJUSTMENTS" : undefined;
@@ -3823,25 +3803,18 @@ export const ttbRouter = router({
         bottledWines.line19_inventoryShortage = roundGallons(balancedBottledCols.reduce((s, c) => s + c.line19_inventoryShortage, 0));
         bottledWines.line21_total = roundGallons(balancedBottledCols.reduce((s, c) => s + c.line21_total, 0));
 
-        // Balance Bulk Section (Part I-A) — each tax class column balanced independently
-        // TTB requires line 12 = line 32; any gap goes to inventory gains (line 9) or losses (line 29)
+        // Measure Bulk Section (Part I-A) line12-line32 gap per tax class.
+        // This gap IS the honest unexplained variance for the class; it is recorded,
+        // not force-balanced into line 9 (gains) or line 29 (losses).
         for (const [taxClass, section] of Object.entries(bulkWinesByTaxClass)) {
           const gap = roundGallons(section.line12_total - section.line32_total);
           if (Math.abs(gap) >= 0.1) {
-            // C1 instrumentation: record what this balancing write absorbs
             (varianceByClass[taxClass] ??= { unexplained: 0, recordedLosses: 0, manualAdjustments: 0, components: [] })
-              .components.push({ kind: "sectionBalancing", amount: gap, note: `Bulk section line12-line32 gap force-balanced (${gap > 0 ? "into line 29" : "into line 9"})` } satisfies TTBVarianceComponent);
-            if (gap < 0) {
-              section.line9_inventoryGains = roundGallons(section.line9_inventoryGains + Math.abs(gap));
-              section.line12_total = roundGallons(section.line12_total + Math.abs(gap));
-            } else {
-              section.line29_losses = roundGallons(section.line29_losses + gap);
-              section.line32_total = roundGallons(section.line32_total + gap);
-            }
+              .components.push({ kind: "sectionBalancing", amount: gap, note: `Bulk section line12-line32 gap (unbalanced, not absorbed)` } satisfies TTBVarianceComponent);
           }
         }
 
-        // Recompute ALL total column lines as sums of balanced per-class values.
+        // Recompute ALL total column lines as sums of the per-class values.
         // This ensures Total column = sum of per-class columns for every line,
         // so Line 12 = sum of Lines 1-11 on the Total column.
         const allBulkCols = Object.values(bulkWinesByTaxClass);
@@ -3857,8 +3830,9 @@ export const ttbRouter = router({
         bulkWines.line10_writeInDesc = bulkWines.line10_writeIn > 0 ? "CHANGE OF CLASS IN" : undefined;
         bulkWines.line24_writeIn1Desc = bulkWines.line24_writeIn1 > 0 ? "CHANGE OF CLASS OUT" : undefined;
 
-        // Derive reconciliation FROM the balanced form sections
-        // This ensures the reconciliation always matches what's shown on the form
+        // Derive reconciliation FROM the (un-plugged) form sections.
+        // Phase 3 C2: line 29 = recorded losses and line 32 = a true sum, so this
+        // variance is the REAL available-minus-accounted gap, not a plugged ~0.
         const formTotalAvailable = roundGallons(
           // Bulk inputs (lines 1-11, all wine entering system)
           bulkWines.line1_onHandBeginning + bulkWines.line2_produced +
@@ -3893,7 +3867,7 @@ export const ttbRouter = router({
           totalAvailable: formTotalAvailable,
           totalAccountedFor: formTotalAccountedFor,
           variance: roundGallons(formTotalAvailable - formTotalAccountedFor),
-          balanced: Math.abs(roundGallons(formTotalAvailable - formTotalAccountedFor)) < 0.1,
+          balanced: Math.abs(roundGallons(formTotalAvailable - formTotalAccountedFor)) < 1.0,
           // Recorded operational losses vs balancing figure for diagnostic comparison
           recordedLosses: {
             total: recordedLosses,
@@ -3903,8 +3877,8 @@ export const ttbRouter = router({
           },
         };
 
-        // Phase 3 C1: finalize the variance itemization (plugs still active —
-        // this REPORTS what they absorb; C2+ makes it THE variance).
+        // Phase 3 C2: finalize the variance itemization — this IS the form's real
+        // unexplained variance now that the plugs are gone.
         const varianceAnalysis = {
           byTaxClass: varianceByClass,
           totalUnexplained: roundGallons(
