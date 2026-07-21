@@ -302,7 +302,7 @@ interface SystemVolumeBreakdown {
 async function computeSystemCalculatedOnHand(
   verifiedBatchIds: string[],
   asOfDate: string,
-): Promise<{ total: number; breakdown: SystemVolumeBreakdown; perBatch: Map<string, number>; perBatchClampedLoss: Map<string, number> }> {
+): Promise<{ total: number; breakdown: SystemVolumeBreakdown; perBatch: Map<string, number> }> {
   const emptyBreakdown: SystemVolumeBreakdown = {
     totalLiters: 0, initialVolumeLiters: 0, mergesInLiters: 0, mergesOutLiters: 0,
     transfersInLiters: 0, transfersOutLiters: 0, transferLossLiters: 0,
@@ -310,7 +310,7 @@ async function computeSystemCalculatedOnHand(
     distillationLiters: 0, adjustmentsLiters: 0, positiveAdjLiters: 0, negativeAdjLiters: 0,
     rackingLossLiters: 0, filterLossLiters: 0, clampedLossLiters: 0, batchCount: 0,
   };
-  if (verifiedBatchIds.length === 0) return { total: 0, breakdown: emptyBreakdown, perBatch: new Map(), perBatchClampedLoss: new Map() };
+  if (verifiedBatchIds.length === 0) return { total: 0, breakdown: emptyBreakdown, perBatch: new Map() };
 
   // Phase 1: SBD reconstruction = THE shared reducer in as-of-date mode, fed
   // by the same fetcher as per-batch validation (reconciliation plan §3).
@@ -329,7 +329,6 @@ async function computeSystemCalculatedOnHand(
   let totalLiters = 0;
   const bd: SystemVolumeBreakdown = { ...emptyBreakdown, batchCount: verifiedBatchIds.length };
   const perBatch = new Map<string, number>();
-  const perBatchClampedLoss = new Map<string, number>();
 
   for (const batchId of verifiedBatchIds) {
     const inputs = volumeInputs.get(batchId);
@@ -360,15 +359,17 @@ async function computeSystemCalculatedOnHand(
     bd.negativeAdjLiters += Math.abs(breakdown.adjustmentsNegativeL);
     bd.rackingLossLiters += breakdown.rackingLossL;
     bd.filterLossLiters += breakdown.filterLossL;
+    // Diagnostic only: magnitude of batches that reconstruct below zero. The
+    // ending itself flows through unclamped (perBatch, above); this sum feeds the
+    // getReconciliationSummary data-quality readout, it is NOT a form plug.
     if (ending < 0) {
       bd.clampedLossLiters += Math.abs(ending);
-      perBatchClampedLoss.set(batchId, Math.abs(ending));
     }
   }
 
   bd.totalLiters = totalLiters;
 
-  return { total: litersToWineGallons(totalLiters), breakdown: bd, perBatch, perBatchClampedLoss };
+  return { total: litersToWineGallons(totalLiters), breakdown: bd, perBatch };
 }
 
 /**
@@ -1706,8 +1707,6 @@ export const ttbRouter = router({
         let beginningPommeauBulkLiters = 0;
         let beginningWineUnder16BulkLiters = 0;
         let beginningBrandyBulkLiters = 0;
-        let begClampedLossLiters = 0;
-        let begPerBatchClampedLoss = new Map<string, number>();
 
         if (previousSnapshot) {
           // Use previous snapshot's ending inventory (sum of all tax class columns)
@@ -1851,8 +1850,6 @@ export const ttbRouter = router({
               beginningPommeauBulkLiters = begByClass["wine16To21"] || 0;
               beginningWineUnder16BulkLiters = begByClass["wineUnder16"] || 0;
               beginningBrandyBulkLiters = begByClass["appleBrandy"] || 0;
-              begClampedLossLiters = begSbdResult.breakdown.clampedLossLiters;
-              begPerBatchClampedLoss = begSbdResult.perBatchClampedLoss;
             }
 
             beginningPommeauBulkGallons = roundGallons(
@@ -2577,10 +2574,11 @@ export const ttbRouter = router({
         let endingWineUnder16BulkLiters = 0;
         let endingBrandyBulkLiters = 0;
 
-        // SBD is always needed for clamped loss calculation (form balancing)
-        // and for past years it's also used for ending inventory
-        let endClampedLossLiters = 0;
-        const clampedByTaxClass: Record<string, number> = {};
+        // SBD is used for past-year ending inventory and to surface any batch that
+        // reconstructs to a negative period-end volume (a data-quality signal now
+        // itemized as a `negativeBatchEnding` variance component — Phase 3 C5
+        // deleted the clamped-loss plug that used to absorb it into losses).
+        const negativeEndingsByClass: Record<string, Array<{ batchId: string; amount: number }>> = {};
         if (endBatchIds.length > 0) {
           const endSbdResult = await computeSystemCalculatedOnHand(endBatchIds, endDateStr);
 
@@ -2606,31 +2604,17 @@ export const ttbRouter = router({
             endingWineUnder16BulkLiters = endingLiveByClass["wineUnder16"] || 0;
             endingBrandyBulkLiters = endingLiveByClass["appleBrandy"] || 0;
           }
-          endClampedLossLiters = endSbdResult.breakdown.clampedLossLiters;
-
-          // Compute per-tax-class clamped loss for per-column loss allocation
-          for (const [batchId, clampedLiters] of endSbdResult.perBatchClampedLoss) {
-            const taxClass = getTaxClassFromMap(batchTaxClassMap, batchId, null) || "hardCider";
-            clampedByTaxClass[taxClass] = (clampedByTaxClass[taxClass] || 0) + litersToWineGallons(clampedLiters);
+          // Per-batch negative period-end reconstructions, grouped by tax class.
+          // These are itemized (not absorbed) as negativeBatchEnding variance
+          // components below. Threshold -0.5 gal filters rounding noise; the amount
+          // is the signed (negative) ending in gallons.
+          for (const [batchId, endingLiters] of endSbdResult.perBatch) {
+            const endingGallons = roundGallons(litersToWineGallons(endingLiters));
+            if (endingGallons < -0.5) {
+              const taxClass = getTaxClassFromMap(batchTaxClassMap, batchId, null) || "hardCider";
+              (negativeEndingsByClass[taxClass] ??= []).push({ batchId, amount: endingGallons });
+            }
           }
-          for (const [batchId, clampedLiters] of begPerBatchClampedLoss) {
-            const taxClass = getTaxClassFromMap(batchTaxClassMap, batchId, null) || "hardCider";
-            clampedByTaxClass[taxClass] = (clampedByTaxClass[taxClass] || 0) - litersToWineGallons(clampedLiters);
-          }
-          for (const key of Object.keys(clampedByTaxClass)) {
-            clampedByTaxClass[key] = roundGallons(Math.max(0, clampedByTaxClass[key]));
-          }
-        }
-
-        // Period-specific clamped loss: adjust process losses so the form balances
-        // (line 12 = line 32). Clamped loss represents over-recorded losses on batches
-        // that reconstructed to negative volume. SBD clamps these to 0, so we subtract
-        // the excess from aggregate losses to maintain the accounting identity.
-        const periodClampedLossLiters = endClampedLossLiters - begClampedLossLiters;
-        if (periodClampedLossLiters > 0) {
-          const clampedGallons = roundGallons(litersToWineGallons(periodClampedLossLiters));
-          otherRemovals.processLosses = roundGallons(otherRemovals.processLosses - clampedGallons);
-          otherRemovals.total = roundGallons(otherRemovals.total - clampedGallons);
         }
 
         // Bottled inventory AS OF period end date
@@ -3480,10 +3464,10 @@ export const ttbRouter = router({
         const ciderLine12 = roundGallons(
           ciderBeginning + ciderProducedGallons + ciderChangeIn + ciderGains
         );
-        // Real recorded HC losses (same derivation the other classes already had)
-        const ciderRecordedLosses = roundGallons(
-          (lossesByTaxClass["hardCider"] || 0) - (clampedByTaxClass["hardCider"] || 0)
-        );
+        // Real recorded HC losses (same derivation the other classes already had).
+        // Phase 3 C5: no longer net out clamped negative-ending volume — that
+        // amount is itemized as a negativeBatchEnding variance component instead.
+        const ciderRecordedLosses = roundGallons(lossesByTaxClass["hardCider"] || 0);
         // Phase 3 C2: no plug/flip. Line 29 = the class's real recorded losses,
         // Line 9 = its real positive adjustments, Line 12 stays un-inflated, and
         // Line 32 is the true arithmetic sum of outflow lines + ending (allowed to
@@ -3536,7 +3520,7 @@ export const ttbRouter = router({
         const wineUnder16KegFilled = roundGallons(kegFilledByTaxClass["wineUnder16"] || 0);
         const wineUnder16BottlingLoss = roundGallons(bottlingLossByTaxClass["wineUnder16"] || 0);
         const wineUnder16Packed = roundGallons(wineUnder16Bottled + wineUnder16KegFilled - wineUnder16BottlingLoss);
-        const wineUnder16RecordedLosses = roundGallons((lossesByTaxClass["wineUnder16"] || 0) - (clampedByTaxClass["wineUnder16"] || 0));
+        const wineUnder16RecordedLosses = roundGallons(lossesByTaxClass["wineUnder16"] || 0);
         const wineUnder16Line12 = roundGallons(beginningWineUnder16BulkGallons + fruitWineProducedGallons + wineUnder16ChangeIn + wineUnder16Gains);
         // Phase 3 C2: no plug/flip — Line 29 = recorded losses, Line 32 = true sum.
         const wineUnder16LossesRaw = roundGallons(
@@ -3590,7 +3574,7 @@ export const ttbRouter = router({
         const pommeauBottlingLoss = roundGallons(bottlingLossByTaxClass["wine16To21"] || 0);
         const pommeauPacked = roundGallons(pommeauBottled + pommeauKegFilled - pommeauBottlingLoss);
         const pommeauDistillation = roundGallons(distillationByTaxClass["wine16To21"] || 0);
-        const pommeauRecordedLosses = roundGallons((lossesByTaxClass["wine16To21"] || 0) - (clampedByTaxClass["wine16To21"] || 0));
+        const pommeauRecordedLosses = roundGallons(lossesByTaxClass["wine16To21"] || 0);
         const pommeauLine12 = roundGallons(beginningPommeauBulkGallons + pommeauProducedGallons + pommeauChangeIn + pommeauGains);
         // Phase 3 C2: no plug/flip — Line 29 = recorded losses, Line 32 = true sum.
         const pommeauLossesRaw = roundGallons(
@@ -3767,12 +3751,15 @@ export const ttbRouter = router({
             manualAdjustments: 0, // applied server-side in C4
             components: [],
           };
-          const clamped = roundGallons(clampedByTaxClass[cls] || 0);
-          if (Math.abs(clamped) >= 0.1) {
+          // Phase 3 C5: itemize each batch that reconstructs to a negative
+          // period-end volume, sourced directly from the per-batch SBD endings
+          // (the clamped-loss plug is gone). amount is the signed negative ending.
+          for (const neg of negativeEndingsByClass[cls] ?? []) {
             varianceByClass[cls].components.push({
               kind: "negativeBatchEnding",
-              amount: clamped,
-              note: "Negative reconstructed batch endings clamped inside SBD (removed in C5)",
+              amount: neg.amount,
+              batchId: neg.batchId,
+              note: `Batch reconstructs to a negative period-end volume (${neg.amount} gal)`,
             });
           }
         }
@@ -3872,7 +3859,7 @@ export const ttbRouter = router({
           recordedLosses: {
             total: recordedLosses,
             byTaxClass: Object.fromEntries(
-              Object.entries(lossesByTaxClass).map(([k, v]) => [k, roundGallons(v - (clampedByTaxClass[k] || 0))])
+              Object.entries(lossesByTaxClass).map(([k, v]) => [k, roundGallons(v)])
             ),
           },
         };
@@ -5533,7 +5520,10 @@ export const ttbRouter = router({
       // Total inventory = production - removals
       const historicalInventoryGallons = totalProductionGallons - totalRemovalsGallons;
 
-      // Split into bulk and packaged:
+      // Split into bulk and packaged for DISPLAY only. Display-cosmetic clamps kept
+      // (Phase 3 C5): these two feed on-hand breakdown figures, not the variance
+      // identity — `historicalInventoryGallons` above stays signed and carries the
+      // real net signal. A negative displayed inventory split is not meaningful.
       // Packaged = volume packaged - distributions
       const historicalPackagedGallons = Math.max(0, packagedVolumeBeforeGallons - distributionsBeforeGallons);
 
@@ -6937,7 +6927,10 @@ export const ttbRouter = router({
         // Ending includes ALL on-premises inventory: bulk + packaged at period end.
         const sbdBulkEnding = sbdTc?.ending || 0;
         const endPkg = packagedByTaxClass[key] || 0;
-        const physical = sbdBulkEnding + Math.max(0, endPkg);
+        // Phase 3 C5: no clamp — a negative packaged ending (class distributes more
+        // than it packaged, a scope/data mismatch) must flow into unexplainedVariance
+        // below, not be floored to zero and hidden.
+        const physical = sbdBulkEnding + endPkg;
 
         // Formula: opening(total) + inflows - outflows = ending(total).
         // Phase 3 C3: no reconAdj plug. calculatedEnding is the PURE formula value
@@ -6960,7 +6953,10 @@ export const ttbRouter = router({
           // instead of waterfall-aggregated ending, which can diverge for zero-volume
           // intermediate batches that the waterfall computes as negative.
           const bulkEnding = bulkByTaxClass[key] || 0;
-          // Section B ending: all undistributed packaged inventory at period end
+          // Section B ending: all undistributed packaged inventory at period end.
+          // Display-cosmetic clamp kept: a negative packaged inventory count is not
+          // meaningful to show as an on-hand figure; the negative signal is already
+          // surfaced through `physical`/`unexplainedVariance` above (Phase 3 C5).
           const packagedEnding = Math.max(0, endPkg);
           waterfallData.push({
             taxClass: key,
@@ -7323,9 +7319,12 @@ export const ttbRouter = router({
       const packagedOnHandLiters = (sbd.bottlingLiters - sbd.bottlingLossLiters)
         + (sbd.keggingLiters - sbd.keggingLossLiters)
         - batchScopedDistributionsLiters;
-      // Exclude brandy from wine reconciliation total (Part I is wine-only)
+      // Exclude brandy from wine reconciliation total (Part I is wine-only).
+      // Phase 3 C5: no clamp — a negative packaged-on-hand (distributions exceed
+      // reconstructed packaging within batch scope) must reduce the reconstructed
+      // system total so the mismatch surfaces as variance, not be floored to zero.
       const systemTotalOnHand = wineOnlyReconstructedOnHand
-        + litersToWineGallons(Math.max(0, packagedOnHandLiters));
+        + litersToWineGallons(packagedOnHandLiters);
 
       // ============================================
       // AGGREGATE-BASED TTB WATERFALL
@@ -7495,7 +7494,9 @@ export const ttbRouter = router({
         // Additional breakdown for UI display
         breakdown: {
           bulkInventory: parseFloat(actualBulkGallons.toFixed(1)),
-          // SBD-based packaged inventory (date-bounded, batch-scoped) — replaces LIVE query
+          // SBD-based packaged inventory (date-bounded, batch-scoped) — replaces LIVE query.
+          // Display-cosmetic clamp kept (Phase 3 C5): a shown on-hand packaged figure is
+          // not meaningfully negative; the signal lives in systemTotalOnHand/variance.
           packagedInventory: parseFloat(litersToWineGallons(Math.max(0, packagedOnHandLiters)).toFixed(1)),
           // Keep LIVE value for reference/debugging
           livePackagedInventory: parseFloat(actualPackagedGallons.toFixed(1)),
@@ -7543,6 +7544,10 @@ export const ttbRouter = router({
               filter: parseFloat(filterLossesBeforeGallons.toFixed(2)),
               bottling: parseFloat(bottlingLossesBeforeGallons.toFixed(2)),
               transfer: parseFloat(transferLossesBeforeGallons.toFixed(2)),
+              // Signed (negative): source query filters adjustmentAmount < 0, and this
+              // term enters processLossesLiters as a negative, so displaying it signed
+              // makes the breakdown reconcile to `total`. Phase 3 C5 removed the
+              // conversion clamp that used to mask this to 0.00.
               volumeAdjustments: parseFloat(volumeAdjustmentsBeforeGallons.toFixed(2)),
               kegFills: parseFloat(kegFillLossesBeforeGallons.toFixed(2)),
               total: parseFloat(lossesGallons.toFixed(2)),

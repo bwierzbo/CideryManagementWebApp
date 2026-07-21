@@ -302,28 +302,35 @@ export function classifyBatchTaxClass(
 /**
  * Convert liters to wine gallons.
  *
- * @param liters - Volume in liters
- * @returns Volume in wine gallons
+ * Signed: a negative liters value converts to a negative gallons value. Phase 3
+ * (C5) removed the clamp-to-zero that used to hide net-negative flows, so that a
+ * real negative signal (e.g. a reconstructed batch ending below zero) surfaces in
+ * reconciliation/variance instead of being silently absorbed. Display-only sites
+ * that need a floor of zero must apply their own `Math.max(0, ...)`.
+ *
+ * @param liters - Volume in liters (may be negative)
+ * @returns Volume in wine gallons (sign preserved)
  *
  * @example
  * litersToWineGallons(1000) // 264.17 wine gallons
  */
 export function litersToWineGallons(liters: number): number {
-  if (liters < 0) return 0;
   return liters * WINE_GALLONS_PER_LITER;
 }
 
 /**
  * Convert wine gallons to liters.
  *
- * @param gallons - Volume in wine gallons
- * @returns Volume in liters
+ * Signed: see `litersToWineGallons`. A negative gallons value converts to a
+ * negative liters value; the clamp-to-zero was removed in Phase 3 (C5).
+ *
+ * @param gallons - Volume in wine gallons (may be negative)
+ * @returns Volume in liters (sign preserved)
  *
  * @example
  * wineGallonsToLiters(264.17) // ~1000 liters
  */
 export function wineGallonsToLiters(gallons: number): number {
-  if (gallons < 0) return 0;
   return gallons * LITERS_PER_WINE_GALLON;
 }
 
