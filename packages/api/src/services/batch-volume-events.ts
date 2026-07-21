@@ -56,9 +56,14 @@ function toL(value: string | null | undefined, unit: string | null | undefined):
  * Returns one `BatchVolumeInputs` per requested batch id (including batches
  * with no events), ready for `computeBatchVolumeFromHistory` in either
  * all-time or as-of-date mode.
+ *
+ * `executor` defaults to the shared pool; pass a Drizzle transaction when
+ * calling from inside one (e.g. recomputeBatchVolume) so rows written earlier
+ * in that transaction are visible to the fetch.
  */
 export async function fetchBatchVolumeEvents(
   batchIds: string[],
+  executor: typeof db | any = db,
 ): Promise<Map<string, BatchVolumeInputs>> {
   const result = new Map<string, BatchVolumeInputs>();
   if (batchIds.length === 0) return result;
@@ -76,7 +81,7 @@ export async function fetchBatchVolumeEvents(
     filters,
     distillations,
   ] = await Promise.all([
-    db
+    executor
       .select({
         id: batches.id,
         initialVolumeLiters: batches.initialVolumeLiters,
@@ -86,7 +91,7 @@ export async function fetchBatchVolumeEvents(
       .from(batches)
       .where(inArray(batches.id, batchIds)),
 
-    db
+    executor
       .select({
         batchId: batchTransfers.sourceBatchId,
         volume: batchTransfers.volumeTransferred,
@@ -104,7 +109,7 @@ export async function fetchBatchVolumeEvents(
         ),
       ),
 
-    db
+    executor
       .select({
         batchId: batchTransfers.destinationBatchId,
         volume: batchTransfers.volumeTransferred,
@@ -120,7 +125,7 @@ export async function fetchBatchVolumeEvents(
         ),
       ),
 
-    db
+    executor
       .select({
         batchId: batchMergeHistory.targetBatchId,
         volume: batchMergeHistory.volumeAdded,
@@ -137,7 +142,7 @@ export async function fetchBatchVolumeEvents(
         ),
       ),
 
-    db
+    executor
       .select({
         batchId: batchMergeHistory.sourceBatchId,
         volume: batchMergeHistory.volumeAdded,
@@ -153,7 +158,7 @@ export async function fetchBatchVolumeEvents(
         ),
       ),
 
-    db
+    executor
       .select({
         batchId: bottleRuns.batchId,
         volumeTakenLiters: bottleRuns.volumeTakenLiters,
@@ -165,7 +170,7 @@ export async function fetchBatchVolumeEvents(
       .from(bottleRuns)
       .where(and(inArray(bottleRuns.batchId, batchIds), isNull(bottleRuns.voidedAt))),
 
-    db
+    executor
       .select({
         batchId: kegFills.batchId,
         volume: kegFills.volumeTaken,
@@ -183,7 +188,7 @@ export async function fetchBatchVolumeEvents(
         ),
       ),
 
-    db
+    executor
       .select({
         batchId: batchVolumeAdjustments.batchId,
         amount: batchVolumeAdjustments.adjustmentAmount, // liters by convention (no unit column)
@@ -197,7 +202,7 @@ export async function fetchBatchVolumeEvents(
         ),
       ),
 
-    db
+    executor
       .select({
         batchId: batchRackingOperations.batchId,
         loss: batchRackingOperations.volumeLoss,
@@ -213,7 +218,7 @@ export async function fetchBatchVolumeEvents(
         ),
       ),
 
-    db
+    executor
       .select({
         batchId: batchFilterOperations.batchId,
         loss: batchFilterOperations.volumeLoss,
@@ -227,7 +232,7 @@ export async function fetchBatchVolumeEvents(
         ),
       ),
 
-    db.execute(sql`
+    executor.execute(sql`
       SELECT source_batch_id, source_volume_liters, sent_at
       FROM distillation_records
       WHERE source_batch_id IN (${sql.join(batchIds.map((id) => sql`${id}`), sql`, `)})
