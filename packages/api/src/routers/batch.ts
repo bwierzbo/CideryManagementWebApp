@@ -47,6 +47,7 @@ import {
 } from "lib";
 import { correctSgForTemperature } from "lib/src/calc/sg-correction";
 import { writeLedgerEntry } from "../lib/volume-ledger";
+import { recomputeBatchVolume } from "../services/batch-volume-recompute";
 
 /**
  * Recalculates composition fractions for a batch based on juice volumes.
@@ -1069,8 +1070,7 @@ export const batchRouter = router({
             vesselCapacityUnit: vessels.capacityUnit,
             currentVolume: batches.currentVolume,
             currentVolumeUnit: batches.currentVolumeUnit,
-            initialVolume: batches.initialVolume,
-            initialVolumeUnit: batches.initialVolumeUnit,
+            initialVolume: batches.initialVolumeLiters,
             startDate:
               sql<string>`COALESCE(${pressRuns.dateCompleted}, ${batches.startDate})`.as(
                 "startDate",
@@ -1172,7 +1172,7 @@ export const batchRouter = router({
             currentVolume: currentVolumeValue,
             currentVolumeUnit: batch.currentVolumeUnit,
             initialVolume: batch.initialVolume ? parseFloat(batch.initialVolume.toString()) : null,
-            initialVolumeUnit: batch.initialVolumeUnit,
+            initialVolumeUnit: "L",
             vesselCapacityUnit: batch.vesselCapacityUnit,
             daysActive,
             latestMeasurement: measurement,
@@ -3412,6 +3412,192 @@ export const batchRouter = router({
     }),
 
   /**
+   * Pin (or unpin) a batch's volume as manually corrected (Phase 2).
+   *
+   * SET: writes the corrected volume, flags volume_manually_corrected, and
+   * records an audit row with the required reason. While flagged, the
+   * self-heal recompute and the volume-balance check skip/annotate the batch
+   * instead of fighting or flagging it.
+   * CLEAR: unflags and immediately recomputes from event history, snapping
+   * the volume back to what the ledger says.
+   */
+  setVolumeManualCorrection: adminProcedure
+    .input(z.object({
+      batchId: z.string().uuid(),
+      corrected: z.boolean(),
+      correctedVolumeLiters: z.number().min(0).optional(),
+      reason: z.string().min(10, "Reason must be at least 10 characters"),
+    }).refine((v) => !v.corrected || v.correctedVolumeLiters !== undefined, {
+      message: "correctedVolumeLiters is required when setting a correction",
+      path: ["correctedVolumeLiters"],
+    }))
+    .mutation(async ({ input }) => {
+      return await db.transaction(async (tx) => {
+        const [batch] = await tx
+          .select({
+            id: batches.id,
+            currentVolumeLiters: batches.currentVolumeLiters,
+            volumeManuallyCorrected: batches.volumeManuallyCorrected,
+          })
+          .from(batches)
+          .where(and(eq(batches.id, input.batchId), isNull(batches.deletedAt)))
+          .limit(1);
+        if (!batch) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Batch not found" });
+        }
+        const oldVolume = batch.currentVolumeLiters ?? "0";
+
+        if (input.corrected) {
+          const newVolume = input.correctedVolumeLiters!.toFixed(3);
+          await tx
+            .update(batches)
+            .set({
+              currentVolume: newVolume,
+              currentVolumeLiters: newVolume,
+              currentVolumeUnit: "L",
+              volumeManuallyCorrected: true,
+              updatedAt: new Date(),
+            })
+            .where(eq(batches.id, input.batchId));
+          await tx.insert(auditLogs).values({
+            tableName: "batches",
+            recordId: input.batchId,
+            operation: "update",
+            oldData: { currentVolumeLiters: oldVolume, volumeManuallyCorrected: batch.volumeManuallyCorrected },
+            newData: { currentVolumeLiters: newVolume, volumeManuallyCorrected: true },
+            diffData: {
+              currentVolumeLiters: { old: oldVolume, new: newVolume },
+              volumeManuallyCorrected: { old: batch.volumeManuallyCorrected, new: true },
+            },
+            changedAt: new Date(),
+            reason: `Manual volume correction: ${input.reason}`,
+          });
+          return { success: true, corrected: true, volumeLiters: parseFloat(newVolume) };
+        }
+
+        // CLEAR: unflag, then snap back to event history.
+        await tx
+          .update(batches)
+          .set({ volumeManuallyCorrected: false, updatedAt: new Date() })
+          .where(eq(batches.id, input.batchId));
+        await tx.insert(auditLogs).values({
+          tableName: "batches",
+          recordId: input.batchId,
+          operation: "update",
+          oldData: { volumeManuallyCorrected: true },
+          newData: { volumeManuallyCorrected: false },
+          diffData: { volumeManuallyCorrected: { old: true, new: false } },
+          changedAt: new Date(),
+          reason: `Manual volume correction cleared: ${input.reason}`,
+        });
+        const recompute = await recomputeBatchVolume(tx, input.batchId, {
+          reason: "Recompute after clearing manual volume correction",
+        });
+        return {
+          success: true,
+          corrected: false,
+          volumeLiters: recompute.changed ? recompute.expectedL : parseFloat(oldVolume),
+        };
+      });
+    }),
+
+  /**
+   * Safely delete a transfer and correct both endpoint batches (Phase 2).
+   *
+   * Blocked for a year on "auto-reversal is unsafe" — delta-reversal heuristics
+   * could not distinguish duplicates from real transfers. With the Phase 1/2
+   * authoritative recompute this is now trivial and safe: soft-delete the
+   * transfer row (+ its recipe-blend merge mirror, if any), then recompute
+   * BOTH endpoints from event history. No heuristics; pinned
+   * (volume_manually_corrected) endpoints keep their pinned value and are
+   * reported back for awareness.
+   */
+  deleteTransfer: adminProcedure
+    .input(z.object({
+      transferId: z.string().uuid(),
+      reason: z.string().min(10, "Reason must be at least 10 characters"),
+    }))
+    .mutation(async ({ input }) => {
+      return await db.transaction(async (tx) => {
+        const [transfer] = await tx
+          .select()
+          .from(batchTransfers)
+          .where(and(eq(batchTransfers.id, input.transferId), isNull(batchTransfers.deletedAt)))
+          .limit(1);
+        if (!transfer) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Transfer not found (or already deleted)" });
+        }
+
+        await tx
+          .update(batchTransfers)
+          .set({ deletedAt: new Date() })
+          .where(eq(batchTransfers.id, input.transferId));
+
+        // Recipe-blend transfers carry a display mirror in batch_merge_history
+        // (source_type = 'batch_transfer', same endpoints/volume/timestamp) —
+        // soft-delete it too so activity timelines stay consistent.
+        const mirrors = await tx
+          .select({ id: batchMergeHistory.id })
+          .from(batchMergeHistory)
+          .where(and(
+            eq(batchMergeHistory.sourceType, "batch_transfer"),
+            isNull(batchMergeHistory.deletedAt),
+            eq(batchMergeHistory.targetBatchId, transfer.destinationBatchId),
+            transfer.sourceBatchId
+              ? eq(batchMergeHistory.sourceBatchId, transfer.sourceBatchId)
+              : isNull(batchMergeHistory.sourceBatchId),
+            transfer.transferredAt
+              ? eq(batchMergeHistory.mergedAt, transfer.transferredAt)
+              : sql`true`,
+          ))
+          .limit(1);
+        if (mirrors.length > 0) {
+          await tx
+            .update(batchMergeHistory)
+            .set({ deletedAt: new Date() })
+            .where(eq(batchMergeHistory.id, mirrors[0].id));
+        }
+
+        await tx.insert(auditLogs).values({
+          tableName: "batch_transfers",
+          recordId: input.transferId,
+          operation: "soft_delete",
+          oldData: {
+            sourceBatchId: transfer.sourceBatchId,
+            destinationBatchId: transfer.destinationBatchId,
+            volumeTransferred: transfer.volumeTransferred,
+            transferredAt: transfer.transferredAt,
+          },
+          newData: { deletedAt: new Date().toISOString() },
+          changedAt: new Date(),
+          reason: `Transfer deleted: ${input.reason}`,
+        });
+
+        // Recompute BOTH endpoints from event history — the whole point.
+        const results: Array<{ batchId: string; changed: boolean; skipped: string | null; volumeL: number }> = [];
+        const endpointIds = [transfer.sourceBatchId, transfer.destinationBatchId]
+          .filter((id): id is string => !!id);
+        for (const id of new Set(endpointIds)) {
+          const r = await recomputeBatchVolume(tx, id, {
+            reason: `Recompute after transfer ${input.transferId} deleted: ${input.reason}`,
+          });
+          results.push({
+            batchId: id,
+            changed: r.changed,
+            skipped: r.skipped,
+            volumeL: r.skipped ? r.storedL : r.expectedL,
+          });
+        }
+
+        return {
+          success: true,
+          deletedMirrorRow: mirrors.length > 0,
+          endpoints: results,
+        };
+      });
+    }),
+
+  /**
    * Validate batches and auto-verify those that pass all checks.
    * Batches with only warnings can be force-verified.
    */
@@ -3434,6 +3620,7 @@ export const batchRouter = router({
           vesselId: batches.vesselId,
           actualAbv: batches.actualAbv,
           estimatedAbv: batches.estimatedAbv,
+          volumeManuallyCorrected: batches.volumeManuallyCorrected,
         })
         .from(batches)
         .where(and(inArray(batches.id, input.batchIds), isNull(batches.deletedAt)));
@@ -3507,8 +3694,6 @@ export const batchRouter = router({
             name: batches.name,
             customName: batches.customName,
             createdAt: batches.startDate,
-            initialVolume: batches.initialVolume,
-            initialVolumeUnit: batches.initialVolumeUnit,
             initialVolumeLiters: batches.initialVolumeLiters,
             currentVolume: batches.currentVolume,
             currentVolumeUnit: batches.currentVolumeUnit,
@@ -4126,9 +4311,9 @@ export const batchRouter = router({
           timestamp: creationTimestamp,
           description: creationDescription,
           details:
-            batch[0].initialVolume || creationVessel
+            batch[0].initialVolumeLiters || creationVessel
               ? {
-                  initialVolume: batch[0].initialVolume ? `${parseFloat(batch[0].initialVolume).toFixed(1)}${batch[0].initialVolumeUnit || 'L'}` : null,
+                  initialVolume: batch[0].initialVolumeLiters ? `${parseFloat(batch[0].initialVolumeLiters).toFixed(1)}L` : null,
                   vessel: creationVessel || null,
                 }
               : {},
@@ -5709,9 +5894,7 @@ export const batchRouter = router({
                 name: childBatchName,
                 customName: batch[0].customName, // Inherit parent's custom name without suffix
                 batchNumber: childBatchNumber,
-                initialVolume: "0", // Volume comes from transfer, not initial production
-                initialVolumeUnit: 'L',
-                initialVolumeLiters: "0",
+                initialVolumeLiters: "0", // Volume comes from transfer, not initial production
                 currentVolume: volumeRackedL.toString(),
                 currentVolumeUnit: 'L',
                 currentVolumeLiters: volumeRackedL.toString(),
@@ -5725,6 +5908,7 @@ export const batchRouter = router({
                 actualAbv: batch[0].actualAbv,
                 parentBatchId: input.batchId,
                 isRackingDerivative: true,
+                transferCreated: true, // volume arrives via batch_transfers; initial must not be counted
               })
               .returning();
 
@@ -6127,6 +6311,14 @@ export const batchRouter = router({
             reason: resultMessage,
           });
 
+          // Phase 2: self-heal — snap volume to event history (no-op when consistent)
+          const rackTouchedBatchIds = new Set<string>([input.batchId]);
+          if (newChildBatch?.id) rackTouchedBatchIds.add(newChildBatch.id);
+          if (updatedBatch?.[0]?.id) rackTouchedBatchIds.add(updatedBatch[0].id);
+          for (const id of rackTouchedBatchIds) {
+            await recomputeBatchVolume(tx, id);
+          }
+
           return {
             success: true,
             message: resultMessage,
@@ -6285,8 +6477,6 @@ export const batchRouter = router({
                 vesselId: input.vesselId,
                 name: newBatchName,
                 batchNumber: newBatchName,
-                initialVolume: transferVolumeL.toString(),
-                initialVolumeUnit: "L",
                 initialVolumeLiters: transferVolumeL.toString(),
                 currentVolume: transferVolumeL.toString(),
                 currentVolumeUnit: "L",
@@ -6456,6 +6646,9 @@ export const batchRouter = router({
                 "This juice was just allocated by another operation. Refresh to see the remaining volume.",
             });
           }
+
+          // Phase 2: self-heal — snap volume to event history (no-op when consistent)
+          await recomputeBatchVolume(tx, batchId);
 
           return {
             success: true,
@@ -6844,8 +7037,6 @@ export const batchRouter = router({
               batchNumber,
               vesselId: input.vesselId || null,
               originJuicePurchaseItemId: input.juicePurchaseItemId,
-              initialVolume: input.volumeL.toString(),
-              initialVolumeUnit: "L",
               initialVolumeLiters: input.volumeL.toString(),
               currentVolume: input.volumeL.toString(),
               currentVolumeUnit: "L",
@@ -7019,8 +7210,6 @@ export const batchRouter = router({
               name: batchName,
               batchNumber,
               vesselId: input.vesselId,
-              initialVolume: estimatedVolumeL.toString(),
-              initialVolumeUnit: "L",
               initialVolumeLiters: estimatedVolumeL.toString(),
               currentVolume: estimatedVolumeL.toString(),
               currentVolumeUnit: "L",
@@ -7318,8 +7507,6 @@ export const batchRouter = router({
           name,
           batchNumber,
           customName: customNameValue,
-          initialVolume: volumeLiters.toFixed(3),
-          initialVolumeUnit: "L",
           initialVolumeLiters: volumeLiters.toFixed(3),
           currentVolume: volumeLiters.toFixed(3),
           currentVolumeLiters: volumeLiters.toFixed(3),
@@ -7383,7 +7570,7 @@ export const batchRouter = router({
         name: batches.name,
         batchNumber: batches.batchNumber,
         customName: batches.customName,
-        initialVolumeLiters: batches.initialVolume,
+        initialVolumeLiters: batches.initialVolumeLiters,
         currentVolumeLiters: batches.currentVolumeLiters,
         status: batches.status,
         productType: batches.productType,
@@ -10415,6 +10602,9 @@ export const batchRouter = router({
               .where(eq(vessels.id, batch.vesselId));
           }
 
+          // Phase 2: self-heal — snap volume to event history (no-op when consistent)
+          await recomputeBatchVolume(tx, input.batchId);
+
           return {
             adjustment,
             batch: {
@@ -10556,6 +10746,9 @@ export const batchRouter = router({
                 updatedAt: new Date(),
               })
               .where(eq(batches.id, adjustment.batchId));
+
+            // Phase 2: self-heal — snap volume to event history (no-op when consistent)
+            await recomputeBatchVolume(tx, adjustment.batchId);
           }
 
           return {

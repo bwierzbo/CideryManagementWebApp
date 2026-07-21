@@ -83,10 +83,32 @@ Not a problem (verified correct): juice is excluded until it becomes cider/pomme
 - Build it as a small read-only script using the real `checkVolumeBalance`/SBD functions (not a re-derivation), run via `pnpm --filter db exec tsx` (see `.claude/skills/db-query`).
 
 ### Phase 1 — One authoritative volume-from-history function
+> **STATUS: DONE 2026-07-21** (branch `recon/phase0-diagnostic`, commits Phase 1A–1G). All THREE
+> replicas (per-batch `checkVolumeBalance`, SBD `computeSystemCalculatedOnHand`, batch-derived
+> `computeReconciliationFromBatches` — one more than this plan knew about) now call
+> `computeBatchVolumeFromHistory` (packages/lib/src/calculations/batch-volume.ts) via the shared
+> fetcher `packages/api/src/services/batch-volume-events.ts`. Heuristics replaced by columns
+> (migration 0143: transfer_created, is_historical_record, loss_included_in_volume_taken).
+> TTB membership via ttb_origin_year >= 2025 (migration 0144 backfilled the 40-batch fall-2025
+> cohort). Results: 2025 HC production recomputes to EXACTLY the filed 4,808; the Line-29 plug
+> shrank 173 gal; 2024/2026 outputs frozen; golden suite re-pinned as filed + 13 documented
+> permanent deltas (73/73). Remaining 2025 ending gap (~1,156 gal) = un-redated backlog EVENTS —
+> owner-accepted, documented in KNOWN_DELTA, not a goal.
 - Extract the volume reduction into a **single pure function** in `packages/lib` (e.g. `computeBatchVolumeFromHistory(events)`), and make BOTH `checkVolumeBalance` and `computeSystemCalculatedOnHand` call it. Kills the two-engine drift. Unit-test exhaustively.
 - Fix the formula gaps while consolidating: apply merge/keg **units** (§2.7); resolve the `initial_volume_liters` vs merge-history double-count (§2.3); replace the 90% cliff with an explicit transfer-created flag (§2.5); replace the `"Historical Record"` string match and `<2L` bottling-loss heuristic with real columns/flags (§2.4); ensure distillation status coverage (§2.6).
 
 ### Phase 2 — Make live volume trustworthy + revive the manual-correction flag
+> **STATUS: DONE 2026-07-21** (commits Phase 2A–2E on `recon/phase0-diagnostic`). Stance (a) chosen:
+> delta-driven live volume + `recomputeBatchVolume` self-heal (audit-logged overwrites, pinned-batch
+> skip) wired at the end of every volume-mutating transaction. `volume_manually_corrected` is a real
+> flag: pin/unpin mutation with reason + audit, validation annotates instead of flagging, Pin/Unpin UI
+> on the reconciliation page. The reverted transfer-delete shipped (`batch.deleteTransfer`: soft-delete
+> + recompute both endpoints, Volume Trace UI). Legacy `initial_volume`/`initial_volume_unit` DROPPED
+> (migration 0145) along with the redundant 0039 normalize trigger that kept re-deriving liters from
+> them; dead `batch.transfer` mutation removed; `destroyBatch` partial-destroy residual now an explicit
+> adjustment. Deferred with notes: `createPommeau` cider-debit event row (coupled to pommeau TTB
+> attribution), 4 mislinked historical `bottle_runs.keg_fill_id` values (see batch-volume-events.ts
+> comment).
 - Add `recomputeBatchVolume(tx, batchId)` built on the Phase-1 function; **respect `volume_manually_corrected`**.
 - Make `volume_manually_corrected` a **real, settable flag**: an API mutation sets it (with reason) when a user hand-corrects a volume; `checkVolumeBalance` and recompute must skip/annotate those batches instead of flagging them forever.
 - Decide the architectural stance (a real decision to make): **(a)** keep delta-driven live volume but call `recomputeBatchVolume` after every volume-mutating op (self-healing), or **(b)** make `currentVolume` a derived read. Recommend (a) — smaller blast radius.
@@ -114,7 +136,11 @@ The product model the owner described, built on the Phase 1–3 authoritative en
 - UX for a non-accountant owner: plain-language status ("✓ Reconciled through Jun 30 — inventory matches" / "⚠ 3 batches off by 12 gal — review"), one-click drill-in, explicit "accept variance with reason" before locking.
 
 ### Phase 7 — TTB report periods + printable/submittable forms
-- **Period selection:** monthly / quarterly / annual, user-chosen; generate the Form 5120.17 for the selected period from the checkpointed data. A period's opening = prior finalized period snapshot (already partly supported); finalize on submit.
+- **Period selection:** monthly / quarterly / annual. OWNER REQUIREMENT (2026-07-20): the system
+  should DETERMINE the required filing frequency from the TTB regulations (27 CFR part 24 filing
+  thresholds — research exact minimums; owner is annual until minimums are met) and then VERIFY the
+  determination with the user, rather than being purely user-chosen. Generate the Form 5120.17 for
+  the selected period from the checkpointed data. A period's opening = prior finalized period snapshot (already partly supported); finalize on submit.
 - **Form 1 — TTB F 5120.17 (Report of Wine Premises Operations):** produce a clean **printable/PDF** matching the official layout (Section A bulk, Section B bottled, Part IV materials), ready to submit. (Generator largely exists; needs faithful print output + the Phase-3 honest numbers.)
 - **Form 2 — NY LIQ-774-777-021 (Domestic Winery Report):** NEW. Build a state-report generator + printable output. Map its line items to the same event data (production, transfers, removals, losses, inventory). *Exact form fields TBD from research / a blank form the owner provides.*
 - Both forms print with the period, filer info (from org settings), and the reconciliation checkpoint they were built on.

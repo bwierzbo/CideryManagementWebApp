@@ -45,6 +45,7 @@ import { TRPCError } from "@trpc/server";
 import { publishCreateEvent, publishUpdateEvent } from "lib";
 import { syncInventoryToSquare } from "../lib/square-inventory-sync";
 import { writeLedgerEntry } from "../lib/volume-ledger";
+import { recomputeBatchVolume } from "../services/batch-volume-recompute";
 import {
   getBottleRunsOptimized,
   getUnifiedPackagingRuns,
@@ -433,6 +434,10 @@ export const packagingRouter = router({
             volumeTakenUnit: "L",
             loss: lossL.toString(),
             lossUnit: "L",
+            // loss is DERIVED as volumeTaken − theoretical product volume above,
+            // so it is definitionally inside volumeTaken — reconstruction must
+            // not subtract it again (reconciliation plan §2.4).
+            lossIncludedInVolumeTaken: true,
             lossPercentage: lossPercentage.toString(),
             // Link to most recent completed carbonation operation
             sourceCarbonationOperationId: latestCarbonation?.id ?? null,
@@ -754,6 +759,16 @@ export const packagingRouter = router({
             packageType: packageType,
           });
 
+          // Phase 2: self-heal — snap volume to event history (no-op when consistent).
+          // Vessel path only. Bottling FROM a keg doesn't debit the batch (the
+          // keg fill already did) but its bottleRuns row still counts in the
+          // reducer, so a recompute here would double-subtract. Un-gate once
+          // the 4 mislinked historical kegFillId rows are resolved and keg-
+          // sourced runs stop counting against the batch (captured follow-up).
+          if (!isBottlingFromKeg) {
+            await recomputeBatchVolume(tx, input.batchId);
+          }
+
           return {
             runId: packagingRun.id,
             lossL: parseFloat(lossL.toFixed(2)),
@@ -826,7 +841,7 @@ export const packagingRouter = router({
             batchCustomName: batches.customName,
             batchNumber: batches.batchNumber,
             batchStatus: batches.status,
-            batchInitialVolume: batches.initialVolume,
+            batchInitialVolume: batches.initialVolumeLiters,
             batchCurrentVolume: batches.currentVolume,
             batchStartDate: batches.startDate,
             batchEndDate: batches.endDate,

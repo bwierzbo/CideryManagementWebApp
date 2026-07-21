@@ -261,8 +261,6 @@ async function createTestBatch(opts: {
     name: batchName,
     customName: `${TEST_PREFIX}_${opts.name}`,
     batchNumber: `T-${testBatchIds.length + 1}-${Date.now()}`,
-    initialVolume: opts.initialVolumeLiters.toString(),
-    initialVolumeUnit: "L",
     initialVolumeLiters: opts.initialVolumeLiters.toString(),
     currentVolume: opts.currentVolumeLiters.toString(),
     currentVolumeUnit: "L",
@@ -346,6 +344,7 @@ async function createTestRacking(opts: {
   volumeLoss: number;
   notes?: string;
   rackedAt?: Date;
+  isHistoricalRecord?: boolean;
 }) {
   const [rack] = await db.insert(batchRackingOperations).values({
     batchId: opts.batchId,
@@ -358,6 +357,9 @@ async function createTestRacking(opts: {
     volumeLoss: opts.volumeLoss.toString(),
     volumeLossUnit: "L" as any,
     notes: opts.notes ?? null,
+    // Since migration 0143, engines identify historical rackings by this
+    // column, not by notes string-matching.
+    isHistoricalRecord: opts.isHistoricalRecord ?? false,
     rackedAt: opts.rackedAt ?? new Date("2025-05-01"),
   }).returning();
   testRackingIds.push(rack.id);
@@ -530,6 +532,7 @@ describe("TTB Parity Regression Tests", () => {
         batchId: rackingBatch.id,
         volumeLoss: 10,
         notes: "Historical Record - imported from old system",
+        isHistoricalRecord: true,
       });
 
       const resultAfter = await getReconciliation();

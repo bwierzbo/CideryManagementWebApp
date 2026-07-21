@@ -35,9 +35,23 @@ import {
   Droplets,
   ChevronDown,
   ChevronRight,
+  Trash2,
 } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Input } from "@/components/ui/input";
+import { useIsAdmin } from "@/lib/auth/hooks";
 import { formatDateTime } from "@/utils/date-format";
 import { trpc } from "@/utils/trpc";
+import { handleTransactionError, showSuccess } from "@/utils/error-handling";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 
@@ -91,6 +105,7 @@ function ExpandableTransferRow({
   hasChildren,
   childTotalLoss,
   childTotalPackaged,
+  onDeleteTransfer,
 }: {
   entry: {
     id: string;
@@ -110,6 +125,7 @@ function ExpandableTransferRow({
   hasChildren: boolean;
   childTotalLoss: number;
   childTotalPackaged: number;
+  onDeleteTransfer?: (entry: { id: string; description: string; volumeOut: number }) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
 
@@ -173,17 +189,31 @@ function ExpandableTransferRow({
           )}
         </TableCell>
         <TableCell>
-          {entry.destinationId ? (
-            <Link
-              href={`/batch/${entry.destinationId}`}
-              className="text-blue-600 hover:underline"
-              onClick={(e) => e.stopPropagation()}
-            >
-              {entry.destinationName}
-            </Link>
-          ) : (
-            <span className="text-muted-foreground">—</span>
-          )}
+          <div className="flex items-center justify-between gap-2">
+            {entry.destinationId ? (
+              <Link
+                href={`/batch/${entry.destinationId}`}
+                className="text-blue-600 hover:underline"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {entry.destinationName}
+              </Link>
+            ) : (
+              <span className="text-muted-foreground">—</span>
+            )}
+            {entry.type === "transfer" && onDeleteTransfer && (
+              <button
+                title="Delete transfer (recomputes both batches)"
+                className="text-muted-foreground hover:text-red-600 transition-colors"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDeleteTransfer(entry);
+                }}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
         </TableCell>
       </TableRow>
       {/* Expanded child outcome rows */}
@@ -259,6 +289,28 @@ export function BatchVolumeTrace({ batchId }: BatchVolumeTraceProps) {
   } = trpc.batch.getVolumeTrace.useQuery({ batchId });
 
   const { data: ledgerData } = trpc.batch.getVolumeLedger.useQuery({ batchId });
+
+  // Phase 2E: safe transfer delete — soft-deletes the transfer row and
+  // recomputes BOTH endpoint batches from event history.
+  const isAdmin = useIsAdmin();
+  const utils = trpc.useContext();
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; description: string; volumeOut: number } | null>(null);
+  const [deleteReason, setDeleteReason] = useState("");
+  const deleteTransferMutation = trpc.batch.deleteTransfer.useMutation({
+    onSuccess: (result) => {
+      utils.batch.getVolumeTrace.invalidate({ batchId });
+      utils.batch.getVolumeLedger.invalidate({ batchId });
+      utils.batch.list.invalidate();
+      const summary = result.endpoints
+        .map((e) => (e.skipped ? `1 pinned batch untouched` : `${e.volumeL.toFixed(1)} L`))
+        .join(" / ");
+      showSuccess("Transfer Deleted", `Both batches recomputed from history (${summary})`);
+      setDeleteTarget(null);
+    },
+    onError: (error) => {
+      handleTransactionError(error, "Transfer", "Delete");
+    },
+  });
 
   if (isLoading) {
     return (
@@ -500,6 +552,7 @@ export function BatchVolumeTrace({ batchId }: BatchVolumeTraceProps) {
                       hasChildren={hasChildren}
                       childTotalLoss={childTotalLoss}
                       childTotalPackaged={childTotalPackaged}
+                      onDeleteTransfer={isAdmin ? ((e) => { setDeleteReason(""); setDeleteTarget(e); }) : undefined}
                     />
                   );
                 })}
@@ -524,6 +577,55 @@ export function BatchVolumeTrace({ batchId }: BatchVolumeTraceProps) {
           )}
         </CardContent>
       </Card>
+
+      {/* Delete transfer confirmation */}
+      <AlertDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <Trash2 className="w-5 h-5 text-red-600" />
+              Delete Transfer
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Delete &ldquo;{deleteTarget?.description}&rdquo;
+              ({deleteTarget ? deleteTarget.volumeOut.toFixed(1) : "0"} L)?
+              The transfer is removed from the ledger and BOTH batches are
+              recomputed from their event history — volumes snap to what the
+              corrected ledger says. Pinned (manually corrected) batches keep
+              their pinned value.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="py-1">
+            <label className="text-sm font-medium">
+              Reason <span className="text-muted-foreground">(required, min 10 characters)</span>
+            </label>
+            <Input
+              value={deleteReason}
+              onChange={(e) => setDeleteReason(e.target.value)}
+              placeholder="e.g. Duplicate entry — transfer was recorded twice"
+            />
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (!deleteTarget) return;
+                deleteTransferMutation.mutate({
+                  transferId: deleteTarget.id,
+                  reason: deleteReason,
+                });
+              }}
+              className="bg-red-600 hover:bg-red-700"
+              disabled={deleteTransferMutation.isPending || deleteReason.trim().length < 10}
+            >
+              {deleteTransferMutation.isPending ? "Deleting..." : "Delete & Recompute"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

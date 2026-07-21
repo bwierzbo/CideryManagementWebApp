@@ -739,11 +739,6 @@ export const batches = pgTable(
     name: text("name").notNull().unique(),
     customName: text("custom_name"),
     batchNumber: text("batch_number").notNull(),
-    initialVolume: decimal("initial_volume", {
-      precision: 10,
-      scale: 3,
-    }).notNull(),
-    initialVolumeUnit: unitEnum("initial_volume_unit").notNull().default("L"),
     initialVolumeLiters: decimal("initial_volume_liters", {
       precision: 10,
       scale: 3,
@@ -800,6 +795,11 @@ export const batches = pgTable(
     isRackingDerivative: boolean("is_racking_derivative").default(false),
     // Volume protection flag - prevents trigger overwrites of manually corrected volume fields
     volumeManuallyCorrected: boolean("volume_manually_corrected").default(false),
+    // Explicit transfer-created flag (migration 0143): true = this batch's volume
+    // arrived via batch_transfers rows and initial_volume_liters must NOT be
+    // counted by volume-from-history reconstruction. Replaces the fragile
+    // "transfersIn >= 90% of initial" heuristic (reconciliation plan §2.5).
+    transferCreated: boolean("transfer_created").notNull().default(false),
     // Destruction tracking (Destroy Batch flow). When populated, batch.status
     // is 'discarded' and a 'destruction' batch_volume_adjustments row records
     // the loss for TTB Form 5120.17.
@@ -1335,6 +1335,10 @@ export const batchRackingOperations = pgTable(
     rackedBy: uuid("racked_by").references(() => users.id),
     rackedAt: timestamp("racked_at").notNull().defaultNow(),
     notes: text("notes"),
+    // Import-era rows whose loss is already reflected elsewhere (migration
+    // 0143). Replaces the `notes LIKE '%Historical Record%'` string match in
+    // volume reconstruction (reconciliation plan §2.4). No writer — backfilled.
+    isHistoricalRecord: boolean("is_historical_record").notNull().default(false),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
     deletedAt: timestamp("deleted_at"),

@@ -33,6 +33,7 @@ import {
 } from "db";
 import { buildStepSchedule, rescheduleWithActuals } from "lib";
 import { router, createRbacProcedure } from "../trpc";
+import { recomputeBatchVolume } from "../services/batch-volume-recompute";
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
@@ -204,8 +205,7 @@ export const recipeExecutionRouter = router({
               name,
               batchNumber,
               vesselId: null,
-              initialVolume: input.totalVolumeL.toString(),
-              initialVolumeUnit: "L",
+              initialVolumeLiters: input.totalVolumeL.toString(),
               currentVolume: input.totalVolumeL.toString(),
               currentVolumeUnit: "L",
               productType: recipe.productType,
@@ -542,11 +542,16 @@ export const recipeExecutionRouter = router({
         }
 
         // Fill this batch + assign vessel + blended ABV/OG.
+        // transferCreated flips here — NOT at instantiate — because this is the
+        // moment the batch_transfers rows that fund the batch actually exist.
+        // Until now, initial_volume (the planned volume) was the honest value;
+        // from now on counting it would double the transfers-in.
         const fill: Record<string, unknown> = {
           vesselId: input.destinationVesselId,
           currentVolume: totalL.toString(),
           currentVolumeLiters: totalL.toString(),
           currentVolumeUnit: "L",
+          transferCreated: true,
           updatedAt: new Date(),
         };
         if (abvWeight > 0) fill.estimatedAbv = (abvWeighted / abvWeight).toFixed(2);
@@ -564,6 +569,15 @@ export const recipeExecutionRouter = router({
           })
           .where(eq(batchStepTasks.id, task.id));
         await recomputeSchedule(tx, task.executionId);
+
+        // Phase 2: self-heal — snap volume to event history (no-op when consistent).
+        // Destination fill and every source draw are backed by batch_transfers rows.
+        const transferTouchedBatchIds = new Set<string>([task.batchId]);
+        for (const draw of draws) transferTouchedBatchIds.add(draw.batchId);
+        for (const id of transferTouchedBatchIds) {
+          await recomputeBatchVolume(tx, id);
+        }
+
         return { tasks: await tasksForExecution(tx, task.executionId) };
       });
     }),

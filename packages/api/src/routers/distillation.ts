@@ -18,6 +18,7 @@ import {
 } from "lib/src/calc/abv";
 import { convertVolume } from "lib/src/units/conversions";
 import { writeLedgerEntry } from "../lib/volume-ledger";
+import { recomputeBatchVolume } from "../services/batch-volume-recompute";
 
 // Constants
 const LITERS_PER_GALLON = 3.785411784;
@@ -155,6 +156,11 @@ export const distillationRouter = router({
               .where(eq(batches.id, batchInput.sourceBatchId));
           }
         }
+      }
+
+      // Phase 2: self-heal — snap volume to event history (no-op when consistent)
+      for (const batchInput of input.batches) {
+        await recomputeBatchVolume(tx, batchInput.sourceBatchId);
       }
 
       return {
@@ -296,6 +302,11 @@ export const distillationRouter = router({
             })
             .where(eq(batches.id, input.sourceBatchId));
         }
+
+        // Phase 2: self-heal — snap volume to event history (no-op when consistent).
+        // This mutation is NOT transactional; recompute runs on the root db after
+        // the committed writes above (see report — non-atomic site).
+        await recomputeBatchVolume(db, input.sourceBatchId);
       }
 
       return record;
@@ -392,8 +403,6 @@ export const distillationRouter = router({
           vesselId: input.destinationVesselId || null,
           name: batchName,
           batchNumber: batchNumber,
-          initialVolume: String(input.receivedVolume),
-          initialVolumeUnit: input.receivedVolumeUnit,
           initialVolumeLiters: String(receivedVolumeLiters),
           currentVolume: String(input.receivedVolume),
           currentVolumeUnit: input.receivedVolumeUnit,
@@ -579,8 +588,6 @@ export const distillationRouter = router({
           vesselId: input.destinationVesselId || null,
           name: batchName,
           batchNumber: batchNumber,
-          initialVolume: String(input.receivedVolume),
-          initialVolumeUnit: input.receivedVolumeUnit,
           initialVolumeLiters: String(receivedVolumeLiters),
           currentVolume: String(input.receivedVolume),
           currentVolumeUnit: input.receivedVolumeUnit,
@@ -654,8 +661,6 @@ export const distillationRouter = router({
             currentVolume: String(firstVesselVolume),
             currentVolumeUnit: input.receivedVolumeUnit,
             currentVolumeLiters: String(firstVesselVolumeLiters),
-            initialVolume: String(firstVesselVolume),
-            initialVolumeUnit: input.receivedVolumeUnit,
             initialVolumeLiters: String(firstVesselVolumeLiters),
             updatedAt: new Date(),
           })
@@ -678,8 +683,6 @@ export const distillationRouter = router({
             customName: splitName,
             batchNumber: splitBatchNumber,
             // Volume
-            initialVolume: String(vesselAlloc.volume),
-            initialVolumeUnit: input.receivedVolumeUnit,
             initialVolumeLiters: String(allocVolumeLiters),
             currentVolume: String(vesselAlloc.volume),
             currentVolumeUnit: input.receivedVolumeUnit,
@@ -840,6 +843,9 @@ export const distillationRouter = router({
               .update(batches)
               .set(updates)
               .where(eq(batches.id, record.sourceBatchId));
+
+            // Phase 2: self-heal — snap volume to event history (no-op when consistent)
+            await recomputeBatchVolume(tx, record.sourceBatchId);
           }
         }
 
@@ -1207,8 +1213,6 @@ export const distillationRouter = router({
           name: batchName,
           customName: input.notes || null,
           batchNumber: batchNumber,
-          initialVolume: String(totalVolume),
-          initialVolumeUnit: "L",
           initialVolumeLiters: String(totalVolume),
           currentVolume: String(totalVolume),
           currentVolumeUnit: "L",

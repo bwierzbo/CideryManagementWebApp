@@ -351,8 +351,7 @@ async function main() {
         {
           name: "B-2024-001",
           batchNumber: "B-2024-001",
-          initialVolume: "500.0",
-          initialVolumeUnit: "L",
+          initialVolumeLiters: "500.0",
           currentVolume: "480.0",
           currentVolumeUnit: "L",
           status: "fermentation",
@@ -363,8 +362,7 @@ async function main() {
         {
           name: "B-2024-002",
           batchNumber: "B-2024-002",
-          initialVolume: "350.0",
-          initialVolumeUnit: "L",
+          initialVolumeLiters: "350.0",
           currentVolume: "0",
           currentVolumeUnit: "L",
           status: "completed",
@@ -376,8 +374,7 @@ async function main() {
         {
           name: "B-2024-003",
           batchNumber: "B-2024-003",
-          initialVolume: "750.0",
-          initialVolumeUnit: "L",
+          initialVolumeLiters: "750.0",
           currentVolume: "740.0",
           currentVolumeUnit: "L",
           status: "fermentation",
