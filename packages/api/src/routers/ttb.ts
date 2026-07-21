@@ -1672,6 +1672,15 @@ export const ttbRouter = router({
           periodNumber
         );
 
+        // Phase 3 C8: getPeriodDateRange returns endDate = 00:00 of the period's
+        // last day, so a `lte(timestampCol, endDate)` (or raw `<= endDate`) silently
+        // drops every event on that final calendar day. endExclusive = the next
+        // day's midnight; use `lt(col, endExclusive)` / `>= endExclusive` on
+        // TIMESTAMP columns only. (::date casts and date-string comparisons are
+        // already day-granular and must NOT use this.)
+        const endExclusive = new Date(endDate);
+        endExclusive.setDate(endExclusive.getDate() + 1);
+
         // Calculate day before start date for beginning inventory
         const dayBeforeStart = new Date(startDate);
         dayBeforeStart.setDate(dayBeforeStart.getDate() - 1);
@@ -2036,7 +2045,7 @@ export const ttbRouter = router({
               sql`COALESCE(${batches.reconciliationStatus}, 'pending') NOT IN ('duplicate', 'excluded')`,
               eq(batches.productType, "juice"),
               gte(batches.startDate, startDate),
-              sql`${ttbMembershipTs} <= ${endDate}`
+              sql`${ttbMembershipTs} < ${endExclusive}`
             )
           );
         const juiceOnlyLiters = Number(juiceOnlyData[0]?.totalLiters || 0);
@@ -2053,7 +2062,7 @@ export const ttbRouter = router({
               isNull(batchTransfers.deletedAt),
               eq(batches.productType, "juice"),
               gte(batchTransfers.transferredAt, startDate),
-              lte(batchTransfers.transferredAt, endDate)
+              lt(batchTransfers.transferredAt, endExclusive)
             )
           );
         const xferIntoJuiceLiters = Number(xferIntoJuiceData[0]?.totalLiters || 0);
@@ -2077,7 +2086,7 @@ export const ttbRouter = router({
               eq(batches.productType, "pommeau"),
               sql`CAST(${batches.initialVolumeLiters} AS DECIMAL) > 0`,
               gte(batches.startDate, startDate),
-              sql`${ttbMembershipTs} <= ${endDate}`
+              sql`${ttbMembershipTs} < ${endExclusive}`
             )
           );
         let juiceToPommeauLiters = 0;
@@ -2117,11 +2126,11 @@ export const ttbRouter = router({
               sql`dest_batch.deleted_at IS NULL`,
               // Only new pommeau batches created in the period
               sql`(CASE WHEN dest_batch.ttb_origin_year >= 2025 AND dest_batch.ttb_origin_year < EXTRACT(YEAR FROM dest_batch.start_date) THEN make_date(dest_batch.ttb_origin_year, 12, 31)::timestamp ELSE dest_batch.start_date END) >= ${startDate}`,
-              sql`(CASE WHEN dest_batch.ttb_origin_year >= 2025 AND dest_batch.ttb_origin_year < EXTRACT(YEAR FROM dest_batch.start_date) THEN make_date(dest_batch.ttb_origin_year, 12, 31)::timestamp ELSE dest_batch.start_date END) <= ${endDate}`,
+              sql`(CASE WHEN dest_batch.ttb_origin_year >= 2025 AND dest_batch.ttb_origin_year < EXTRACT(YEAR FROM dest_batch.start_date) THEN make_date(dest_batch.ttb_origin_year, 12, 31)::timestamp ELSE dest_batch.start_date END) < ${endExclusive}`,
               // Exclude brandy and pommeau-to-pommeau transfers (racking between pommeau vessels)
               sql`source_batch.product_type NOT IN ('brandy', 'pommeau')`,
               gte(batchTransfers.transferredAt, startDate),
-              lte(batchTransfers.transferredAt, endDate)
+              lt(batchTransfers.transferredAt, endExclusive)
             )
           );
         juiceToPommeauLiters += Number(nonBrandyToPommeauData[0]?.totalLiters || 0);
@@ -2151,7 +2160,7 @@ export const ttbRouter = router({
               ),
               sql`CAST(${batches.initialVolumeLiters} AS DECIMAL) > 0`,
               gte(batches.startDate, startDate),
-              sql`${ttbMembershipTs} <= ${endDate}`
+              sql`${ttbMembershipTs} < ${endExclusive}`
             )
           );
         // Pommeau batches built via transfers (initial = 0): sum incoming transfers as production
@@ -2178,10 +2187,10 @@ export const ttbRouter = router({
               sql`CAST(dest_batch.initial_volume_liters AS DECIMAL) = 0`,
               // Only count transfers to pommeau batches created in this period
               sql`(CASE WHEN dest_batch.ttb_origin_year >= 2025 AND dest_batch.ttb_origin_year < EXTRACT(YEAR FROM dest_batch.start_date) THEN make_date(dest_batch.ttb_origin_year, 12, 31)::timestamp ELSE dest_batch.start_date END) >= ${startDate}`,
-              sql`(CASE WHEN dest_batch.ttb_origin_year >= 2025 AND dest_batch.ttb_origin_year < EXTRACT(YEAR FROM dest_batch.start_date) THEN make_date(dest_batch.ttb_origin_year, 12, 31)::timestamp ELSE dest_batch.start_date END) <= ${endDate}`,
+              sql`(CASE WHEN dest_batch.ttb_origin_year >= 2025 AND dest_batch.ttb_origin_year < EXTRACT(YEAR FROM dest_batch.start_date) THEN make_date(dest_batch.ttb_origin_year, 12, 31)::timestamp ELSE dest_batch.start_date END) < ${endExclusive}`,
               sql`source_batch.product_type != 'pommeau'`,
               gte(batchTransfers.transferredAt, startDate),
-              lte(batchTransfers.transferredAt, endDate)
+              lt(batchTransfers.transferredAt, endExclusive)
             )
           );
         const pommeauProducedLiters = Number(pommeauWithInitialSum[0]?.totalLiters || 0) +
@@ -2209,7 +2218,7 @@ export const ttbRouter = router({
               // the system via the source batch's press run, not as separate production.
               isNull(batches.parentBatchId),
               gte(batches.startDate, startDate),
-              sql`${ttbMembershipTs} <= ${endDate}`
+              sql`${ttbMembershipTs} < ${endExclusive}`
             )
           );
         const fruitWineProducedLiters = Number(fruitWineProductionData[0]?.totalLiters || 0);
@@ -2248,7 +2257,7 @@ export const ttbRouter = router({
               isNull(batches.deletedAt),
               sql`${bottleRuns.status} IN ('distributed', 'completed')`,
               gte(bottleRuns.distributedAt, startDate),
-              lte(bottleRuns.distributedAt, endDate)
+              lt(bottleRuns.distributedAt, endExclusive)
             )
           )
           .groupBy(salesChannels.code);
@@ -2277,7 +2286,7 @@ export const ttbRouter = router({
               isNull(kegFills.deletedAt),
               isNull(batches.deletedAt),
               gte(kegFills.distributedAt, startDate),
-              lte(kegFills.distributedAt, endDate)
+              lt(kegFills.distributedAt, endExclusive)
             )
           )
           .groupBy(salesChannels.code);
@@ -2360,7 +2369,7 @@ export const ttbRouter = router({
               isNull(batches.deletedAt),
               sql`COALESCE(${batches.reconciliationStatus}, 'pending') NOT IN ('duplicate', 'excluded')`,
               gte(inventoryAdjustments.adjustedAt, startDate),
-              lte(inventoryAdjustments.adjustedAt, endDate),
+              lt(inventoryAdjustments.adjustedAt, endExclusive),
               sql`${inventoryAdjustments.quantityChange} < 0` // Only removals
             )
           )
@@ -2406,7 +2415,7 @@ export const ttbRouter = router({
               isNull(batchFilterOperations.deletedAt),
               isNull(batches.deletedAt),
               gte(batchFilterOperations.filteredAt, startDate),
-              lte(batchFilterOperations.filteredAt, endDate)
+              lt(batchFilterOperations.filteredAt, endExclusive)
             )
           )
           .groupBy(batchFilterOperations.batchId);
@@ -2423,7 +2432,7 @@ export const ttbRouter = router({
               isNull(batchRackingOperations.deletedAt),
               isNull(batches.deletedAt),
               gte(batchRackingOperations.rackedAt, startDate),
-              lte(batchRackingOperations.rackedAt, endDate),
+              lt(batchRackingOperations.rackedAt, endExclusive),
               sql`${batchRackingOperations.isHistoricalRecord} = false`
             )
           )
@@ -2441,7 +2450,7 @@ export const ttbRouter = router({
               isNull(bottleRuns.voidedAt),
               isNull(batches.deletedAt),
               gte(bottleRuns.packagedAt, startDate),
-              lte(bottleRuns.packagedAt, endDate)
+              lt(bottleRuns.packagedAt, endExclusive)
             )
           )
           .groupBy(bottleRuns.batchId);
@@ -2459,7 +2468,7 @@ export const ttbRouter = router({
               isNull(batchTransfers.deletedAt),
               isNull(batches.deletedAt),
               gte(batchTransfers.transferredAt, startDate),
-              lte(batchTransfers.transferredAt, endDate)
+              lt(batchTransfers.transferredAt, endExclusive)
             )
           )
           .groupBy(batchTransfers.sourceBatchId);
@@ -2477,7 +2486,7 @@ export const ttbRouter = router({
               isNull(batches.deletedAt),
               sql`CAST(${batchVolumeAdjustments.adjustmentAmount} AS DECIMAL) < 0`,
               gte(batchVolumeAdjustments.adjustmentDate, startDate),
-              lte(batchVolumeAdjustments.adjustmentDate, endDate)
+              lt(batchVolumeAdjustments.adjustmentDate, endExclusive)
             )
           )
           .groupBy(batchVolumeAdjustments.batchId);
@@ -2495,7 +2504,7 @@ export const ttbRouter = router({
               isNull(kegFills.deletedAt),
               isNull(batches.deletedAt),
               gte(kegFills.filledAt, startDate),
-              lte(kegFills.filledAt, endDate)
+              lt(kegFills.filledAt, endExclusive)
             )
           )
           .groupBy(kegFills.batchId);
@@ -2516,7 +2525,7 @@ export const ttbRouter = router({
               isNotNull(batches.transferLossL),
               sql`CAST(${batches.transferLossL} AS DECIMAL) > 0`,
               gte(batches.startDate, startDate),
-              sql`${ttbMembershipTs} <= ${endDate}`
+              sql`${ttbMembershipTs} < ${endExclusive}`
             )
           );
 
@@ -2579,12 +2588,12 @@ export const ttbRouter = router({
               sql`COALESCE(${batches.reconciliationStatus}, 'pending') NOT IN ('duplicate', 'excluded')`,
               // Exclude juice batches — they are not taxable inventory
               sql`COALESCE(${batches.productType}, 'cider') != 'juice'`,
-              sql`${ttbMembershipTs} <= ${endDate}`,
+              sql`${ttbMembershipTs} < ${endExclusive}`,
               // Exclude batches that ended before the period end
               or(isNull(batches.endDate), gte(batches.endDate, endDate)),
               // Exclude discarded/completed batches that were finished before endDate
               // (they would have 0 volume at endDate)
-              sql`NOT (${batches.status} = 'discarded' AND ${batches.updatedAt} <= ${endDate})`
+              sql`NOT (${batches.status} = 'discarded' AND ${batches.updatedAt} < ${endExclusive})`
             )
           );
 
@@ -2670,7 +2679,7 @@ export const ttbRouter = router({
           .from(inventoryItems)
           .where(
             and(
-              lte(inventoryItems.createdAt, endDate),
+              lt(inventoryItems.createdAt, endExclusive),
               isNull(inventoryItems.deletedAt)
             )
           );
@@ -2685,10 +2694,10 @@ export const ttbRouter = router({
           const [distsAfterEnd, adjsAfterEnd] = await Promise.all([
             db.execute(sql`SELECT inventory_item_id as item_id, COALESCE(SUM(quantity_distributed), 0) as total
               FROM inventory_distributions WHERE inventory_item_id IN (${itemIdList})
-              AND distribution_date > ${endDate} GROUP BY inventory_item_id`),
+              AND distribution_date >= ${endExclusive} GROUP BY inventory_item_id`),
             db.execute(sql`SELECT inventory_item_id as item_id, COALESCE(SUM(quantity_change), 0) as total
               FROM inventory_adjustments WHERE inventory_item_id IN (${itemIdList})
-              AND adjusted_at > ${endDate} GROUP BY inventory_item_id`),
+              AND adjusted_at >= ${endExclusive} GROUP BY inventory_item_id`),
           ]);
 
           const makeItemMap = (rows: Record<string, unknown>[]) => {
@@ -2728,10 +2737,10 @@ export const ttbRouter = router({
               isNull(batches.deletedAt),
               // Do NOT filter by reconciliationStatus — kegs from duplicate/excluded batches
               // still physically exist in inventory and must be counted
-              lte(kegFills.filledAt, endDate),
+              lt(kegFills.filledAt, endExclusive),
               or(
                 isNull(kegFills.distributedAt),
-                sql`${kegFills.distributedAt} > ${endDate}`
+                sql`${kegFills.distributedAt} >= ${endExclusive}`
               )
             )
           )
@@ -2763,10 +2772,10 @@ export const ttbRouter = router({
             and(
               isNull(bottleRuns.voidedAt),
               isNull(batches.deletedAt),
-              lte(bottleRuns.packagedAt, endDate),
+              lt(bottleRuns.packagedAt, endExclusive),
               or(
                 isNull(bottleRuns.distributedAt),
-                sql`${bottleRuns.distributedAt} > ${endDate}`
+                sql`${bottleRuns.distributedAt} >= ${endExclusive}`
               ),
               sql`NOT EXISTS (
                 SELECT 1 FROM inventory_items ii
@@ -2841,7 +2850,7 @@ export const ttbRouter = router({
             and(
               isNull(distillationRecords.deletedAt),
               gte(distillationRecords.sentAt, startDate),
-              lte(distillationRecords.sentAt, endDate)
+              lt(distillationRecords.sentAt, endExclusive)
             )
           )
           .groupBy(distillationRecords.sourceBatchId);
@@ -2880,7 +2889,7 @@ export const ttbRouter = router({
               // not physical wine gains, and should not appear on TTB Line 9.
               sql`COALESCE(${batchVolumeAdjustments.reason}, '') NOT ILIKE '%reconciliation%'`,
               gte(batchVolumeAdjustments.adjustmentDate, startDate),
-              lte(batchVolumeAdjustments.adjustmentDate, endDate)
+              lt(batchVolumeAdjustments.adjustmentDate, endExclusive)
             )
           )
           .groupBy(batchVolumeAdjustments.batchId);
@@ -2905,7 +2914,7 @@ export const ttbRouter = router({
           JOIN inventory_items ii ON ii.id = ia.inventory_item_id
           WHERE ia.quantity_change > 0
             AND ia.adjusted_at >= ${startDate}
-            AND ia.adjusted_at <= ${endDate}
+            AND ia.adjusted_at < ${endExclusive}
         `);
         const positiveBottledAdjGallons = roundGallons(
           mlToWineGallons(Number(positiveBottledAdjustments.rows[0]?.total_ml || 0))
@@ -2921,7 +2930,7 @@ export const ttbRouter = router({
           JOIN inventory_items ii ON ii.id = ia.inventory_item_id
           WHERE ia.quantity_change < 0
             AND ia.adjusted_at >= ${startDate}
-            AND ia.adjusted_at <= ${endDate}
+            AND ia.adjusted_at < ${endExclusive}
         `);
         const negativeBottledAdjGallons = roundGallons(
           mlToWineGallons(Number(negativeBottledAdjustments.rows[0]?.total_ml || 0))
@@ -2941,7 +2950,7 @@ export const ttbRouter = router({
               isNull(distillationRecords.deletedAt),
               isNotNull(distillationRecords.receivedAt),
               gte(distillationRecords.receivedAt, startDate),
-              lte(distillationRecords.receivedAt, endDate)
+              lt(distillationRecords.receivedAt, endExclusive)
             )
           );
 
@@ -2967,7 +2976,7 @@ export const ttbRouter = router({
           WHERE kf.distributed_at IS NOT NULL
             AND kf.voided_at IS NULL AND kf.deleted_at IS NULL
             AND b.deleted_at IS NULL
-            AND kf.distributed_at >= ${startDate} AND kf.distributed_at <= ${endDate}
+            AND kf.distributed_at >= ${startDate} AND kf.distributed_at < ${endExclusive}
           GROUP BY kf.batch_id
         `);
 
@@ -2985,7 +2994,7 @@ export const ttbRouter = router({
           WHERE br.voided_at IS NULL
             AND b.deleted_at IS NULL
             AND br.status IN ('distributed', 'completed')
-            AND br.distributed_at >= ${startDate} AND br.distributed_at <= ${endDate}
+            AND br.distributed_at >= ${startDate} AND br.distributed_at < ${endExclusive}
           GROUP BY br.batch_id
         `);
 
@@ -3099,7 +3108,7 @@ export const ttbRouter = router({
                 sql`src.product_type = 'brandy'`,
                 sql`dest.product_type != 'brandy'`,
                 gte(batchTransfers.transferredAt, startDate),
-                lte(batchTransfers.transferredAt, endDate)
+                lt(batchTransfers.transferredAt, endExclusive)
               )
             );
 
@@ -3171,7 +3180,7 @@ export const ttbRouter = router({
           .where(
             and(
               gte(basefruitPurchases.purchaseDate, startDate),
-              lte(basefruitPurchases.purchaseDate, endDate)
+              lt(basefruitPurchases.purchaseDate, endExclusive)
             )
           )
           .groupBy(baseFruitVarieties.fruitType);
@@ -3230,7 +3239,7 @@ export const ttbRouter = router({
           .where(
             and(
               gte(additivePurchases.purchaseDate, startDate),
-              lte(additivePurchases.purchaseDate, endDate)
+              lt(additivePurchases.purchaseDate, endExclusive)
             )
           )
           .groupBy(additiveVarieties.name, additivePurchaseItems.unit);
@@ -3277,7 +3286,7 @@ export const ttbRouter = router({
               isNull(batches.deletedAt),
               sql`COALESCE(${batches.reconciliationStatus}, 'pending') NOT IN ('duplicate', 'excluded')`,
               eq(batches.status, "fermentation"),
-              sql`${ttbMembershipTs} <= ${endDate}`
+              sql`${ttbMembershipTs} < ${endExclusive}`
             )
           );
 
@@ -3306,7 +3315,7 @@ export const ttbRouter = router({
               isNull(bottleRuns.voidedAt),
               isNull(batches.deletedAt),
               gte(bottleRuns.packagedAt, startDate),
-              lte(bottleRuns.packagedAt, endDate)
+              lt(bottleRuns.packagedAt, endExclusive)
             )
           )
           .groupBy(bottleRuns.batchId);
@@ -3342,7 +3351,7 @@ export const ttbRouter = router({
               isNull(kegFills.deletedAt),
               isNull(batches.deletedAt),
               gte(kegFills.filledAt, startDate),
-              lte(kegFills.filledAt, endDate)
+              lt(kegFills.filledAt, endExclusive)
             )
           )
           .groupBy(kegFills.batchId);
@@ -3381,7 +3390,7 @@ export const ttbRouter = router({
             and(
               isNull(batchTransfers.deletedAt),
               gte(batchTransfers.transferredAt, startDate),
-              lte(batchTransfers.transferredAt, endDate)
+              lt(batchTransfers.transferredAt, endExclusive)
             )
           )
           .groupBy(sql`source_batch.id`, sql`source_batch.product_type`, sql`dest_batch.id`, sql`dest_batch.product_type`);
@@ -5649,7 +5658,7 @@ export const ttbRouter = router({
           and(
             isNull(batches.deletedAt),
             eq(batches.reconciliationStatus, "verified"),
-            sql`${batches.startDate} <= ${reconciliationDate}::date`,
+            sql`${batches.startDate}::date <= ${reconciliationDate}::date`,
             sql`COALESCE(${batches.currentVolumeLiters}, 0) > 0` // Only count batches with remaining volume
           )
         )
@@ -5672,7 +5681,7 @@ export const ttbRouter = router({
           and(
             isNull(inventoryItems.deletedAt),
             sql`${inventoryItems.currentQuantity} > 0`,
-            sql`${batches.startDate} <= ${reconciliationDate}::date`
+            sql`${batches.startDate}::date <= ${reconciliationDate}::date`
           )
         )
         .groupBy(sql`EXTRACT(YEAR FROM ${batches.startDate})`)
@@ -5728,7 +5737,7 @@ export const ttbRouter = router({
           and(
             isNull(batches.deletedAt),
             sql`(COALESCE(${batches.reconciliationStatus}, 'pending') NOT IN ('duplicate', 'excluded') OR ${batches.isRackingDerivative} IS TRUE OR ${batches.parentBatchId} IS NOT NULL)`,
-            sql`${batches.startDate} <= ${reconciliationDate}::date`,
+            sql`${batches.startDate}::date <= ${reconciliationDate}::date`,
           )
         );
       const sbdResult = await computeSystemCalculatedOnHand(
@@ -6354,7 +6363,7 @@ export const ttbRouter = router({
               and(
                 isNull(inventoryItems.deletedAt),
                 sql`${inventoryItems.currentQuantity} > 0`,
-                sql`${batches.startDate} <= ${reconciliationDate}::date`
+                sql`${batches.startDate}::date <= ${reconciliationDate}::date`
               )
             )
             .orderBy(sql`CAST(${inventoryItems.currentQuantity} AS DECIMAL) * CAST(${inventoryItems.packageSizeML} AS DECIMAL) DESC`);
