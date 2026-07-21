@@ -106,6 +106,12 @@ export const bottleRuns = pgTable(
     lossUnit: unitEnum("loss_unit").notNull().default("L"),
     // Loss percentage (computed in application logic)
     lossPercentage: decimal("loss_percentage", { precision: 5, scale: 2 }),
+    // True when `loss` is already inside volume_taken/volume_taken_liters and
+    // must not be subtracted again by volume reconstruction (migration 0143).
+    // Replaces the "<2L difference" fuzzy heuristic (reconciliation plan §2.4).
+    lossIncludedInVolumeTaken: boolean("loss_included_in_volume_taken")
+      .notNull()
+      .default(false),
 
     // QA Fields (optional)
     abvAtPackaging: decimal("abv_at_packaging", { precision: 5, scale: 2 }),

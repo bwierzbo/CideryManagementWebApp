@@ -5725,6 +5725,7 @@ export const batchRouter = router({
                 actualAbv: batch[0].actualAbv,
                 parentBatchId: input.batchId,
                 isRackingDerivative: true,
+                transferCreated: true, // volume arrives via batch_transfers; initial must not be counted
               })
               .returning();
 

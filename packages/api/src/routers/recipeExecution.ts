@@ -542,11 +542,16 @@ export const recipeExecutionRouter = router({
         }
 
         // Fill this batch + assign vessel + blended ABV/OG.
+        // transferCreated flips here — NOT at instantiate — because this is the
+        // moment the batch_transfers rows that fund the batch actually exist.
+        // Until now, initial_volume (the planned volume) was the honest value;
+        // from now on counting it would double the transfers-in.
         const fill: Record<string, unknown> = {
           vesselId: input.destinationVesselId,
           currentVolume: totalL.toString(),
           currentVolumeLiters: totalL.toString(),
           currentVolumeUnit: "L",
+          transferCreated: true,
           updatedAt: new Date(),
         };
         if (abvWeight > 0) fill.estimatedAbv = (abvWeighted / abvWeight).toFixed(2);

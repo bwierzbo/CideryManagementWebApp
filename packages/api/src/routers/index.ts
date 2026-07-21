@@ -4201,6 +4201,7 @@ export const appRouter = router({
                   actualAbv: sourceBatch[0].actualAbv,
                   parentBatchId: sourceBatch[0].id,
                   startDate: transferDate,
+                  transferCreated: true, // funded by the batch_transfers row below; initial is display-only
                   createdAt: new Date(),
                   updatedAt: new Date(),
                 })
@@ -5182,6 +5183,7 @@ export const appRouter = router({
                     actualAbv: sourceBatch[0].actualAbv,
                     parentBatchId: sourceBatch[0].id,
                     startDate: transferDate,
+                    transferCreated: true, // funded by the batch_transfers row below; initial is 0
                     createdAt: new Date(),
                     updatedAt: new Date(),
                   })

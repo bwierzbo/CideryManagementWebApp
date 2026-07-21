@@ -433,6 +433,10 @@ export const packagingRouter = router({
             volumeTakenUnit: "L",
             loss: lossL.toString(),
             lossUnit: "L",
+            // loss is DERIVED as volumeTaken − theoretical product volume above,
+            // so it is definitionally inside volumeTaken — reconstruction must
+            // not subtract it again (reconciliation plan §2.4).
+            lossIncludedInVolumeTaken: true,
             lossPercentage: lossPercentage.toString(),
             // Link to most recent completed carbonation operation
             sourceCarbonationOperationId: latestCarbonation?.id ?? null,
