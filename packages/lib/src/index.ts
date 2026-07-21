@@ -15,6 +15,7 @@ export * from "./calc/fermentation";
 export * from "./calc/measurement-schedule";
 export * from "./calc/sg-correction";
 export * from "./calc/sg-calibration";
+export * from "./calculations/batch-volume";
 export * from "./calculations/sugar";
 export * from "./calculations/pasteurization";
 export * from "./calculations/ttb";

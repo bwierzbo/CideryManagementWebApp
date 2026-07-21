@@ -114,7 +114,11 @@ The product model the owner described, built on the Phase 1–3 authoritative en
 - UX for a non-accountant owner: plain-language status ("✓ Reconciled through Jun 30 — inventory matches" / "⚠ 3 batches off by 12 gal — review"), one-click drill-in, explicit "accept variance with reason" before locking.
 
 ### Phase 7 — TTB report periods + printable/submittable forms
-- **Period selection:** monthly / quarterly / annual, user-chosen; generate the Form 5120.17 for the selected period from the checkpointed data. A period's opening = prior finalized period snapshot (already partly supported); finalize on submit.
+- **Period selection:** monthly / quarterly / annual. OWNER REQUIREMENT (2026-07-20): the system
+  should DETERMINE the required filing frequency from the TTB regulations (27 CFR part 24 filing
+  thresholds — research exact minimums; owner is annual until minimums are met) and then VERIFY the
+  determination with the user, rather than being purely user-chosen. Generate the Form 5120.17 for
+  the selected period from the checkpointed data. A period's opening = prior finalized period snapshot (already partly supported); finalize on submit.
 - **Form 1 — TTB F 5120.17 (Report of Wine Premises Operations):** produce a clean **printable/PDF** matching the official layout (Section A bulk, Section B bottled, Part IV materials), ready to submit. (Generator largely exists; needs faithful print output + the Phase-3 honest numbers.)
 - **Form 2 — NY LIQ-774-777-021 (Domestic Winery Report):** NEW. Build a state-report generator + printable output. Map its line items to the same event data (production, transfers, removals, losses, inventory). *Exact form fields TBD from research / a blank form the owner provides.*
 - Both forms print with the period, filer info (from org settings), and the reconciliation checkpoint they were built on.
