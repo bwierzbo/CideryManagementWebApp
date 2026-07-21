@@ -60,6 +60,7 @@ import {
   like,
 } from "drizzle-orm";
 import {
+  computeBatchVolumeFromHistory,
   litersToWineGallons,
   wineGallonsToLiters,
   mlToWineGallons,
@@ -87,6 +88,7 @@ import {
   type CiderBrandyInventory,
   type CiderBrandyReconciliation,
 } from "lib";
+import { fetchBatchVolumeEvents } from "../services/batch-volume-events";
 
 // ============================================
 // Batch Classification Map Builder
@@ -291,193 +293,30 @@ async function computeSystemCalculatedOnHand(
   };
   if (verifiedBatchIds.length === 0) return { total: 0, breakdown: emptyBreakdown, perBatch: new Map(), perBatchClampedLoss: new Map() };
 
-  const idList = sql.join(verifiedBatchIds.map((id) => sql`${id}`), sql`, `);
-  const endDate = sql`${asOfDate}::date + INTERVAL '1 day'`;
+  // Phase 1: SBD reconstruction = THE shared reducer in as-of-date mode, fed
+  // by the same fetcher as per-batch validation (reconciliation plan §3).
+  // Signature and SystemVolumeBreakdown mapping are frozen for the five
+  // downstream consumers. Semantics deliberately unified with the per-batch
+  // engine (this is the two-formula drift kill):
+  // - self-transfers (source == destination) excluded entirely — their losses
+  //   are recorded as paired adjustments by the rack-to-self flow, so the old
+  //   SBD-side counting double-dipped;
+  // - transfer-created = explicit batches.transfer_created flag, not the 90%
+  //   cliff; bottling loss-included and historical-record rackings come from
+  //   their migration-0143 columns;
+  // - distillation requires deducted_from_batch (record-only sends excluded).
+  const volumeInputs = await fetchBatchVolumeEvents(verifiedBatchIds);
 
-  // Fetch batch basics (initial volume, parent)
-  const batchBasics = await db.execute(sql`
-    SELECT id, initial_volume_liters, parent_batch_id
-    FROM batches
-    WHERE id IN (${idList}) AND deleted_at IS NULL
-  `);
-  const batchMap = new Map<string, { initial: number; parentId: string | null }>();
-  for (const b of batchBasics.rows as any[]) {
-    batchMap.set(b.id, {
-      initial: parseFloat(b.initial_volume_liters || "0"),
-      parentId: b.parent_batch_id,
-    });
-  }
-
-  // Bulk query helper: group rows by batchId field
-  function groupBy<T extends Record<string, any>>(rows: T[], key: string): Map<string, T[]> {
-    const map = new Map<string, T[]>();
-    for (const r of rows) {
-      const id = r[key];
-      if (!map.has(id)) map.set(id, []);
-      map.get(id)!.push(r);
-    }
-    return map;
-  }
-
-  // 1. Transfers OUT (source)
-  const tOut = await db.execute(sql`
-    SELECT source_batch_id, volume_transferred, loss
-    FROM batch_transfers
-    WHERE source_batch_id IN (${idList})
-      AND deleted_at IS NULL
-      AND transferred_at < ${endDate}
-  `);
-  const transfersOutByBatch = groupBy(tOut.rows as any[], "source_batch_id");
-
-  // 2. Transfers IN (destination)
-  const tIn = await db.execute(sql`
-    SELECT destination_batch_id, volume_transferred
-    FROM batch_transfers
-    WHERE destination_batch_id IN (${idList})
-      AND deleted_at IS NULL
-      AND transferred_at < ${endDate}
-  `);
-  const transfersInByBatch = groupBy(tIn.rows as any[], "destination_batch_id");
-
-  // 3. Merges IN (excludes batch_transfer source_type — those are tracked via batch_transfers)
-  const merges = await db.execute(sql`
-    SELECT target_batch_id, volume_added
-    FROM batch_merge_history
-    WHERE target_batch_id IN (${idList})
-      AND deleted_at IS NULL
-      AND merged_at < ${endDate}
-      AND source_type != 'batch_transfer'
-  `);
-  const mergesByBatch = groupBy(merges.rows as any[], "target_batch_id");
-
-  // 3b. Merges OUT (source batch side — excludes batch_transfer, tracked via batch_transfers)
-  const mOut = await db.execute(sql`
-    SELECT source_batch_id, volume_added AS volume_merged_out
-    FROM batch_merge_history
-    WHERE source_batch_id IN (${idList})
-      AND deleted_at IS NULL
-      AND merged_at < ${endDate}
-      AND source_type != 'batch_transfer'
-  `);
-  const mergesOutByBatch = groupBy(mOut.rows as any[], "source_batch_id");
-
-  // 4. Bottle runs (convert loss using loss_unit)
-  const bottles = await db.execute(sql`
-    SELECT batch_id, volume_taken_liters,
-      CASE WHEN loss_unit = 'gal' THEN COALESCE(loss::numeric, 0) * 3.78541 ELSE COALESCE(loss::numeric, 0) END AS loss,
-      units_produced, package_size_ml
-    FROM bottle_runs
-    WHERE batch_id IN (${idList})
-      AND voided_at IS NULL
-      AND packaged_at < ${endDate}
-  `);
-  const bottlesByBatch = groupBy(bottles.rows as any[], "batch_id");
-
-  // 5. Keg fills (convert volume_taken and loss using their unit columns)
-  const kegs = await db.execute(sql`
-    SELECT batch_id,
-      CASE WHEN volume_taken_unit = 'gal' THEN COALESCE(volume_taken::numeric, 0) * 3.78541 ELSE COALESCE(volume_taken::numeric, 0) END AS volume_taken,
-      CASE WHEN loss_unit = 'gal' THEN COALESCE(loss::numeric, 0) * 3.78541 ELSE COALESCE(loss::numeric, 0) END AS loss
-    FROM keg_fills
-    WHERE batch_id IN (${idList})
-      AND voided_at IS NULL
-      AND deleted_at IS NULL
-      AND filled_at < ${endDate}
-  `);
-  const kegsByBatch = groupBy(kegs.rows as any[], "batch_id");
-
-  // 6. Distillation
-  const dist = await db.execute(sql`
-    SELECT source_batch_id, source_volume_liters
-    FROM distillation_records
-    WHERE source_batch_id IN (${idList})
-      AND deleted_at IS NULL
-      AND status IN ('sent', 'received')
-      AND sent_at < ${endDate}
-  `);
-  const distByBatch = groupBy(dist.rows as any[], "source_batch_id");
-
-  // 7. Volume adjustments
-  const adjs = await db.execute(sql`
-    SELECT batch_id, adjustment_amount
-    FROM batch_volume_adjustments
-    WHERE batch_id IN (${idList})
-      AND deleted_at IS NULL
-      AND adjustment_date < ${endDate}
-  `);
-  const adjsByBatch = groupBy(adjs.rows as any[], "batch_id");
-
-  // 8. Racking losses
-  const racks = await db.execute(sql`
-    SELECT batch_id, volume_loss
-    FROM batch_racking_operations
-    WHERE batch_id IN (${idList})
-      AND deleted_at IS NULL
-      AND racked_at < ${endDate}
-      AND (notes IS NULL OR notes NOT LIKE '%Historical Record%')
-  `);
-  const racksByBatch = groupBy(racks.rows as any[], "batch_id");
-
-  // 9. Filter losses
-  const filters = await db.execute(sql`
-    SELECT batch_id, volume_loss
-    FROM batch_filter_operations
-    WHERE batch_id IN (${idList})
-      AND deleted_at IS NULL
-      AND filtered_at < ${endDate}
-  `);
-  const filtersByBatch = groupBy(filters.rows as any[], "batch_id");
-
-  // Compute per-batch volume at asOfDate, accumulating breakdown
-  const num = (v: any) => parseFloat(v || "0") || 0;
   let totalLiters = 0;
   const bd: SystemVolumeBreakdown = { ...emptyBreakdown, batchCount: verifiedBatchIds.length };
   const perBatch = new Map<string, number>();
   const perBatchClampedLoss = new Map<string, number>();
 
   for (const batchId of verifiedBatchIds) {
-    const batch = batchMap.get(batchId);
-    if (!batch) continue;
+    const inputs = volumeInputs.get(batchId);
+    if (!inputs) continue;
 
-    const transfersIn = (transfersInByBatch.get(batchId) || []).reduce((s, r) => s + num(r.volume_transferred), 0);
-    const transfersOut = (transfersOutByBatch.get(batchId) || []).reduce((s, r) => s + num(r.volume_transferred), 0);
-    const transferLoss = (transfersOutByBatch.get(batchId) || []).reduce((s, r) => s + num(r.loss), 0);
-    const mergesIn = (mergesByBatch.get(batchId) || []).reduce((s, r) => s + num(r.volume_added), 0);
-    const mergesOut = (mergesOutByBatch.get(batchId) || []).reduce((s, r) => s + num(r.volume_merged_out), 0);
-
-    // Bottling with smart loss detection (matching volume trace logic)
-    const bottlingVol = (bottlesByBatch.get(batchId) || []).reduce((s, b) => s + num(b.volume_taken_liters), 0);
-    const bottlingLoss = (bottlesByBatch.get(batchId) || []).reduce((s, b) => {
-      const volumeTaken = num(b.volume_taken_liters);
-      const lossVal = num(b.loss);
-      const productVol = ((b.units_produced || 0) * (b.package_size_ml || 0)) / 1000;
-      const lossIncluded = Math.abs(volumeTaken - (productVol + lossVal)) < 2;
-      return s + (lossIncluded ? 0 : lossVal);
-    }, 0);
-
-    const kegging = (kegsByBatch.get(batchId) || []).reduce((s, k) => s + num(k.volume_taken), 0);
-    const keggingLoss = (kegsByBatch.get(batchId) || []).reduce((s, k) => s + num(k.loss), 0);
-    const distillation = (distByBatch.get(batchId) || []).reduce((s, d) => s + num(d.source_volume_liters), 0);
-    const adjRows = adjsByBatch.get(batchId) || [];
-    const adjustments = adjRows.reduce((s, a) => s + num(a.adjustment_amount), 0);
-    const posAdj = adjRows.reduce((s, a) => { const v = num(a.adjustment_amount); return s + (v > 0 ? v : 0); }, 0);
-    const negAdj = adjRows.reduce((s, a) => { const v = num(a.adjustment_amount); return s + (v < 0 ? Math.abs(v) : 0); }, 0);
-    const rackingLoss = (racksByBatch.get(batchId) || []).reduce((s, r) => s + num(r.volume_loss), 0);
-    const filterLoss = (filtersByBatch.get(batchId) || []).reduce((s, f) => s + num(f.volume_loss), 0);
-
-    // Transfer-created batches: effective initial is 0 if they have parent + transfers
-    // account for most of the initial volume (>= 90%). Small top-up transfers should
-    // NOT zero out the initial volume.
-    const isTransferCreated = batch.parentId && transfersIn >= batch.initial * 0.9;
-    const effectiveInitial = isTransferCreated ? 0 : batch.initial;
-
-    const ending = effectiveInitial + mergesIn - mergesOut + transfersIn
-      - transfersOut - transferLoss
-      - bottlingVol - bottlingLoss
-      - kegging - keggingLoss
-      - distillation
-      + adjustments
-      - rackingLoss - filterLoss;
+    const { volumeL: ending, breakdown } = computeBatchVolumeFromHistory(inputs, { asOfDate });
 
     // No clamping — negative endings indicate data quality issues that should be
     // investigated, not hidden. Clamping creates asymmetry with aggregate loss queries
@@ -485,23 +324,23 @@ async function computeSystemCalculatedOnHand(
     perBatch.set(batchId, ending);
     totalLiters += ending;
 
-    // Accumulate breakdown
-    bd.initialVolumeLiters += effectiveInitial;
-    bd.mergesInLiters += mergesIn;
-    bd.mergesOutLiters += mergesOut;
-    bd.transfersInLiters += transfersIn;
-    bd.transfersOutLiters += transfersOut;
-    bd.transferLossLiters += transferLoss;
-    bd.bottlingLiters += bottlingVol;
-    bd.bottlingLossLiters += bottlingLoss;
-    bd.keggingLiters += kegging;
-    bd.keggingLossLiters += keggingLoss;
-    bd.distillationLiters += distillation;
-    bd.adjustmentsLiters += adjustments;
-    bd.positiveAdjLiters += posAdj;
-    bd.negativeAdjLiters += negAdj;
-    bd.rackingLossLiters += rackingLoss;
-    bd.filterLossLiters += filterLoss;
+    // Accumulate breakdown (SystemVolumeBreakdown mapping frozen for consumers)
+    bd.initialVolumeLiters += breakdown.initialL;
+    bd.mergesInLiters += breakdown.mergesInL;
+    bd.mergesOutLiters += breakdown.mergesOutL;
+    bd.transfersInLiters += breakdown.transfersInL;
+    bd.transfersOutLiters += breakdown.transfersOutL;
+    bd.transferLossLiters += breakdown.transferLossL;
+    bd.bottlingLiters += breakdown.bottlingL;
+    bd.bottlingLossLiters += breakdown.bottlingLossL;
+    bd.keggingLiters += breakdown.keggingL;
+    bd.keggingLossLiters += breakdown.keggingLossL;
+    bd.distillationLiters += breakdown.distillationL;
+    bd.adjustmentsLiters += breakdown.adjustmentsPositiveL + breakdown.adjustmentsNegativeL;
+    bd.positiveAdjLiters += breakdown.adjustmentsPositiveL;
+    bd.negativeAdjLiters += Math.abs(breakdown.adjustmentsNegativeL);
+    bd.rackingLossLiters += breakdown.rackingLossL;
+    bd.filterLossLiters += breakdown.filterLossL;
     if (ending < 0) {
       bd.clampedLossLiters += Math.abs(ending);
       perBatchClampedLoss.set(batchId, Math.abs(ending));
