@@ -724,6 +724,10 @@ export const ttbWaterfallAdjustments = pgTable(
     }).notNull(),
     reason: text("reason").notNull(),
     notes: text("notes"),
+    // Which reconciliation surface(s) this row explains: the annual FORM
+    // (filed-snapshot opening basis), the CHECKPOINT summary (reconstruction
+    // basis), or both. Migration 0147.
+    scope: text("scope").notNull().default("both"),
     adjustedBy: uuid("adjusted_by").references(() => users.id),
     adjustedAt: timestamp("adjusted_at").notNull().defaultNow(),
     createdAt: timestamp("created_at").notNull().defaultNow(),

@@ -113,7 +113,9 @@ function VarianceBreakdown({ analysis }: { analysis: TTBForm512017Data["variance
   const rows = Object.entries(analysis.byTaxClass).filter(
     ([, c]) => Math.abs(c.unexplained) >= 0.1 || c.components.length > 0
   );
-  if (rows.length === 0) return null;
+  const manualAdj = analysis.manualAdjustmentsGal ?? 0;
+  const hasManualAdj = Math.abs(manualAdj) >= 0.1;
+  if (rows.length === 0 && !hasManualAdj) return null;
   return (
     <div className="border border-amber-300 bg-amber-50 rounded p-2 text-[10px] text-amber-900 space-y-1.5">
       <p className="font-semibold uppercase text-amber-800">Unexplained variance by tax class</p>
@@ -131,6 +133,12 @@ function VarianceBreakdown({ analysis }: { analysis: TTBForm512017Data["variance
           ))}
         </div>
       ))}
+      {hasManualAdj && (
+        <div className="flex justify-between border-t border-amber-300 pt-1 font-semibold text-amber-800">
+          <span>Manual adjustments</span>
+          <span className="tabular-nums">{fmtAlways(manualAdj)} gal</span>
+        </div>
+      )}
     </div>
   );
 }

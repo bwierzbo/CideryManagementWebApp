@@ -1057,13 +1057,14 @@ export function TTBReconciliationSummary() {
                     <TableHead className="text-right font-semibold text-xs text-red-700">-Loss</TableHead>
                     <TableHead className="text-right font-semibold text-xs text-purple-700">-DSP</TableHead>
                     <TableHead className="text-right font-semibold text-xs text-red-700">-Sales</TableHead>
+                    <TableHead className="text-right font-semibold text-xs text-red-700" title="Packaged product flagged distributed but missing/partial distribution records">-Unrec</TableHead>
                     <TableHead className="text-right font-semibold bg-gray-100">=Calc End</TableHead>
                     <TableHead className="text-right font-semibold bg-gray-100">Physical</TableHead>
                     <TableHead className="text-right font-semibold">Unexplained</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {data.waterfall.byTaxClass.map((w: { taxClass: string; label: string; opening: number; production: number; transfersIn: number; transfersOut: number; losses: number; distillation: number; sales: number; calculatedEnding: number; physical: number; unexplainedVariance: number }) => {
+                  {data.waterfall.byTaxClass.map((w: { taxClass: string; label: string; opening: number; production: number; transfersIn: number; transfersOut: number; losses: number; distillation: number; sales: number; unrecordedDistribution: number; calculatedEnding: number; physical: number; unexplainedVariance: number }) => {
                     return (
                       <TableRow key={w.taxClass}>
                         <TableCell className="font-medium text-sm whitespace-nowrap">{w.label}</TableCell>
@@ -1085,6 +1086,9 @@ export function TTBReconciliationSummary() {
                         </TableCell>
                         <TableCell className="text-right font-mono text-sm text-red-700">
                           {w.sales > 0 ? `-${w.sales.toFixed(1)}` : "-"}
+                        </TableCell>
+                        <TableCell className="text-right font-mono text-sm text-red-700" title="Flagged distributed but missing/partial distribution records">
+                          {Math.abs(w.unrecordedDistribution) > 0.05 ? `${w.unrecordedDistribution > 0 ? "-" : "+"}${Math.abs(w.unrecordedDistribution).toFixed(1)}` : "-"}
                         </TableCell>
                         <TableCell className="text-right font-mono text-sm font-semibold bg-gray-50">
                           {w.calculatedEnding.toFixed(1)}
@@ -1115,6 +1119,9 @@ export function TTBReconciliationSummary() {
                     <TableCell className="text-right font-mono text-red-700">
                       -{data.waterfall.totals.sales.toFixed(1)}
                     </TableCell>
+                    <TableCell className="text-right font-mono text-red-700">
+                      {Math.abs(data.waterfall.totals.unrecordedDistribution ?? 0) > 0.05 ? `${(data.waterfall.totals.unrecordedDistribution ?? 0) > 0 ? "-" : "+"}${Math.abs(data.waterfall.totals.unrecordedDistribution ?? 0).toFixed(1)}` : "-"}
+                    </TableCell>
                     <TableCell className="text-right font-mono font-bold bg-gray-200">{data.waterfall.totals.calculatedEnding.toFixed(1)}</TableCell>
                     <TableCell className="text-right font-mono font-bold bg-gray-200">{data.waterfall.totals.physical.toFixed(1)}</TableCell>
                     <TableCell className={cn(
@@ -1134,6 +1141,7 @@ export function TTBReconciliationSummary() {
                 ? "Opening = Last reconciliation ending. "
                 : "Opening = Configured TTB opening balances. "}
               Unexplained = Physical - Calculated (negative = missing inventory, positive = unexplained gain).
+              {" "}Unrec = packaged product flagged distributed but missing/partial distribution records (a data-hygiene follow-up, not a plug).
             </p>
           </div>
         )}
