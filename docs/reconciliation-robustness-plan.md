@@ -130,6 +130,24 @@ Not a problem (verified correct): juice is excluded until it becomes cider/pomme
 > transfers cancel in unexplained; emitting components would have rebuilt a plug). Follow-ups: the 2026
 > waterfall −261.5 = packaged/carbonation-reclassification residual (decompose in Phase 4/6);
 > +20.85 carbonated bulk-vs-bottled asymmetry; getPeriodDateRange server-TZ boundary instant.
+>
+> **2026 VARIANCE DEEP-DIVE — DONE 2026-07-23** (branch `recon/2026-variance-deepdive`, commits
+> D1–D3). Root causes found and fixed: (1) tax-class guard bug in the change-of-class builder
+> (compared product_type pre-mapping, dropping 139.9 gal of wine→carbonated inflow) + symmetric
+> in-place carbonation class-change booking (single-classIn-per-gallon invariant) — the 2026
+> wU16/carbonated ±160 mirror collapsed to small named loss residuals, 2024/2025 exactly frozen;
+> (2) the checkpoint waterfall's packaged on-hand (binary distributed_at flag) vs removals
+> (inventory_distributions) basis mismatch — unified per-run packaged ledger, flag-vs-record gap is a
+> named `unrecordedDistribution` removal (2026: 245.4 gal), waterfall −261.5 → ~−13 (honest hardCider
+> bulk-stitch residual); (3) HC +306.9 proven 100% backlog echo (exact arithmetic: filed-snapshot
+> opening 4,093 vs event trail) — explained by ONE owner-approved, form-scoped
+> ttbWaterfallAdjustments opening row (+306.88, migration 0147 added the scope column since the two
+> surfaces open from different bases). End state: 2026 form 40.3 gal (manualAdj shown; remainder =
+> pommeau brandy-inflow modeling +29.6 + named residuals), checkpoint −13.2, 2024/2025 untouched.
+> OWNER DATA ACTION: 18 bottle runs flagged distributed with missing/partial inventory_distributions
+> (~171 gal net, mostly a 2026-04-01 bulk flagging) — enter the sales records or unflag; affects
+> taxable-removal completeness. Follow-ups: pommeau brandy-addition inflow line (+29.6); hardCider
+> ~13 gal bulk-ledger stitch (unify packaged ledger into computeReconciliationFromBatches).
 - Promote `sbdTotalDriftL` to the headline reconciliation metric; stop reporting the plugged `variance ≈ 0`.
 - Replace the Line 29 loss plug, Line 9 gains flip, and `reconAdj` with itemized derivations. Where a residual genuinely remains, label it "unexplained variance" and alert — never hide it.
 - Apply `ttbWaterfallAdjustments` server-side (§2.13).
