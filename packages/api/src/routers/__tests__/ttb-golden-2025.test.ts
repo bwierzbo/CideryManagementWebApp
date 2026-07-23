@@ -498,7 +498,8 @@ describe("TTB Golden 2025 — Reconciliation Summary", () => {
         (w.positiveAdj ?? 0) -
         (w.losses ?? 0) -
         (w.distillation ?? 0) -
-        (w.sales ?? 0);
+        (w.sales ?? 0) -
+        ((w as any).unrecordedDistribution ?? 0);
 
       const calculatedEnding = w.calculatedEnding ?? 0;
       const diff = Math.abs(expectedEnding - calculatedEnding);
@@ -527,7 +528,8 @@ describe("TTB Golden 2025 — Reconciliation Summary", () => {
           (tc.positiveAdj ?? 0) -
           (tc.losses ?? 0) -
           (tc.distillation ?? 0) -
-          (tc.sales ?? 0);
+          (tc.sales ?? 0) -
+          ((tc as any).unrecordedDistribution ?? 0);
 
         const calc = tc.calculatedEnding ?? 0;
         const diff = Math.abs(expected - calc);
@@ -558,11 +560,14 @@ describe("TTB Golden 2025 — Reconciliation Summary", () => {
     it("should have documented waterfall unexplained variance (Phase 3 C3, no plug)", () => {
       // Phase 3 C3: the reconAdj plug is deleted. unexplainedVariance = physical −
       // formula ending, reported honestly instead of absorbed. For 2025 it is small
-      // (≈ −2.6 gal total, the C0 plug baseline) because the waterfall uses SBD-derived
-      // physical inventory that nearly matches the per-batch formula ending.
+      // (≈ −5.5 gal total) once the packaged-goods flow is on a consistent per-run
+      // basis — the packaged-flow fix subtracts `unrecordedDistribution` (packaged
+      // product flagged distributed but with missing/partial distribution records)
+      // as a named removal. The former ≈ −2.6 was partly masked by the on-hand /
+      // sales basis inconsistency the fix removes.
       const w = reconResult.waterfall?.totals;
       expect(w?.unexplainedVariance, "waterfall.totals.unexplainedVariance present").not.toBeUndefined();
-      console.log(`[GOLDEN] Waterfall unexplained variance: ${w.unexplainedVariance} (expected ≈ -2.6)`);
+      console.log(`[GOLDEN] Waterfall unexplained variance: ${w.unexplainedVariance} (expected ≈ -5.5)`);
       expect(Math.abs(w.unexplainedVariance), `Unexplained = ${w.unexplainedVariance}`).toBeLessThan(10);
       // totals.variance is now the same real quantity (no longer hardcoded 0)
       expect(reconResult.totals?.totalUnexplained, "totals.totalUnexplained present").not.toBeUndefined();

@@ -5292,6 +5292,7 @@ export const ttbRouter = router({
               losses: 0,
               distillation: 0,
               sales: 0,
+              unrecordedDistribution: 0,
               calculatedEnding: 0,
               physical: 0,
               unexplainedVariance: 0,
@@ -7126,6 +7127,7 @@ export const ttbRouter = router({
         losses: number;
         distillation: number;
         sales: number;
+        unrecordedDistribution: number;
         calculatedEnding: number;
         physical: number;
         unexplainedVariance: number;
@@ -7198,6 +7200,82 @@ export const ttbRouter = router({
       // for consistent physical inventory (keeps unexplained variance small between SBD impls)
       const batchReconByTaxClass = batchRecon.byTaxClass;
 
+      // ============================================
+      // PACKAGED-GOODS LEDGER (packaged-flow scope fix)
+      // Packaged on-hand and packaged removals MUST share one per-run ledger.
+      // The pre-fix asymmetry: on-hand was decided by the binary
+      // `bottle_runs`/`keg_fills` `distributed_at` flag (full run volume),
+      // while removals (`sales`) came from a DIFFERENT source
+      // (`inventory_distributions`). A run flagged distributed with missing or
+      // partial distribution records was dropped from on-hand WITHOUT a matching
+      // removal, so the packaged product vanished into unexplainedVariance.
+      //
+      // Per bottle run, as-of a date:
+      //   removed = distributed_at flag set  ? full net volume
+      //                                       : recorded inventory_distributions (capped at net)
+      //   onHand  = net packaged − removed
+      // Kegs distribute all-or-nothing via the distributed_at flag (they have no
+      // partial inventory_distributions rows), so removed = net when flagged else 0.
+      // onHand + removed = net packaged for every run, so the packaged ledger is
+      // internally consistent by construction: physical (endPkg) and the removal
+      // subtracted from calculatedEnding are on ONE basis and ONE window.
+      const computePackagedLedger = async (
+        asOf: string,
+      ): Promise<Record<string, { onHand: number; removed: number }>> => {
+        const acc: Record<string, { onHand: number; removed: number }> = {};
+        const add = (tc: string, onHand: number, removed: number) => {
+          if (!acc[tc]) acc[tc] = { onHand: 0, removed: 0 };
+          acc[tc].onHand += onHand;
+          acc[tc].removed += removed;
+        };
+        const bottleLedger = await db.execute(sql`
+          SELECT br.batch_id AS "batchId", b.product_type AS "productType",
+            (br.volume_taken_liters::numeric - (CASE WHEN br.loss_unit = 'gal'
+               THEN COALESCE(br.loss::numeric, 0) * 3.78541 ELSE COALESCE(br.loss::numeric, 0) END)) AS net_l,
+            (br.distributed_at IS NOT NULL AND br.distributed_at::date <= ${asOf}::date) AS flagged,
+            COALESCE((
+              SELECT SUM((idr.quantity_distributed::numeric * ii.package_size_ml::numeric) / 1000.0)
+              FROM inventory_distributions idr
+              JOIN inventory_items ii ON idr.inventory_item_id = ii.id
+              WHERE ii.bottle_run_id = br.id AND idr.distribution_date::date <= ${asOf}::date
+            ), 0) AS inv_l
+          FROM bottle_runs br
+          JOIN batches b ON br.batch_id = b.id
+          WHERE br.voided_at IS NULL AND b.deleted_at IS NULL
+            AND COALESCE(b.reconciliation_status, 'pending') NOT IN ('duplicate', 'excluded')
+            AND br.packaged_at::date <= ${asOf}::date
+        `);
+        for (const row of bottleLedger.rows as any[]) {
+          const tc = getTaxClassFromMap(batchTaxClassMap, row.batchId, row.productType);
+          if (!tc) continue;
+          const net = litersToWineGallons(Number(row.net_l || 0));
+          const inv = litersToWineGallons(Number(row.inv_l || 0));
+          const removed = row.flagged ? net : Math.min(net, inv);
+          add(tc, net - removed, removed);
+        }
+        const kegLedger = await db.execute(sql`
+          SELECT kf.batch_id AS "batchId", b.product_type AS "productType",
+            ((CASE WHEN kf.volume_taken_unit = 'gal' THEN COALESCE(kf.volume_taken::numeric, 0) * 3.78541 ELSE COALESCE(kf.volume_taken::numeric, 0) END)
+             - (CASE WHEN kf.loss_unit = 'gal' THEN COALESCE(kf.loss::numeric, 0) * 3.78541 ELSE COALESCE(kf.loss::numeric, 0) END)) AS net_l,
+            (kf.distributed_at IS NOT NULL AND kf.distributed_at::date <= ${asOf}::date) AS flagged
+          FROM keg_fills kf
+          JOIN batches b ON kf.batch_id = b.id
+          WHERE kf.voided_at IS NULL AND kf.deleted_at IS NULL AND b.deleted_at IS NULL
+            AND COALESCE(b.reconciliation_status, 'pending') NOT IN ('duplicate', 'excluded')
+            AND kf.filled_at::date <= ${asOf}::date
+        `);
+        for (const row of kegLedger.rows as any[]) {
+          const tc = getTaxClassFromMap(batchTaxClassMap, row.batchId, row.productType);
+          if (!tc) continue;
+          const net = litersToWineGallons(Number(row.net_l || 0));
+          const removed = row.flagged ? net : 0;
+          add(tc, net - removed, removed);
+        }
+        return acc;
+      };
+      const packagedLedgerEnd = await computePackagedLedger(reconciliationDate);
+      const packagedLedgerStart = await computePackagedLedger(batchReconStartDate);
+
       for (const key of waterfallTaxClasses) {
         const sbdTc = sbdWaterfallByTaxClass[key];
         const reconTc = batchReconByTaxClass[key];
@@ -7214,31 +7292,45 @@ export const ttbRouter = router({
         const positiveAdj = sbdTc?.positiveAdj || 0;
         const distillation = sbdTc?.distillation || 0;
 
-        // SBD-derived distributions (customer sales)
+        // SBD-derived distributions (recorded customer sales, from
+        // inventory_distributions for bottles + distributed keg fills).
         const actualSales = sbdTc?.sales || 0;
 
         // SBD-derived packaging (net product volume transferred from bulk to packaged)
         const sbdPackaging = reconTc?.packaging || 0;
 
+        // Packaged-goods ledger (per-run on-hand + removal, one consistent basis).
+        const ledgerEnd = packagedLedgerEnd[key] || { onHand: 0, removed: 0 };
+        const ledgerStart = packagedLedgerStart[key] || { onHand: 0, removed: 0 };
+
         // Opening includes ALL on-premises inventory: bulk + packaged at period start.
         // This ensures the TTB "On Premises" line reflects everything physically in bond.
         const openBulk = sbdTc?.opening || 0;
-        const openPkg = openingPackagedByTaxClass[key] || 0;
+        const openPkg = ledgerStart.onHand;
         const openingTotal = openBulk + openPkg;
 
         // Ending includes ALL on-premises inventory: bulk + packaged at period end.
         const sbdBulkEnding = sbdTc?.ending || 0;
-        const endPkg = packagedByTaxClass[key] || 0;
+        const endPkg = ledgerEnd.onHand;
         // Phase 3 C5: no clamp — a negative packaged ending (class distributes more
         // than it packaged, a scope/data mismatch) must flow into unexplainedVariance
         // below, not be floored to zero and hidden.
         const physical = sbdBulkEnding + endPkg;
 
+        // Packaged removals over the period, on the SAME per-run ledger basis as
+        // on-hand. `unrecordedDistribution` is the portion of that removal NOT backed
+        // by recorded distributions (runs flagged distributed with missing/partial
+        // inventory_distributions). It is a named removal component — the packaged
+        // product left on-hand and must be subtracted just like `sales`, not hidden.
+        const packagedRemovalWindow = ledgerEnd.removed - ledgerStart.removed;
+        const unrecordedDistribution = packagedRemovalWindow - actualSales;
+
         // Formula: opening(total) + inflows - outflows = ending(total).
         // Phase 3 C3: no reconAdj plug. calculatedEnding is the PURE formula value
-        // and is NO LONGER forced equal to physical inventory.
+        // and is NO LONGER forced equal to physical inventory. The packaged removal
+        // (sales + unrecordedDistribution) is on the same basis/window as endPkg.
         const calculatedEnding = openingTotal + production + transfersIn - transfersOut
-          + positiveAdj - losses - distillation - actualSales;
+          + positiveAdj - losses - distillation - actualSales - unrecordedDistribution;
 
         // Unexplained variance = physical inventory − formula ending, reported under
         // its honest name (never absorbed). Non-zero means the per-batch reconstruction
@@ -7248,7 +7340,8 @@ export const ttbRouter = router({
 
         // Include tax classes with any activity (including negative ending from losses/sales)
         const hasActivity = openingTotal !== 0 || production > 0 || transfersIn > 0 || physical > 0 ||
-          losses > 0 || actualSales > 0 || distillation > 0 || calculatedEnding !== 0;
+          losses > 0 || actualSales > 0 || distillation > 0 || calculatedEnding !== 0 ||
+          unrecordedDistribution !== 0;
         if (hasActivity) {
           const pkg = packagingByTaxClass[key] || 0;
           // Section A ending: use SBD-derived bulk inventory (authoritative physical inventory)
@@ -7274,11 +7367,12 @@ export const ttbRouter = router({
             losses: parseFloat(losses.toFixed(2)),
             distillation: parseFloat(distillation.toFixed(2)),
             sales: parseFloat(actualSales.toFixed(2)),
+            unrecordedDistribution: parseFloat(unrecordedDistribution.toFixed(2)),
             calculatedEnding: parseFloat(calculatedEnding.toFixed(2)),
             physical: parseFloat(physical.toFixed(2)),
             unexplainedVariance: parseFloat(unexplainedVariance.toFixed(2)),
             bulk: parseFloat((bulkByTaxClass[key] || 0).toFixed(2)),
-            packaged: parseFloat((packagedByTaxClass[key] || 0).toFixed(2)),
+            packaged: parseFloat(endPkg.toFixed(2)),
             bulkEnding: parseFloat(bulkEnding.toFixed(2)),
             packagedEnding: parseFloat(packagedEnding.toFixed(2)),
           });
@@ -7302,7 +7396,8 @@ export const ttbRouter = router({
         // (a self-consistency / rounding check). unexplainedVariance is a REPORTED
         // quantity below, not a balancing term here.
         const expectedEnding = entry.opening + entry.production + entry.transfersIn
-          - entry.transfersOut + entry.positiveAdj - entry.losses - entry.distillation - entry.sales;
+          - entry.transfersOut + entry.positiveAdj - entry.losses - entry.distillation
+          - entry.sales - entry.unrecordedDistribution;
         const identityGap = Math.abs(expectedEnding - entry.calculatedEnding);
         if (identityGap > 0.05) {
           const msg = `Waterfall identity violation for ${entry.label}: gap ${identityGap.toFixed(2)} gal`;
@@ -7320,6 +7415,7 @@ export const ttbRouter = router({
               losses: entry.losses,
               distillation: entry.distillation,
               sales: entry.sales,
+              unrecordedDistribution: entry.unrecordedDistribution,
               expected: parseFloat(expectedEnding.toFixed(2)),
               actual: entry.calculatedEnding,
               gap: parseFloat(identityGap.toFixed(2)),
@@ -7380,6 +7476,31 @@ export const ttbRouter = router({
           detail: {
             ...perClassDetail,
             total: parseFloat(totalUnexplained.toFixed(2)),
+          },
+        });
+      }
+
+      // Named packaged-flow component: packaged product removed from on-hand
+      // (distributed_at flag) but NOT backed by inventory_distributions records.
+      // Surfaced so the UI can explain WHY on-hand dropped, and so the owner can
+      // chase taxable-removal completeness (a data-hygiene follow-up, not a plug).
+      const unrecordedByClass: Record<string, number> = {};
+      for (const w of waterfallData) {
+        if (Math.abs(w.unrecordedDistribution) > 0.05) {
+          unrecordedByClass[w.taxClass] = parseFloat(w.unrecordedDistribution.toFixed(2));
+        }
+      }
+      const totalUnrecorded = waterfallData.reduce((s, w) => s + w.unrecordedDistribution, 0);
+      if (Math.abs(totalUnrecorded) > 1.0) {
+        const msg = `Unrecorded distributions ${totalUnrecorded.toFixed(1)} gal: packaged product flagged distributed but missing/partial inventory_distributions across ${Object.keys(unrecordedByClass).length} tax class(es)`;
+        console.warn(`[TTB Parity] ${msg}`);
+        parityWarnings.push({
+          level: "info",
+          category: "unrecordedDistribution",
+          message: msg,
+          detail: {
+            ...unrecordedByClass,
+            total: parseFloat(totalUnrecorded.toFixed(2)),
           },
         });
       }
@@ -7694,11 +7815,12 @@ export const ttbRouter = router({
       const wfTotalTransfersOut = waterfallData.reduce((s, w) => s + w.transfersOut, 0);
       const wfTotalPositiveAdj = waterfallData.reduce((s, w) => s + w.positiveAdj, 0);
       const wfTotalSales = waterfallData.reduce((s, w) => s + w.sales, 0);
+      const wfTotalUnrecordedDist = waterfallData.reduce((s, w) => s + w.unrecordedDistribution, 0);
       const wfTotalLosses = waterfallData.reduce((s, w) => s + w.losses, 0);
       const wfTotalDistillation = waterfallData.reduce((s, w) => s + w.distillation, 0);
       const wfTotalCalcEnding = waterfallData.reduce((s, w) => s + w.calculatedEnding, 0);
       const topExpectedEnding = wfTotalOpening + wfTotalProduction + wfTotalTransfersIn - wfTotalTransfersOut
-        + wfTotalPositiveAdj - wfTotalLosses - wfTotalDistillation - wfTotalSales;
+        + wfTotalPositiveAdj - wfTotalLosses - wfTotalDistillation - wfTotalSales - wfTotalUnrecordedDist;
       const topIdentityGap = Math.abs(topExpectedEnding - wfTotalCalcEnding);
       if (topIdentityGap > 0.5) {
         const msg = `Top-level identity failure: expected ending ${topExpectedEnding.toFixed(1)} vs calculated ${wfTotalCalcEnding.toFixed(1)} (gap ${topIdentityGap.toFixed(2)} gal)`;
@@ -7714,6 +7836,7 @@ export const ttbRouter = router({
             transfersOut: parseFloat(wfTotalTransfersOut.toFixed(2)),
             positiveAdj: parseFloat(wfTotalPositiveAdj.toFixed(2)),
             sales: parseFloat(wfTotalSales.toFixed(2)),
+            unrecordedDistribution: parseFloat(wfTotalUnrecordedDist.toFixed(2)),
             losses: parseFloat(wfTotalLosses.toFixed(2)),
             distillation: parseFloat(wfTotalDistillation.toFixed(2)),
             expected: parseFloat(topExpectedEnding.toFixed(2)),
@@ -7918,6 +8041,7 @@ export const ttbRouter = router({
             losses: parseFloat(waterfallData.reduce((sum, w) => sum + w.losses, 0).toFixed(2)),
             distillation: parseFloat(waterfallData.reduce((sum, w) => sum + w.distillation, 0).toFixed(2)),
             sales: parseFloat(waterfallData.reduce((sum, w) => sum + w.sales, 0).toFixed(2)),
+            unrecordedDistribution: parseFloat(waterfallData.reduce((sum, w) => sum + w.unrecordedDistribution, 0).toFixed(2)),
             calculatedEnding: parseFloat(waterfallData.reduce((sum, w) => sum + w.calculatedEnding, 0).toFixed(2)),
             physical: parseFloat(waterfallData.reduce((sum, w) => sum + w.physical, 0).toFixed(2)),
             unexplainedVariance: parseFloat(waterfallData.reduce((sum, w) => sum + w.unexplainedVariance, 0).toFixed(2)),

@@ -724,7 +724,7 @@ describe("TTB Parity Regression Tests", () => {
       // value (NOT forced equal to physical); the physical gap is reported separately as
       // unexplainedVariance, not folded into this identity.
       const expected = t.opening + t.production + (t.transfersIn ?? 0) - t.transfersOut
-        + (t.positiveAdj ?? 0) - t.sales - t.losses - t.distillation;
+        + (t.positiveAdj ?? 0) - t.sales - ((t as any).unrecordedDistribution ?? 0) - t.losses - t.distillation;
 
       const gap = Math.abs(expected - t.calculatedEnding);
       // Allow tolerance for floating-point arithmetic
@@ -739,7 +739,7 @@ describe("TTB Parity Regression Tests", () => {
       for (const entry of result.waterfall.byTaxClass) {
         const expected = entry.opening + entry.production + (entry.transfersIn ?? 0)
           - entry.transfersOut + (entry.positiveAdj ?? 0)
-          - entry.sales - entry.losses - entry.distillation;
+          - entry.sales - ((entry as any).unrecordedDistribution ?? 0) - entry.losses - entry.distillation;
         const gap = Math.abs(expected - entry.calculatedEnding);
 
         expect(gap).toBeLessThan(0.05);
