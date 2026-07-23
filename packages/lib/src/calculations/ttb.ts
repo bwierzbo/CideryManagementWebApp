@@ -792,6 +792,8 @@ export interface TTBVarianceAnalysis {
   totalUnexplained: number;
   /** Headline data-quality metric: stored vs reconstructed drift, gallons. */
   sbdDriftGal?: number;
+  /** Net manual ttb_waterfall_adjustments applied to totalUnexplained (0 with no rows). */
+  manualAdjustmentsGal?: number;
 }
 
 /**
