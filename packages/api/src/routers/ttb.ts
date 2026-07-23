@@ -4133,6 +4133,8 @@ export const ttbRouter = router({
             and(
               eq(ttbWaterfallAdjustments.periodYear, year),
               isNull(ttbWaterfallAdjustments.deletedAt),
+              // FORM surface: filed-snapshot opening basis (migration 0147)
+              sql`${ttbWaterfallAdjustments.scope} IN ('both', 'form')`,
             ),
           )
           .orderBy(asc(ttbWaterfallAdjustments.adjustedAt));
@@ -7445,6 +7447,8 @@ export const ttbRouter = router({
           and(
             eq(ttbWaterfallAdjustments.periodYear, periodYear),
             isNull(ttbWaterfallAdjustments.deletedAt),
+            // CHECKPOINT surface: reconstruction/checkpoint opening basis (migration 0147)
+            sql`${ttbWaterfallAdjustments.scope} IN ('both', 'checkpoint')`,
           ),
         )
         .orderBy(asc(ttbWaterfallAdjustments.adjustedAt));
