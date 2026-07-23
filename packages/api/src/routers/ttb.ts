@@ -76,6 +76,8 @@ import {
   WINE_GALLONS_PER_LITER,
   LITERS_PER_WINE_GALLON,
   type TTBForm512017Data,
+  type TTBVarianceClassAnalysis,
+  type TTBVarianceComponent,
   type InventoryBreakdown,
   type TaxPaidRemovals,
   type OtherRemovals,
@@ -266,6 +268,11 @@ const saveReportSnapshotInput = z.object({
     smallProducerCreditAmount: z.number().optional(),
     taxOwed: z.number().optional(),
   }),
+  // Phase 3 C7: persist the variance itemization with the snapshot
+  varianceAnalysis: z
+    .object({ byTaxClass: z.record(z.string(), z.any()), totalUnexplained: z.number() })
+    .passthrough()
+    .optional(),
   notes: z.string().optional(),
 });
 
@@ -300,7 +307,7 @@ interface SystemVolumeBreakdown {
 async function computeSystemCalculatedOnHand(
   verifiedBatchIds: string[],
   asOfDate: string,
-): Promise<{ total: number; breakdown: SystemVolumeBreakdown; perBatch: Map<string, number>; perBatchClampedLoss: Map<string, number> }> {
+): Promise<{ total: number; breakdown: SystemVolumeBreakdown; perBatch: Map<string, number> }> {
   const emptyBreakdown: SystemVolumeBreakdown = {
     totalLiters: 0, initialVolumeLiters: 0, mergesInLiters: 0, mergesOutLiters: 0,
     transfersInLiters: 0, transfersOutLiters: 0, transferLossLiters: 0,
@@ -308,7 +315,7 @@ async function computeSystemCalculatedOnHand(
     distillationLiters: 0, adjustmentsLiters: 0, positiveAdjLiters: 0, negativeAdjLiters: 0,
     rackingLossLiters: 0, filterLossLiters: 0, clampedLossLiters: 0, batchCount: 0,
   };
-  if (verifiedBatchIds.length === 0) return { total: 0, breakdown: emptyBreakdown, perBatch: new Map(), perBatchClampedLoss: new Map() };
+  if (verifiedBatchIds.length === 0) return { total: 0, breakdown: emptyBreakdown, perBatch: new Map() };
 
   // Phase 1: SBD reconstruction = THE shared reducer in as-of-date mode, fed
   // by the same fetcher as per-batch validation (reconciliation plan §3).
@@ -327,7 +334,6 @@ async function computeSystemCalculatedOnHand(
   let totalLiters = 0;
   const bd: SystemVolumeBreakdown = { ...emptyBreakdown, batchCount: verifiedBatchIds.length };
   const perBatch = new Map<string, number>();
-  const perBatchClampedLoss = new Map<string, number>();
 
   for (const batchId of verifiedBatchIds) {
     const inputs = volumeInputs.get(batchId);
@@ -358,15 +364,17 @@ async function computeSystemCalculatedOnHand(
     bd.negativeAdjLiters += Math.abs(breakdown.adjustmentsNegativeL);
     bd.rackingLossLiters += breakdown.rackingLossL;
     bd.filterLossLiters += breakdown.filterLossL;
+    // Diagnostic only: magnitude of batches that reconstruct below zero. The
+    // ending itself flows through unclamped (perBatch, above); this sum feeds the
+    // getReconciliationSummary data-quality readout, it is NOT a form plug.
     if (ending < 0) {
       bd.clampedLossLiters += Math.abs(ending);
-      perBatchClampedLoss.set(batchId, Math.abs(ending));
     }
   }
 
   bd.totalLiters = totalLiters;
 
-  return { total: litersToWineGallons(totalLiters), breakdown: bd, perBatch, perBatchClampedLoss };
+  return { total: litersToWineGallons(totalLiters), breakdown: bd, perBatch };
 }
 
 /**
@@ -1664,6 +1672,15 @@ export const ttbRouter = router({
           periodNumber
         );
 
+        // Phase 3 C8: getPeriodDateRange returns endDate = 00:00 of the period's
+        // last day, so a `lte(timestampCol, endDate)` (or raw `<= endDate`) silently
+        // drops every event on that final calendar day. endExclusive = the next
+        // day's midnight; use `lt(col, endExclusive)` / `>= endExclusive` on
+        // TIMESTAMP columns only. (::date casts and date-string comparisons are
+        // already day-granular and must NOT use this.)
+        const endExclusive = new Date(endDate);
+        endExclusive.setDate(endExclusive.getDate() + 1);
+
         // Calculate day before start date for beginning inventory
         const dayBeforeStart = new Date(startDate);
         dayBeforeStart.setDate(dayBeforeStart.getDate() - 1);
@@ -1680,6 +1697,11 @@ export const ttbRouter = router({
         let beginningInventorySource: "snapshot" | "ttb_opening_balance" | "calculated" = "calculated";
         let beginningPommeauBulkGallons = 0;
         let beginningWineUnder16BulkGallons = 0;
+        // Phase 3 C6: carbonated/sparkling beginning bulk, extracted so their bulk
+        // columns balance and so hardCider's beginning (derived by subtraction from
+        // the bulk total) no longer silently absorbs them.
+        let beginningCarbonatedBulkGallons = 0;
+        let beginningSparklingBulkGallons = 0;
         let brandyOpening = 0; // Spirits opening balance (excluded from wine beginningInventory)
         const beginningBottledByClass: Record<string, number> = {};
 
@@ -1704,8 +1726,8 @@ export const ttbRouter = router({
         let beginningPommeauBulkLiters = 0;
         let beginningWineUnder16BulkLiters = 0;
         let beginningBrandyBulkLiters = 0;
-        let begClampedLossLiters = 0;
-        let begPerBatchClampedLoss = new Map<string, number>();
+        let beginningCarbonatedBulkLiters = 0;
+        let beginningSparklingBulkLiters = 0;
 
         if (previousSnapshot) {
           // Use previous snapshot's ending inventory (sum of all tax class columns)
@@ -1736,6 +1758,12 @@ export const ttbRouter = router({
           );
           beginningWineUnder16BulkGallons = roundGallons(
             parseFloat(previousSnapshot.bulkWineUnder16 || "0")
+          );
+          beginningCarbonatedBulkGallons = roundGallons(
+            parseFloat(previousSnapshot.bulkCarbonatedWine || "0")
+          );
+          beginningSparklingBulkGallons = roundGallons(
+            parseFloat(previousSnapshot.bulkSparklingWine || "0")
           );
           // Extract spirits opening from snapshot
           brandyOpening = parseFloat(previousSnapshot.spiritsAppleBrandy || "0");
@@ -1800,6 +1828,12 @@ export const ttbRouter = router({
             beginningWineUnder16BulkGallons = roundGallons(
               Number(balances.bulk?.wineUnder16 || 0)
             );
+            beginningCarbonatedBulkGallons = roundGallons(
+              Number(balances.bulk?.carbonatedWine || 0)
+            );
+            beginningSparklingBulkGallons = roundGallons(
+              Number(balances.bulk?.sparklingWine || 0)
+            );
             // Extract spirits opening (not included in wine bulk/bottled totals)
             brandyOpening = Number(balances.spirits?.appleBrandy || 0);
             // Extract per-class beginning bottled inventory
@@ -1849,8 +1883,8 @@ export const ttbRouter = router({
               beginningPommeauBulkLiters = begByClass["wine16To21"] || 0;
               beginningWineUnder16BulkLiters = begByClass["wineUnder16"] || 0;
               beginningBrandyBulkLiters = begByClass["appleBrandy"] || 0;
-              begClampedLossLiters = begSbdResult.breakdown.clampedLossLiters;
-              begPerBatchClampedLoss = begSbdResult.perBatchClampedLoss;
+              beginningCarbonatedBulkLiters = begByClass["carbonatedWine"] || 0;
+              beginningSparklingBulkLiters = begByClass["sparklingWine"] || 0;
             }
 
             beginningPommeauBulkGallons = roundGallons(
@@ -1858,6 +1892,12 @@ export const ttbRouter = router({
             );
             beginningWineUnder16BulkGallons = roundGallons(
               litersToWineGallons(beginningWineUnder16BulkLiters)
+            );
+            beginningCarbonatedBulkGallons = roundGallons(
+              litersToWineGallons(beginningCarbonatedBulkLiters)
+            );
+            beginningSparklingBulkGallons = roundGallons(
+              litersToWineGallons(beginningSparklingBulkLiters)
             );
 
             // Bottled inventory as of dayBeforeStart (batched)
@@ -2005,7 +2045,7 @@ export const ttbRouter = router({
               sql`COALESCE(${batches.reconciliationStatus}, 'pending') NOT IN ('duplicate', 'excluded')`,
               eq(batches.productType, "juice"),
               gte(batches.startDate, startDate),
-              sql`${ttbMembershipTs} <= ${endDate}`
+              sql`${ttbMembershipTs} < ${endExclusive}`
             )
           );
         const juiceOnlyLiters = Number(juiceOnlyData[0]?.totalLiters || 0);
@@ -2022,7 +2062,7 @@ export const ttbRouter = router({
               isNull(batchTransfers.deletedAt),
               eq(batches.productType, "juice"),
               gte(batchTransfers.transferredAt, startDate),
-              lte(batchTransfers.transferredAt, endDate)
+              lt(batchTransfers.transferredAt, endExclusive)
             )
           );
         const xferIntoJuiceLiters = Number(xferIntoJuiceData[0]?.totalLiters || 0);
@@ -2046,7 +2086,7 @@ export const ttbRouter = router({
               eq(batches.productType, "pommeau"),
               sql`CAST(${batches.initialVolumeLiters} AS DECIMAL) > 0`,
               gte(batches.startDate, startDate),
-              sql`${ttbMembershipTs} <= ${endDate}`
+              sql`${ttbMembershipTs} < ${endExclusive}`
             )
           );
         let juiceToPommeauLiters = 0;
@@ -2086,11 +2126,11 @@ export const ttbRouter = router({
               sql`dest_batch.deleted_at IS NULL`,
               // Only new pommeau batches created in the period
               sql`(CASE WHEN dest_batch.ttb_origin_year >= 2025 AND dest_batch.ttb_origin_year < EXTRACT(YEAR FROM dest_batch.start_date) THEN make_date(dest_batch.ttb_origin_year, 12, 31)::timestamp ELSE dest_batch.start_date END) >= ${startDate}`,
-              sql`(CASE WHEN dest_batch.ttb_origin_year >= 2025 AND dest_batch.ttb_origin_year < EXTRACT(YEAR FROM dest_batch.start_date) THEN make_date(dest_batch.ttb_origin_year, 12, 31)::timestamp ELSE dest_batch.start_date END) <= ${endDate}`,
+              sql`(CASE WHEN dest_batch.ttb_origin_year >= 2025 AND dest_batch.ttb_origin_year < EXTRACT(YEAR FROM dest_batch.start_date) THEN make_date(dest_batch.ttb_origin_year, 12, 31)::timestamp ELSE dest_batch.start_date END) < ${endExclusive}`,
               // Exclude brandy and pommeau-to-pommeau transfers (racking between pommeau vessels)
               sql`source_batch.product_type NOT IN ('brandy', 'pommeau')`,
               gte(batchTransfers.transferredAt, startDate),
-              lte(batchTransfers.transferredAt, endDate)
+              lt(batchTransfers.transferredAt, endExclusive)
             )
           );
         juiceToPommeauLiters += Number(nonBrandyToPommeauData[0]?.totalLiters || 0);
@@ -2120,7 +2160,7 @@ export const ttbRouter = router({
               ),
               sql`CAST(${batches.initialVolumeLiters} AS DECIMAL) > 0`,
               gte(batches.startDate, startDate),
-              sql`${ttbMembershipTs} <= ${endDate}`
+              sql`${ttbMembershipTs} < ${endExclusive}`
             )
           );
         // Pommeau batches built via transfers (initial = 0): sum incoming transfers as production
@@ -2147,10 +2187,10 @@ export const ttbRouter = router({
               sql`CAST(dest_batch.initial_volume_liters AS DECIMAL) = 0`,
               // Only count transfers to pommeau batches created in this period
               sql`(CASE WHEN dest_batch.ttb_origin_year >= 2025 AND dest_batch.ttb_origin_year < EXTRACT(YEAR FROM dest_batch.start_date) THEN make_date(dest_batch.ttb_origin_year, 12, 31)::timestamp ELSE dest_batch.start_date END) >= ${startDate}`,
-              sql`(CASE WHEN dest_batch.ttb_origin_year >= 2025 AND dest_batch.ttb_origin_year < EXTRACT(YEAR FROM dest_batch.start_date) THEN make_date(dest_batch.ttb_origin_year, 12, 31)::timestamp ELSE dest_batch.start_date END) <= ${endDate}`,
+              sql`(CASE WHEN dest_batch.ttb_origin_year >= 2025 AND dest_batch.ttb_origin_year < EXTRACT(YEAR FROM dest_batch.start_date) THEN make_date(dest_batch.ttb_origin_year, 12, 31)::timestamp ELSE dest_batch.start_date END) < ${endExclusive}`,
               sql`source_batch.product_type != 'pommeau'`,
               gte(batchTransfers.transferredAt, startDate),
-              lte(batchTransfers.transferredAt, endDate)
+              lt(batchTransfers.transferredAt, endExclusive)
             )
           );
         const pommeauProducedLiters = Number(pommeauWithInitialSum[0]?.totalLiters || 0) +
@@ -2178,7 +2218,7 @@ export const ttbRouter = router({
               // the system via the source batch's press run, not as separate production.
               isNull(batches.parentBatchId),
               gte(batches.startDate, startDate),
-              sql`${ttbMembershipTs} <= ${endDate}`
+              sql`${ttbMembershipTs} < ${endExclusive}`
             )
           );
         const fruitWineProducedLiters = Number(fruitWineProductionData[0]?.totalLiters || 0);
@@ -2217,7 +2257,7 @@ export const ttbRouter = router({
               isNull(batches.deletedAt),
               sql`${bottleRuns.status} IN ('distributed', 'completed')`,
               gte(bottleRuns.distributedAt, startDate),
-              lte(bottleRuns.distributedAt, endDate)
+              lt(bottleRuns.distributedAt, endExclusive)
             )
           )
           .groupBy(salesChannels.code);
@@ -2246,7 +2286,7 @@ export const ttbRouter = router({
               isNull(kegFills.deletedAt),
               isNull(batches.deletedAt),
               gte(kegFills.distributedAt, startDate),
-              lte(kegFills.distributedAt, endDate)
+              lt(kegFills.distributedAt, endExclusive)
             )
           )
           .groupBy(salesChannels.code);
@@ -2329,7 +2369,7 @@ export const ttbRouter = router({
               isNull(batches.deletedAt),
               sql`COALESCE(${batches.reconciliationStatus}, 'pending') NOT IN ('duplicate', 'excluded')`,
               gte(inventoryAdjustments.adjustedAt, startDate),
-              lte(inventoryAdjustments.adjustedAt, endDate),
+              lt(inventoryAdjustments.adjustedAt, endExclusive),
               sql`${inventoryAdjustments.quantityChange} < 0` // Only removals
             )
           )
@@ -2375,7 +2415,7 @@ export const ttbRouter = router({
               isNull(batchFilterOperations.deletedAt),
               isNull(batches.deletedAt),
               gte(batchFilterOperations.filteredAt, startDate),
-              lte(batchFilterOperations.filteredAt, endDate)
+              lt(batchFilterOperations.filteredAt, endExclusive)
             )
           )
           .groupBy(batchFilterOperations.batchId);
@@ -2392,7 +2432,7 @@ export const ttbRouter = router({
               isNull(batchRackingOperations.deletedAt),
               isNull(batches.deletedAt),
               gte(batchRackingOperations.rackedAt, startDate),
-              lte(batchRackingOperations.rackedAt, endDate),
+              lt(batchRackingOperations.rackedAt, endExclusive),
               sql`${batchRackingOperations.isHistoricalRecord} = false`
             )
           )
@@ -2410,7 +2450,7 @@ export const ttbRouter = router({
               isNull(bottleRuns.voidedAt),
               isNull(batches.deletedAt),
               gte(bottleRuns.packagedAt, startDate),
-              lte(bottleRuns.packagedAt, endDate)
+              lt(bottleRuns.packagedAt, endExclusive)
             )
           )
           .groupBy(bottleRuns.batchId);
@@ -2428,7 +2468,7 @@ export const ttbRouter = router({
               isNull(batchTransfers.deletedAt),
               isNull(batches.deletedAt),
               gte(batchTransfers.transferredAt, startDate),
-              lte(batchTransfers.transferredAt, endDate)
+              lt(batchTransfers.transferredAt, endExclusive)
             )
           )
           .groupBy(batchTransfers.sourceBatchId);
@@ -2446,7 +2486,7 @@ export const ttbRouter = router({
               isNull(batches.deletedAt),
               sql`CAST(${batchVolumeAdjustments.adjustmentAmount} AS DECIMAL) < 0`,
               gte(batchVolumeAdjustments.adjustmentDate, startDate),
-              lte(batchVolumeAdjustments.adjustmentDate, endDate)
+              lt(batchVolumeAdjustments.adjustmentDate, endExclusive)
             )
           )
           .groupBy(batchVolumeAdjustments.batchId);
@@ -2464,7 +2504,7 @@ export const ttbRouter = router({
               isNull(kegFills.deletedAt),
               isNull(batches.deletedAt),
               gte(kegFills.filledAt, startDate),
-              lte(kegFills.filledAt, endDate)
+              lt(kegFills.filledAt, endExclusive)
             )
           )
           .groupBy(kegFills.batchId);
@@ -2485,7 +2525,7 @@ export const ttbRouter = router({
               isNotNull(batches.transferLossL),
               sql`CAST(${batches.transferLossL} AS DECIMAL) > 0`,
               gte(batches.startDate, startDate),
-              sql`${ttbMembershipTs} <= ${endDate}`
+              sql`${ttbMembershipTs} < ${endExclusive}`
             )
           );
 
@@ -2548,12 +2588,12 @@ export const ttbRouter = router({
               sql`COALESCE(${batches.reconciliationStatus}, 'pending') NOT IN ('duplicate', 'excluded')`,
               // Exclude juice batches — they are not taxable inventory
               sql`COALESCE(${batches.productType}, 'cider') != 'juice'`,
-              sql`${ttbMembershipTs} <= ${endDate}`,
+              sql`${ttbMembershipTs} < ${endExclusive}`,
               // Exclude batches that ended before the period end
               or(isNull(batches.endDate), gte(batches.endDate, endDate)),
               // Exclude discarded/completed batches that were finished before endDate
               // (they would have 0 volume at endDate)
-              sql`NOT (${batches.status} = 'discarded' AND ${batches.updatedAt} <= ${endDate})`
+              sql`NOT (${batches.status} = 'discarded' AND ${batches.updatedAt} < ${endExclusive})`
             )
           );
 
@@ -2574,11 +2614,16 @@ export const ttbRouter = router({
         let endingPommeauBulkLiters = 0;
         let endingWineUnder16BulkLiters = 0;
         let endingBrandyBulkLiters = 0;
+        // Phase 3 C6: carbonated/sparkling bulk endings — small (these classes are
+        // mostly packaged), but extracted so their bulk columns can balance.
+        let endingCarbonatedBulkLiters = 0;
+        let endingSparklingBulkLiters = 0;
 
-        // SBD is always needed for clamped loss calculation (form balancing)
-        // and for past years it's also used for ending inventory
-        let endClampedLossLiters = 0;
-        const clampedByTaxClass: Record<string, number> = {};
+        // SBD is used for past-year ending inventory and to surface any batch that
+        // reconstructs to a negative period-end volume (a data-quality signal now
+        // itemized as a `negativeBatchEnding` variance component — Phase 3 C5
+        // deleted the clamped-loss plug that used to absorb it into losses).
+        const negativeEndingsByClass: Record<string, Array<{ batchId: string; amount: number }>> = {};
         if (endBatchIds.length > 0) {
           const endSbdResult = await computeSystemCalculatedOnHand(endBatchIds, endDateStr);
 
@@ -2589,6 +2634,8 @@ export const ttbRouter = router({
             endingPommeauBulkLiters = endByClass["wine16To21"] || 0;
             endingWineUnder16BulkLiters = endByClass["wineUnder16"] || 0;
             endingBrandyBulkLiters = endByClass["appleBrandy"] || 0;
+            endingCarbonatedBulkLiters = endByClass["carbonatedWine"] || 0;
+            endingSparklingBulkLiters = endByClass["sparklingWine"] || 0;
           } else {
             // Current year: use live currentVolumeLiters (reflects physical inventory now)
             const endingLiveByClass: Record<string, number> = {};
@@ -2603,32 +2650,20 @@ export const ttbRouter = router({
             endingPommeauBulkLiters = endingLiveByClass["wine16To21"] || 0;
             endingWineUnder16BulkLiters = endingLiveByClass["wineUnder16"] || 0;
             endingBrandyBulkLiters = endingLiveByClass["appleBrandy"] || 0;
+            endingCarbonatedBulkLiters = endingLiveByClass["carbonatedWine"] || 0;
+            endingSparklingBulkLiters = endingLiveByClass["sparklingWine"] || 0;
           }
-          endClampedLossLiters = endSbdResult.breakdown.clampedLossLiters;
-
-          // Compute per-tax-class clamped loss for per-column loss allocation
-          for (const [batchId, clampedLiters] of endSbdResult.perBatchClampedLoss) {
-            const taxClass = getTaxClassFromMap(batchTaxClassMap, batchId, null) || "hardCider";
-            clampedByTaxClass[taxClass] = (clampedByTaxClass[taxClass] || 0) + litersToWineGallons(clampedLiters);
+          // Per-batch negative period-end reconstructions, grouped by tax class.
+          // These are itemized (not absorbed) as negativeBatchEnding variance
+          // components below. Threshold -0.5 gal filters rounding noise; the amount
+          // is the signed (negative) ending in gallons.
+          for (const [batchId, endingLiters] of endSbdResult.perBatch) {
+            const endingGallons = roundGallons(litersToWineGallons(endingLiters));
+            if (endingGallons < -0.5) {
+              const taxClass = getTaxClassFromMap(batchTaxClassMap, batchId, null) || "hardCider";
+              (negativeEndingsByClass[taxClass] ??= []).push({ batchId, amount: endingGallons });
+            }
           }
-          for (const [batchId, clampedLiters] of begPerBatchClampedLoss) {
-            const taxClass = getTaxClassFromMap(batchTaxClassMap, batchId, null) || "hardCider";
-            clampedByTaxClass[taxClass] = (clampedByTaxClass[taxClass] || 0) - litersToWineGallons(clampedLiters);
-          }
-          for (const key of Object.keys(clampedByTaxClass)) {
-            clampedByTaxClass[key] = roundGallons(Math.max(0, clampedByTaxClass[key]));
-          }
-        }
-
-        // Period-specific clamped loss: adjust process losses so the form balances
-        // (line 12 = line 32). Clamped loss represents over-recorded losses on batches
-        // that reconstructed to negative volume. SBD clamps these to 0, so we subtract
-        // the excess from aggregate losses to maintain the accounting identity.
-        const periodClampedLossLiters = endClampedLossLiters - begClampedLossLiters;
-        if (periodClampedLossLiters > 0) {
-          const clampedGallons = roundGallons(litersToWineGallons(periodClampedLossLiters));
-          otherRemovals.processLosses = roundGallons(otherRemovals.processLosses - clampedGallons);
-          otherRemovals.total = roundGallons(otherRemovals.total - clampedGallons);
         }
 
         // Bottled inventory AS OF period end date
@@ -2644,7 +2679,7 @@ export const ttbRouter = router({
           .from(inventoryItems)
           .where(
             and(
-              lte(inventoryItems.createdAt, endDate),
+              lt(inventoryItems.createdAt, endExclusive),
               isNull(inventoryItems.deletedAt)
             )
           );
@@ -2659,10 +2694,10 @@ export const ttbRouter = router({
           const [distsAfterEnd, adjsAfterEnd] = await Promise.all([
             db.execute(sql`SELECT inventory_item_id as item_id, COALESCE(SUM(quantity_distributed), 0) as total
               FROM inventory_distributions WHERE inventory_item_id IN (${itemIdList})
-              AND distribution_date > ${endDate} GROUP BY inventory_item_id`),
+              AND distribution_date >= ${endExclusive} GROUP BY inventory_item_id`),
             db.execute(sql`SELECT inventory_item_id as item_id, COALESCE(SUM(quantity_change), 0) as total
               FROM inventory_adjustments WHERE inventory_item_id IN (${itemIdList})
-              AND adjusted_at > ${endDate} GROUP BY inventory_item_id`),
+              AND adjusted_at >= ${endExclusive} GROUP BY inventory_item_id`),
           ]);
 
           const makeItemMap = (rows: Record<string, unknown>[]) => {
@@ -2702,10 +2737,10 @@ export const ttbRouter = router({
               isNull(batches.deletedAt),
               // Do NOT filter by reconciliationStatus — kegs from duplicate/excluded batches
               // still physically exist in inventory and must be counted
-              lte(kegFills.filledAt, endDate),
+              lt(kegFills.filledAt, endExclusive),
               or(
                 isNull(kegFills.distributedAt),
-                sql`${kegFills.distributedAt} > ${endDate}`
+                sql`${kegFills.distributedAt} >= ${endExclusive}`
               )
             )
           )
@@ -2737,10 +2772,10 @@ export const ttbRouter = router({
             and(
               isNull(bottleRuns.voidedAt),
               isNull(batches.deletedAt),
-              lte(bottleRuns.packagedAt, endDate),
+              lt(bottleRuns.packagedAt, endExclusive),
               or(
                 isNull(bottleRuns.distributedAt),
-                sql`${bottleRuns.distributedAt} > ${endDate}`
+                sql`${bottleRuns.distributedAt} >= ${endExclusive}`
               ),
               sql`NOT EXISTS (
                 SELECT 1 FROM inventory_items ii
@@ -2765,6 +2800,8 @@ export const ttbRouter = router({
         const endingPommeauBulkGallons = roundGallons(litersToWineGallons(endingPommeauBulkLiters));
         const endingWineUnder16BulkGallons = roundGallons(litersToWineGallons(endingWineUnder16BulkLiters));
         const endingCiderBulkGallons = roundGallons(litersToWineGallons(endingBulkLiters));
+        const endingCarbonatedBulkGallons = roundGallons(litersToWineGallons(endingCarbonatedBulkLiters));
+        const endingSparklingBulkGallons = roundGallons(litersToWineGallons(endingSparklingBulkLiters));
         const endingBottledGallons = roundGallons(
           mlToWineGallons(endingBottledML) + litersToWineGallons(kegsInStockLiters + orphanBottleLiters)
         );
@@ -2813,7 +2850,7 @@ export const ttbRouter = router({
             and(
               isNull(distillationRecords.deletedAt),
               gte(distillationRecords.sentAt, startDate),
-              lte(distillationRecords.sentAt, endDate)
+              lt(distillationRecords.sentAt, endExclusive)
             )
           )
           .groupBy(distillationRecords.sourceBatchId);
@@ -2852,7 +2889,7 @@ export const ttbRouter = router({
               // not physical wine gains, and should not appear on TTB Line 9.
               sql`COALESCE(${batchVolumeAdjustments.reason}, '') NOT ILIKE '%reconciliation%'`,
               gte(batchVolumeAdjustments.adjustmentDate, startDate),
-              lte(batchVolumeAdjustments.adjustmentDate, endDate)
+              lt(batchVolumeAdjustments.adjustmentDate, endExclusive)
             )
           )
           .groupBy(batchVolumeAdjustments.batchId);
@@ -2877,7 +2914,7 @@ export const ttbRouter = router({
           JOIN inventory_items ii ON ii.id = ia.inventory_item_id
           WHERE ia.quantity_change > 0
             AND ia.adjusted_at >= ${startDate}
-            AND ia.adjusted_at <= ${endDate}
+            AND ia.adjusted_at < ${endExclusive}
         `);
         const positiveBottledAdjGallons = roundGallons(
           mlToWineGallons(Number(positiveBottledAdjustments.rows[0]?.total_ml || 0))
@@ -2893,7 +2930,7 @@ export const ttbRouter = router({
           JOIN inventory_items ii ON ii.id = ia.inventory_item_id
           WHERE ia.quantity_change < 0
             AND ia.adjusted_at >= ${startDate}
-            AND ia.adjusted_at <= ${endDate}
+            AND ia.adjusted_at < ${endExclusive}
         `);
         const negativeBottledAdjGallons = roundGallons(
           mlToWineGallons(Number(negativeBottledAdjustments.rows[0]?.total_ml || 0))
@@ -2913,7 +2950,7 @@ export const ttbRouter = router({
               isNull(distillationRecords.deletedAt),
               isNotNull(distillationRecords.receivedAt),
               gte(distillationRecords.receivedAt, startDate),
-              lte(distillationRecords.receivedAt, endDate)
+              lt(distillationRecords.receivedAt, endExclusive)
             )
           );
 
@@ -2939,7 +2976,7 @@ export const ttbRouter = router({
           WHERE kf.distributed_at IS NOT NULL
             AND kf.voided_at IS NULL AND kf.deleted_at IS NULL
             AND b.deleted_at IS NULL
-            AND kf.distributed_at >= ${startDate} AND kf.distributed_at <= ${endDate}
+            AND kf.distributed_at >= ${startDate} AND kf.distributed_at < ${endExclusive}
           GROUP BY kf.batch_id
         `);
 
@@ -2957,7 +2994,7 @@ export const ttbRouter = router({
           WHERE br.voided_at IS NULL
             AND b.deleted_at IS NULL
             AND br.status IN ('distributed', 'completed')
-            AND br.distributed_at >= ${startDate} AND br.distributed_at <= ${endDate}
+            AND br.distributed_at >= ${startDate} AND br.distributed_at < ${endExclusive}
           GROUP BY br.batch_id
         `);
 
@@ -3071,7 +3108,7 @@ export const ttbRouter = router({
                 sql`src.product_type = 'brandy'`,
                 sql`dest.product_type != 'brandy'`,
                 gte(batchTransfers.transferredAt, startDate),
-                lte(batchTransfers.transferredAt, endDate)
+                lt(batchTransfers.transferredAt, endExclusive)
               )
             );
 
@@ -3143,7 +3180,7 @@ export const ttbRouter = router({
           .where(
             and(
               gte(basefruitPurchases.purchaseDate, startDate),
-              lte(basefruitPurchases.purchaseDate, endDate)
+              lt(basefruitPurchases.purchaseDate, endExclusive)
             )
           )
           .groupBy(baseFruitVarieties.fruitType);
@@ -3202,7 +3239,7 @@ export const ttbRouter = router({
           .where(
             and(
               gte(additivePurchases.purchaseDate, startDate),
-              lte(additivePurchases.purchaseDate, endDate)
+              lt(additivePurchases.purchaseDate, endExclusive)
             )
           )
           .groupBy(additiveVarieties.name, additivePurchaseItems.unit);
@@ -3249,7 +3286,7 @@ export const ttbRouter = router({
               isNull(batches.deletedAt),
               sql`COALESCE(${batches.reconciliationStatus}, 'pending') NOT IN ('duplicate', 'excluded')`,
               eq(batches.status, "fermentation"),
-              sql`${ttbMembershipTs} <= ${endDate}`
+              sql`${ttbMembershipTs} < ${endExclusive}`
             )
           );
 
@@ -3278,7 +3315,7 @@ export const ttbRouter = router({
               isNull(bottleRuns.voidedAt),
               isNull(batches.deletedAt),
               gte(bottleRuns.packagedAt, startDate),
-              lte(bottleRuns.packagedAt, endDate)
+              lt(bottleRuns.packagedAt, endExclusive)
             )
           )
           .groupBy(bottleRuns.batchId);
@@ -3314,7 +3351,7 @@ export const ttbRouter = router({
               isNull(kegFills.deletedAt),
               isNull(batches.deletedAt),
               gte(kegFills.filledAt, startDate),
-              lte(kegFills.filledAt, endDate)
+              lt(kegFills.filledAt, endExclusive)
             )
           )
           .groupBy(kegFills.batchId);
@@ -3353,7 +3390,7 @@ export const ttbRouter = router({
             and(
               isNull(batchTransfers.deletedAt),
               gte(batchTransfers.transferredAt, startDate),
-              lte(batchTransfers.transferredAt, endDate)
+              lt(batchTransfers.transferredAt, endExclusive)
             )
           )
           .groupBy(sql`source_batch.id`, sql`source_batch.product_type`, sql`dest_batch.id`, sql`dest_batch.product_type`);
@@ -3420,14 +3457,16 @@ export const ttbRouter = router({
         );
         // Recorded losses from operational data (racking, filtering, bottling, etc.)
         const recordedLosses = otherRemovals.processLosses;
-        // Line 29 = balancing figure: Total In - all other removals - ending
-        // This absorbs all unrecorded losses (lees, evaporation, sampling, etc.)
-        // Standard TTB practice: Line 29 is the "plug" that makes the form balance.
-        const bulkLosses = roundGallons(
-          bulkLine12 - totalPackedGallons - ciderSentToDspGallons -
-          totalChangeOfClassOut - totalBottlingLoss - endingInventory.bulk
+        // Phase 3 C2: Line 29 = the REAL recorded operational losses, no longer a
+        // balance-forcing plug. Line 32 is the true arithmetic sum of the outflow
+        // lines + ending; it is now ALLOWED to differ from Line 12. Any gap is the
+        // honest unexplained variance and is reported (varianceAnalysis /
+        // reconciliation), never absorbed here.
+        const bulkLosses = recordedLosses;
+        const bulkLine32 = roundGallons(
+          totalPackedGallons + ciderSentToDspGallons +
+          totalChangeOfClassOut + totalBottlingLoss + bulkLosses + endingInventory.bulk
         );
-        const bulkLine32 = bulkLine12; // Form must balance
 
         const bulkWines: BulkWinesSection = {
           line1_onHandBeginning: beginningInventory.bulk,
@@ -3464,7 +3503,13 @@ export const ttbRouter = router({
 
         // Build per-tax-class bulk wines columns
         // Hard cider column: excludes pommeau, wineUnder16, and brandy volumes
-        const ciderBeginning = roundGallons(beginningInventory.bulk - beginningPommeauBulkGallons - beginningWineUnder16BulkGallons);
+        // hardCider beginning = total bulk minus every other class's beginning bulk.
+        // Phase 3 C6: subtract carbonated/sparkling too (were 0 for 2024/2025, so no
+        // golden shift; matters once those classes carry a bulk opening).
+        const ciderBeginning = roundGallons(
+          beginningInventory.bulk - beginningPommeauBulkGallons - beginningWineUnder16BulkGallons
+          - beginningCarbonatedBulkGallons - beginningSparklingBulkGallons
+        );
         const ciderGains = roundGallons(gainsByTaxClass["hardCider"] || 0);
         const ciderBottled = roundGallons(bottledByTaxClass["hardCider"] || 0);
         const ciderKegFilled = roundGallons(kegFilledByTaxClass["hardCider"] || 0);
@@ -3476,23 +3521,21 @@ export const ttbRouter = router({
         const ciderLine12 = roundGallons(
           ciderBeginning + ciderProducedGallons + ciderChangeIn + ciderGains
         );
-        // Losses (line 29) = available - documented outflows - ending.
-        // Per TTB instructions: if negative (more accounted for than available),
-        // put the abs value on line 9 (Inventory Gains) and set losses to 0.
-        // This happens when volume enters from batches outside the reconciliation scope
-        // via same-class blending operations.
+        // Real recorded HC losses (same derivation the other classes already had).
+        // Phase 3 C5: no longer net out clamped negative-ending volume — that
+        // amount is itemized as a negativeBatchEnding variance component instead.
+        const ciderRecordedLosses = roundGallons(lossesByTaxClass["hardCider"] || 0);
+        // Phase 3 C2: no plug/flip. Line 29 = the class's real recorded losses,
+        // Line 9 = its real positive adjustments, Line 12 stays un-inflated, and
+        // Line 32 is the true arithmetic sum of outflow lines + ending (allowed to
+        // differ from Line 12). ciderLossesRaw is retained only to derive the
+        // reported unexplained variance (varianceAnalysis).
         const ciderLossesRaw = roundGallons(
           ciderLine12 - ciderPacked - ciderDistillation - ciderChangeOut - endingCiderBulkGallons
         );
-        const ciderLosses = Math.max(0, ciderLossesRaw);
-        const ciderInventoryGains = ciderLossesRaw < 0
-          ? roundGallons(ciderGains + Math.abs(ciderLossesRaw))
-          : ciderGains;
-        // If gains absorbed negative losses, line 12 increases to maintain balance
-        const ciderLine12Final = ciderLossesRaw < 0
-          ? roundGallons(ciderLine12 + Math.abs(ciderLossesRaw))
-          : ciderLine12;
-        const ciderLine32 = ciderLine12Final;
+        const ciderLine32 = roundGallons(
+          ciderPacked + ciderDistillation + ciderChangeOut + ciderRecordedLosses + endingCiderBulkGallons
+        );
         const ciderBulkWines: BulkWinesSection = {
           line1_onHandBeginning: ciderBeginning,
           line2_produced: ciderProducedGallons,
@@ -3502,10 +3545,10 @@ export const ttbRouter = router({
           line6_amelioration: 0,
           line7_receivedInBond: 0,
           line8_dumpedToBulk: 0,
-          line9_inventoryGains: ciderInventoryGains,
+          line9_inventoryGains: ciderGains,
           line10_writeIn: ciderChangeIn,
           line10_writeInDesc: ciderChangeIn > 0 ? "CHANGE OF CLASS IN" : undefined,
-          line12_total: ciderLine12Final,
+          line12_total: ciderLine12,
           line13_bottled: ciderPacked,
           line14_removedTaxpaid: 0,
           line15_transfersInBond: 0,
@@ -3520,7 +3563,7 @@ export const ttbRouter = router({
           line24_writeIn1: ciderChangeOut,
           line24_writeIn1Desc: ciderChangeOut > 0 ? "CHANGE OF CLASS OUT" : undefined,
           line25_writeIn2: 0,
-          line29_losses: ciderLosses,
+          line29_losses: ciderRecordedLosses,
           line30_inventoryLosses: 0,
           line31_onHandEnd: endingCiderBulkGallons,
           line32_total: ciderLine32,
@@ -3534,20 +3577,15 @@ export const ttbRouter = router({
         const wineUnder16KegFilled = roundGallons(kegFilledByTaxClass["wineUnder16"] || 0);
         const wineUnder16BottlingLoss = roundGallons(bottlingLossByTaxClass["wineUnder16"] || 0);
         const wineUnder16Packed = roundGallons(wineUnder16Bottled + wineUnder16KegFilled - wineUnder16BottlingLoss);
-        const wineUnder16RecordedLosses = roundGallons((lossesByTaxClass["wineUnder16"] || 0) - (clampedByTaxClass["wineUnder16"] || 0));
+        const wineUnder16RecordedLosses = roundGallons(lossesByTaxClass["wineUnder16"] || 0);
         const wineUnder16Line12 = roundGallons(beginningWineUnder16BulkGallons + fruitWineProducedGallons + wineUnder16ChangeIn + wineUnder16Gains);
-        // Losses/Gains split — same pattern as HC
+        // Phase 3 C2: no plug/flip — Line 29 = recorded losses, Line 32 = true sum.
         const wineUnder16LossesRaw = roundGallons(
           wineUnder16Line12 - wineUnder16Packed - wineUnder16ChangeOut - endingWineUnder16BulkGallons
         );
-        const wineUnder16Losses = Math.max(0, wineUnder16LossesRaw);
-        const wineUnder16InventoryGains = wineUnder16LossesRaw < 0
-          ? roundGallons(wineUnder16Gains + Math.abs(wineUnder16LossesRaw))
-          : wineUnder16Gains;
-        const wineUnder16Line12Final = wineUnder16LossesRaw < 0
-          ? roundGallons(wineUnder16Line12 + Math.abs(wineUnder16LossesRaw))
-          : wineUnder16Line12;
-        const wineUnder16Line32 = wineUnder16Line12Final;
+        const wineUnder16Line32 = roundGallons(
+          wineUnder16Packed + wineUnder16ChangeOut + wineUnder16RecordedLosses + endingWineUnder16BulkGallons
+        );
         const wineUnder16BulkWines: BulkWinesSection = {
           line1_onHandBeginning: beginningWineUnder16BulkGallons,
           line2_produced: fruitWineProducedGallons,
@@ -3557,10 +3595,10 @@ export const ttbRouter = router({
           line6_amelioration: 0,
           line7_receivedInBond: 0,
           line8_dumpedToBulk: 0,
-          line9_inventoryGains: wineUnder16InventoryGains,
+          line9_inventoryGains: wineUnder16Gains,
           line10_writeIn: wineUnder16ChangeIn,
           line10_writeInDesc: wineUnder16ChangeIn > 0 ? "CHANGE OF CLASS IN" : undefined,
-          line12_total: wineUnder16Line12Final,
+          line12_total: wineUnder16Line12,
           line13_bottled: wineUnder16Packed,
           line14_removedTaxpaid: 0,
           line15_transfersInBond: 0,
@@ -3575,7 +3613,7 @@ export const ttbRouter = router({
           line24_writeIn1: wineUnder16ChangeOut,
           line24_writeIn1Desc: wineUnder16ChangeOut > 0 ? "CHANGE OF CLASS OUT" : undefined,
           line25_writeIn2: 0,
-          line29_losses: wineUnder16Losses,
+          line29_losses: wineUnder16RecordedLosses,
           line30_inventoryLosses: 0,
           line31_onHandEnd: endingWineUnder16BulkGallons,
           line32_total: wineUnder16Line32,
@@ -3593,20 +3631,15 @@ export const ttbRouter = router({
         const pommeauBottlingLoss = roundGallons(bottlingLossByTaxClass["wine16To21"] || 0);
         const pommeauPacked = roundGallons(pommeauBottled + pommeauKegFilled - pommeauBottlingLoss);
         const pommeauDistillation = roundGallons(distillationByTaxClass["wine16To21"] || 0);
-        const pommeauRecordedLosses = roundGallons((lossesByTaxClass["wine16To21"] || 0) - (clampedByTaxClass["wine16To21"] || 0));
+        const pommeauRecordedLosses = roundGallons(lossesByTaxClass["wine16To21"] || 0);
         const pommeauLine12 = roundGallons(beginningPommeauBulkGallons + pommeauProducedGallons + pommeauChangeIn + pommeauGains);
-        // Losses/Gains split — same pattern as HC
+        // Phase 3 C2: no plug/flip — Line 29 = recorded losses, Line 32 = true sum.
         const pommeauLossesRaw = roundGallons(
           pommeauLine12 - pommeauPacked - pommeauDistillation - pommeauChangeOut - endingPommeauBulkGallons
         );
-        const pommeauLosses = Math.max(0, pommeauLossesRaw);
-        const pommeauInventoryGains = pommeauLossesRaw < 0
-          ? roundGallons(pommeauGains + Math.abs(pommeauLossesRaw))
-          : pommeauGains;
-        const pommeauLine12Final = pommeauLossesRaw < 0
-          ? roundGallons(pommeauLine12 + Math.abs(pommeauLossesRaw))
-          : pommeauLine12;
-        const pommeauLine32 = pommeauLine12Final;
+        const pommeauLine32 = roundGallons(
+          pommeauPacked + pommeauDistillation + pommeauChangeOut + pommeauRecordedLosses + endingPommeauBulkGallons
+        );
         const pommeauBulkWines: BulkWinesSection = {
           line1_onHandBeginning: beginningPommeauBulkGallons,
           line2_produced: 0,
@@ -3616,10 +3649,10 @@ export const ttbRouter = router({
           line6_amelioration: 0,
           line7_receivedInBond: 0,
           line8_dumpedToBulk: 0,
-          line9_inventoryGains: pommeauInventoryGains,
+          line9_inventoryGains: pommeauGains,
           line10_writeIn: pommeauChangeIn,
           line10_writeInDesc: pommeauChangeIn > 0 ? "CHANGE OF CLASS IN" : undefined,
-          line12_total: pommeauLine12Final,
+          line12_total: pommeauLine12,
           line13_bottled: pommeauPacked,
           line14_removedTaxpaid: 0,
           line15_transfersInBond: 0,
@@ -3634,7 +3667,7 @@ export const ttbRouter = router({
           line24_writeIn1: pommeauChangeOut,
           line24_writeIn1Desc: pommeauChangeOut > 0 ? "CHANGE OF CLASS OUT" : undefined,
           line25_writeIn2: 0,
-          line29_losses: pommeauLosses,
+          line29_losses: pommeauRecordedLosses,
           line30_inventoryLosses: 0,
           line31_onHandEnd: endingPommeauBulkGallons,
           line32_total: pommeauLine32,
@@ -3654,13 +3687,59 @@ export const ttbRouter = router({
           line32_total: 0,
         };
 
+        // Carbonated / Sparkling bulk columns (Phase 3 C6). These classes are mostly
+        // PACKAGED (their volume lives in Part I Section B); their bulk column is small
+        // but real. Built from the same per-tax-class aggregates the other classes use
+        // (all dynamically keyed, so carbonatedWine/sparklingWine entries already exist):
+        // gains, bottled/keg/bottlingLoss, distillation, change-of-class, recorded losses.
+        // No direct bulk production path for these classes -> line2/line4 = 0 (their
+        // volume arrives via change-of-class in from cider / carbonation).
+        function buildEffervescentBulkColumn(
+          cls: "carbonatedWine" | "sparklingWine",
+          beginning: number,
+          ending: number,
+        ): { section: BulkWinesSection; lossesRaw: number; recorded: number } {
+          const changeIn = roundGallons(changeOfClassIn[cls] || 0);
+          const changeOut = roundGallons(changeOfClassOut[cls] || 0);
+          const gains = roundGallons(gainsByTaxClass[cls] || 0);
+          const bottled = roundGallons(bottledByTaxClass[cls] || 0);
+          const kegFilled = roundGallons(kegFilledByTaxClass[cls] || 0);
+          const bottlingLoss = roundGallons(bottlingLossByTaxClass[cls] || 0);
+          const packed = roundGallons(bottled + kegFilled - bottlingLoss);
+          const distillation = roundGallons(distillationByTaxClass[cls] || 0);
+          const recorded = roundGallons(lossesByTaxClass[cls] || 0);
+          const line12 = roundGallons(beginning + changeIn + gains);
+          const lossesRaw = roundGallons(line12 - packed - distillation - changeOut - ending);
+          const line32 = roundGallons(packed + distillation + changeOut + recorded + ending);
+          const section: BulkWinesSection = {
+            ...emptyBulkWines,
+            line1_onHandBeginning: beginning,
+            line9_inventoryGains: gains,
+            line10_writeIn: changeIn,
+            line10_writeInDesc: changeIn > 0 ? "CHANGE OF CLASS IN" : undefined,
+            line12_total: line12,
+            line13_bottled: packed,
+            line16_distillingMaterial: distillation,
+            line24_writeIn1: changeOut,
+            line24_writeIn1Desc: changeOut > 0 ? "CHANGE OF CLASS OUT" : undefined,
+            line29_losses: recorded,
+            line31_onHandEnd: ending,
+            line32_total: line32,
+          };
+          return { section, lossesRaw, recorded };
+        }
+        const carbonatedCol = buildEffervescentBulkColumn(
+          "carbonatedWine", beginningCarbonatedBulkGallons, endingCarbonatedBulkGallons);
+        const sparklingCol = buildEffervescentBulkColumn(
+          "sparklingWine", beginningSparklingBulkGallons, endingSparklingBulkGallons);
+
         const bulkWinesByTaxClass: Record<string, BulkWinesSection> = {
           hardCider: ciderBulkWines,
           wineUnder16: wineUnder16BulkWines,
           wine16To21: pommeauBulkWines,
           wine21To24: { ...emptyBulkWines },
-          carbonatedWine: { ...emptyBulkWines },
-          sparklingWine: { ...emptyBulkWines },
+          carbonatedWine: carbonatedCol.section,
+          sparklingWine: sparklingCol.section,
         };
 
         // ============================================
@@ -3752,27 +3831,66 @@ export const ttbRouter = router({
         };
 
         // ============================================
-        // Section Balancing — TTB requires line 12 = line 32 and line 7 = line 21
-        // Any unexplained discrepancy goes into inventory gains/losses
-        // (standard accounting treatment for TTB Form 5120.17)
+        // Variance itemization — quantify, under honest names, every gallon of
+        // discrepancy per class. Phase 3 C2 removed the plugs, so this is now the
+        // REAL unexplained variance (no longer just a measurement of what plugs
+        // would have absorbed). unexplained = lossesRaw - recordedLosses per class.
         // ============================================
-
-        // Balance Bottled Section (Part I-B) — each tax class column balanced independently
-        for (const [taxClass, section] of Object.entries(bottledWinesByTaxClass)) {
-          const gap = roundGallons(section.line7_total - section.line21_total);
-          if (Math.abs(gap) >= 0.1) {
-            if (gap < 0) {
-              section.line5_writeIn = roundGallons(section.line5_writeIn + Math.abs(gap));
-              section.line5_writeInDesc = "INVENTORY ADJUSTMENTS";
-              section.line7_total = roundGallons(section.line7_total + Math.abs(gap));
-            } else {
-              section.line19_inventoryShortage = roundGallons(section.line19_inventoryShortage + gap);
-              section.line21_total = roundGallons(section.line21_total + gap);
-            }
+        const varianceByClass: Record<string, TTBVarianceClassAnalysis> = {};
+        const classRawInputs: Array<[string, number, number]> = [
+          // [class, lossesRaw (signed plug/flip input), recordedLosses]
+          ["hardCider", ciderLossesRaw, ciderRecordedLosses],
+          ["wineUnder16", wineUnder16LossesRaw, wineUnder16RecordedLosses],
+          ["wine16To21", pommeauLossesRaw, pommeauRecordedLosses],
+          // Phase 3 C6: carbonated/sparkling now carry real bulk columns, so their
+          // unexplained (line12-line32 beyond recorded losses) joins totalUnexplained
+          // exactly like every other class instead of hiding in an empty column.
+          ["carbonatedWine", carbonatedCol.lossesRaw, carbonatedCol.recorded],
+          ["sparklingWine", sparklingCol.lossesRaw, sparklingCol.recorded],
+        ];
+        for (const [cls, lossesRaw, recorded] of classRawInputs) {
+          // unexplained = what Line 29 would absorb beyond real losses
+          // (positive), or what the Line 9 flip would fabricate as gains
+          // (negative). recorded losses themselves are NOT variance.
+          const unexplained = roundGallons(lossesRaw - recorded);
+          varianceByClass[cls] = {
+            unexplained,
+            recordedLosses: recorded,
+            manualAdjustments: 0, // applied server-side in C4
+            components: [],
+          };
+          // Phase 3 C5: itemize each batch that reconstructs to a negative
+          // period-end volume, sourced directly from the per-batch SBD endings
+          // (the clamped-loss plug is gone). amount is the signed negative ending.
+          for (const neg of negativeEndingsByClass[cls] ?? []) {
+            varianceByClass[cls].components.push({
+              kind: "negativeBatchEnding",
+              amount: neg.amount,
+              batchId: neg.batchId,
+              note: `Batch reconstructs to a negative period-end volume (${neg.amount} gal)`,
+            });
           }
         }
 
-        // Recompute aggregate bottled totals from balanced per-class values
+        // ============================================
+        // Phase 3 C2: Section gaps are MEASURED, not absorbed. TTB Form 5120.17
+        // ideally has line 12 = line 32 and line 7 = line 21, but forcing that
+        // balance hides the real discrepancy. Each class's gap is recorded as an
+        // honest `sectionBalancing` variance component; the form lines are left
+        // un-mutated (the aggregate total column below is a pure summation of the
+        // per-class columns).
+        // ============================================
+
+        // Measure Bottled Section (Part I-B) line7-line21 gap per tax class
+        for (const [taxClass, section] of Object.entries(bottledWinesByTaxClass)) {
+          const gap = roundGallons(section.line7_total - section.line21_total);
+          if (Math.abs(gap) >= 0.1) {
+            (varianceByClass[taxClass] ??= { unexplained: 0, recordedLosses: 0, manualAdjustments: 0, components: [] })
+              .components.push({ kind: "sectionBalancing", amount: gap, note: `Bottled section line7-line21 gap (unbalanced, not absorbed)` } satisfies TTBVarianceComponent);
+          }
+        }
+
+        // Recompute aggregate bottled totals as a pure sum of the per-class columns
         const balancedBottledCols = Object.values(bottledWinesByTaxClass);
         bottledWines.line5_writeIn = roundGallons(balancedBottledCols.reduce((s, c) => s + c.line5_writeIn, 0));
         bottledWines.line5_writeInDesc = bottledWines.line5_writeIn > 0 ? "INVENTORY ADJUSTMENTS" : undefined;
@@ -3780,22 +3898,18 @@ export const ttbRouter = router({
         bottledWines.line19_inventoryShortage = roundGallons(balancedBottledCols.reduce((s, c) => s + c.line19_inventoryShortage, 0));
         bottledWines.line21_total = roundGallons(balancedBottledCols.reduce((s, c) => s + c.line21_total, 0));
 
-        // Balance Bulk Section (Part I-A) — each tax class column balanced independently
-        // TTB requires line 12 = line 32; any gap goes to inventory gains (line 9) or losses (line 29)
+        // Measure Bulk Section (Part I-A) line12-line32 gap per tax class.
+        // This gap IS the honest unexplained variance for the class; it is recorded,
+        // not force-balanced into line 9 (gains) or line 29 (losses).
         for (const [taxClass, section] of Object.entries(bulkWinesByTaxClass)) {
           const gap = roundGallons(section.line12_total - section.line32_total);
           if (Math.abs(gap) >= 0.1) {
-            if (gap < 0) {
-              section.line9_inventoryGains = roundGallons(section.line9_inventoryGains + Math.abs(gap));
-              section.line12_total = roundGallons(section.line12_total + Math.abs(gap));
-            } else {
-              section.line29_losses = roundGallons(section.line29_losses + gap);
-              section.line32_total = roundGallons(section.line32_total + gap);
-            }
+            (varianceByClass[taxClass] ??= { unexplained: 0, recordedLosses: 0, manualAdjustments: 0, components: [] })
+              .components.push({ kind: "sectionBalancing", amount: gap, note: `Bulk section line12-line32 gap (unbalanced, not absorbed)` } satisfies TTBVarianceComponent);
           }
         }
 
-        // Recompute ALL total column lines as sums of balanced per-class values.
+        // Recompute ALL total column lines as sums of the per-class values.
         // This ensures Total column = sum of per-class columns for every line,
         // so Line 12 = sum of Lines 1-11 on the Total column.
         const allBulkCols = Object.values(bulkWinesByTaxClass);
@@ -3811,8 +3925,9 @@ export const ttbRouter = router({
         bulkWines.line10_writeInDesc = bulkWines.line10_writeIn > 0 ? "CHANGE OF CLASS IN" : undefined;
         bulkWines.line24_writeIn1Desc = bulkWines.line24_writeIn1 > 0 ? "CHANGE OF CLASS OUT" : undefined;
 
-        // Derive reconciliation FROM the balanced form sections
-        // This ensures the reconciliation always matches what's shown on the form
+        // Derive reconciliation FROM the (un-plugged) form sections.
+        // Phase 3 C2: line 29 = recorded losses and line 32 = a true sum, so this
+        // variance is the REAL available-minus-accounted gap, not a plugged ~0.
         const formTotalAvailable = roundGallons(
           // Bulk inputs (lines 1-11, all wine entering system)
           bulkWines.line1_onHandBeginning + bulkWines.line2_produced +
@@ -3847,14 +3962,23 @@ export const ttbRouter = router({
           totalAvailable: formTotalAvailable,
           totalAccountedFor: formTotalAccountedFor,
           variance: roundGallons(formTotalAvailable - formTotalAccountedFor),
-          balanced: Math.abs(roundGallons(formTotalAvailable - formTotalAccountedFor)) < 0.1,
+          balanced: Math.abs(roundGallons(formTotalAvailable - formTotalAccountedFor)) < 1.0,
           // Recorded operational losses vs balancing figure for diagnostic comparison
           recordedLosses: {
             total: recordedLosses,
             byTaxClass: Object.fromEntries(
-              Object.entries(lossesByTaxClass).map(([k, v]) => [k, roundGallons(v - (clampedByTaxClass[k] || 0))])
+              Object.entries(lossesByTaxClass).map(([k, v]) => [k, roundGallons(v)])
             ),
           },
+        };
+
+        // Phase 3 C2: finalize the variance itemization — this IS the form's real
+        // unexplained variance now that the plugs are gone.
+        const varianceAnalysis = {
+          byTaxClass: varianceByClass,
+          totalUnexplained: roundGallons(
+            Object.values(varianceByClass).reduce((s, c) => s + c.unexplained, 0)
+          ),
         };
 
         // ============================================
@@ -3972,6 +4096,7 @@ export const ttbRouter = router({
           bottledWines,
           materials,
           fermenters,
+          varianceAnalysis,
           beginningInventory,
           wineProduced: {
             total: wineProducedGallons, // Press runs + juice purchases (pommeau juice already included)
@@ -4055,6 +4180,7 @@ export const ttbRouter = router({
             smallProducerCreditAmount:
               input.data.smallProducerCreditAmount?.toString(),
             taxOwed: input.data.taxOwed?.toString(),
+            varianceAnalysis: input.varianceAnalysis ?? null,
             notes: input.notes,
             generatedBy: ctx.user.id,
             status: "draft",
@@ -4975,7 +5101,7 @@ export const ttbRouter = router({
               sales: 0,
               calculatedEnding: 0,
               physical: 0,
-              variance: 0,
+              unexplainedVariance: 0,
             },
           },
           batchReconciliation: {
@@ -5503,7 +5629,10 @@ export const ttbRouter = router({
       // Total inventory = production - removals
       const historicalInventoryGallons = totalProductionGallons - totalRemovalsGallons;
 
-      // Split into bulk and packaged:
+      // Split into bulk and packaged for DISPLAY only. Display-cosmetic clamps kept
+      // (Phase 3 C5): these two feed on-hand breakdown figures, not the variance
+      // identity — `historicalInventoryGallons` above stays signed and carries the
+      // real net signal. A negative displayed inventory split is not meaningful.
       // Packaged = volume packaged - distributions
       const historicalPackagedGallons = Math.max(0, packagedVolumeBeforeGallons - distributionsBeforeGallons);
 
@@ -5529,7 +5658,7 @@ export const ttbRouter = router({
           and(
             isNull(batches.deletedAt),
             eq(batches.reconciliationStatus, "verified"),
-            sql`${batches.startDate} <= ${reconciliationDate}::date`,
+            sql`${batches.startDate}::date <= ${reconciliationDate}::date`,
             sql`COALESCE(${batches.currentVolumeLiters}, 0) > 0` // Only count batches with remaining volume
           )
         )
@@ -5552,7 +5681,7 @@ export const ttbRouter = router({
           and(
             isNull(inventoryItems.deletedAt),
             sql`${inventoryItems.currentQuantity} > 0`,
-            sql`${batches.startDate} <= ${reconciliationDate}::date`
+            sql`${batches.startDate}::date <= ${reconciliationDate}::date`
           )
         )
         .groupBy(sql`EXTRACT(YEAR FROM ${batches.startDate})`)
@@ -5608,7 +5737,7 @@ export const ttbRouter = router({
           and(
             isNull(batches.deletedAt),
             sql`(COALESCE(${batches.reconciliationStatus}, 'pending') NOT IN ('duplicate', 'excluded') OR ${batches.isRackingDerivative} IS TRUE OR ${batches.parentBatchId} IS NOT NULL)`,
-            sql`${batches.startDate} <= ${reconciliationDate}::date`,
+            sql`${batches.startDate}::date <= ${reconciliationDate}::date`,
           )
         );
       const sbdResult = await computeSystemCalculatedOnHand(
@@ -6234,7 +6363,7 @@ export const ttbRouter = router({
               and(
                 isNull(inventoryItems.deletedAt),
                 sql`${inventoryItems.currentQuantity} > 0`,
-                sql`${batches.startDate} <= ${reconciliationDate}::date`
+                sql`${batches.startDate}::date <= ${reconciliationDate}::date`
               )
             )
             .orderBy(sql`CAST(${inventoryItems.currentQuantity} AS DECIMAL) * CAST(${inventoryItems.packageSizeML} AS DECIMAL) DESC`);
@@ -6800,14 +6929,13 @@ export const ttbRouter = router({
         transfersIn: number;
         transfersOut: number;
         positiveAdj: number;
-        reconAdj: number;
         packaging: number;
         losses: number;
         distillation: number;
         sales: number;
         calculatedEnding: number;
         physical: number;
-        variance: number;
+        unexplainedVariance: number;
         bulk: number;
         packaged: number;
         bulkEnding: number;
@@ -6874,14 +7002,14 @@ export const ttbRouter = router({
       }
 
       // Use Phase 1 byTaxClass aggregation from computeReconciliationFromBatches
-      // for consistent physical inventory (eliminates reconAdj gap between SBD impls)
+      // for consistent physical inventory (keeps unexplained variance small between SBD impls)
       const batchReconByTaxClass = batchRecon.byTaxClass;
 
       for (const key of waterfallTaxClasses) {
         const sbdTc = sbdWaterfallByTaxClass[key];
         const reconTc = batchReconByTaxClass[key];
         // ALL waterfall values are SBD-derived from per-batch reconstruction.
-        // Physical inventory also uses SBD ending + packaged, ensuring reconAdj ≈ 0.
+        // Physical inventory also uses SBD ending + packaged, keeping unexplained variance small.
         const opening = sbdTc?.opening || 0;
         const production = sbdTc?.production || 0;
         // Transfers + merges: when summed by tax class, same-class flows cancel
@@ -6908,19 +7036,22 @@ export const ttbRouter = router({
         // Ending includes ALL on-premises inventory: bulk + packaged at period end.
         const sbdBulkEnding = sbdTc?.ending || 0;
         const endPkg = packagedByTaxClass[key] || 0;
-        const physical = sbdBulkEnding + Math.max(0, endPkg);
+        // Phase 3 C5: no clamp — a negative packaged ending (class distributes more
+        // than it packaged, a scope/data mismatch) must flow into unexplainedVariance
+        // below, not be floored to zero and hidden.
+        const physical = sbdBulkEnding + endPkg;
 
-        // Formula: opening(total) + inflows - outflows = ending(total)
-        // reconAdj absorbs any residual from rounding, cross-period packaging flows, etc.
-        const formulaWithoutAdj = openingTotal + production + transfersIn - transfersOut
+        // Formula: opening(total) + inflows - outflows = ending(total).
+        // Phase 3 C3: no reconAdj plug. calculatedEnding is the PURE formula value
+        // and is NO LONGER forced equal to physical inventory.
+        const calculatedEnding = openingTotal + production + transfersIn - transfersOut
           + positiveAdj - losses - distillation - actualSales;
-        const reconAdj = physical - formulaWithoutAdj;
 
-        // TTB Calculated Ending: universal identity that accounts for all volume flows
-        const calculatedEnding = formulaWithoutAdj + reconAdj; // = physical by construction
-
-        // Variance = 0 by construction (reconAdj absorbs any orphan residual)
-        const variance = calculatedEnding - physical;
+        // Unexplained variance = physical inventory − formula ending, reported under
+        // its honest name (never absorbed). Non-zero means the per-batch reconstruction
+        // doesn't fully account for physical on-hand volume (positive = unexplained
+        // inflow / inventory gain; negative = unexplained shortage).
+        const unexplainedVariance = physical - calculatedEnding;
 
         // Include tax classes with any activity (including negative ending from losses/sales)
         const hasActivity = openingTotal !== 0 || production > 0 || transfersIn > 0 || physical > 0 ||
@@ -6931,7 +7062,10 @@ export const ttbRouter = router({
           // instead of waterfall-aggregated ending, which can diverge for zero-volume
           // intermediate batches that the waterfall computes as negative.
           const bulkEnding = bulkByTaxClass[key] || 0;
-          // Section B ending: all undistributed packaged inventory at period end
+          // Section B ending: all undistributed packaged inventory at period end.
+          // Display-cosmetic clamp kept: a negative packaged inventory count is not
+          // meaningful to show as an on-hand figure; the negative signal is already
+          // surfaced through `physical`/`unexplainedVariance` above (Phase 3 C5).
           const packagedEnding = Math.max(0, endPkg);
           waterfallData.push({
             taxClass: key,
@@ -6943,14 +7077,13 @@ export const ttbRouter = router({
             transfersIn: parseFloat(transfersIn.toFixed(2)),
             transfersOut: parseFloat(transfersOut.toFixed(2)),
             positiveAdj: parseFloat(positiveAdj.toFixed(2)),
-            reconAdj: parseFloat(reconAdj.toFixed(2)),
             packaging: parseFloat(pkg.toFixed(2)),
             losses: parseFloat(losses.toFixed(2)),
             distillation: parseFloat(distillation.toFixed(2)),
             sales: parseFloat(actualSales.toFixed(2)),
             calculatedEnding: parseFloat(calculatedEnding.toFixed(2)),
             physical: parseFloat(physical.toFixed(2)),
-            variance: parseFloat(variance.toFixed(2)),
+            unexplainedVariance: parseFloat(unexplainedVariance.toFixed(2)),
             bulk: parseFloat((bulkByTaxClass[key] || 0).toFixed(2)),
             packaged: parseFloat((packagedByTaxClass[key] || 0).toFixed(2)),
             bulkEnding: parseFloat(bulkEnding.toFixed(2)),
@@ -6972,8 +7105,11 @@ export const ttbRouter = router({
       }> = [];
 
       for (const entry of waterfallData) {
+        // Honest identity: the formula components must sum to calculatedEnding
+        // (a self-consistency / rounding check). unexplainedVariance is a REPORTED
+        // quantity below, not a balancing term here.
         const expectedEnding = entry.opening + entry.production + entry.transfersIn
-          - entry.transfersOut + entry.positiveAdj + entry.reconAdj - entry.losses - entry.distillation - entry.sales;
+          - entry.transfersOut + entry.positiveAdj - entry.losses - entry.distillation - entry.sales;
         const identityGap = Math.abs(expectedEnding - entry.calculatedEnding);
         if (identityGap > 0.05) {
           const msg = `Waterfall identity violation for ${entry.label}: gap ${identityGap.toFixed(2)} gal`;
@@ -6997,6 +7133,62 @@ export const ttbRouter = router({
             },
           });
         }
+      }
+
+      // ============================================
+      // UNEXPLAINED VARIANCE (Phase 3 C3)
+      // Signed sum of per-class (physical − formula ending). This is the honest,
+      // REPORTED discrepancy that the deleted reconAdj plug used to absorb.
+      // ============================================
+      // Query waterfall adjustments for the period year
+      const periodYear = reconciliationDateObj.getFullYear();
+      const waterfallAdjs = await db
+        .select({
+          id: ttbWaterfallAdjustments.id,
+          waterfallLine: ttbWaterfallAdjustments.waterfallLine,
+          amountGallons: ttbWaterfallAdjustments.amountGallons,
+          reason: ttbWaterfallAdjustments.reason,
+          notes: ttbWaterfallAdjustments.notes,
+          adjustedAt: ttbWaterfallAdjustments.adjustedAt,
+        })
+        .from(ttbWaterfallAdjustments)
+        .where(
+          and(
+            eq(ttbWaterfallAdjustments.periodYear, periodYear),
+            isNull(ttbWaterfallAdjustments.deletedAt),
+          ),
+        )
+        .orderBy(asc(ttbWaterfallAdjustments.adjustedAt));
+
+      // Phase 3 C4: apply manual adjustments SERVER-SIDE. Each row adjusts a
+      // waterfall line; its effect on the calculated ending is +amount for
+      // opening/production/other and -amount for losses/distillation. Applied
+      // adjustments EXPLAIN variance: unexplained = physical - (formula + effect).
+      const manualAdjustmentsGal = waterfallAdjs.reduce((s, a) => {
+        const amt = parseFloat(a.amountGallons || "0") || 0;
+        return a.waterfallLine === "losses" || a.waterfallLine === "distillation" ? s - amt : s + amt;
+      }, 0);
+
+      const totalUnexplainedRaw = waterfallData.reduce((s, w) => s + w.unexplainedVariance, 0);
+      const totalUnexplained = totalUnexplainedRaw - manualAdjustmentsGal;
+      if (Math.abs(totalUnexplained) > 1.0) {
+        const perClassDetail: Record<string, number> = {};
+        for (const w of waterfallData) {
+          if (Math.abs(w.unexplainedVariance) > 0.05) {
+            perClassDetail[w.taxClass] = parseFloat(w.unexplainedVariance.toFixed(2));
+          }
+        }
+        const msg = `Unexplained variance ${totalUnexplained.toFixed(1)} gal: physical inventory differs from the per-batch formula ending across ${Object.keys(perClassDetail).length} tax class(es)`;
+        console.warn(`[TTB Parity] ${msg}`);
+        parityWarnings.push({
+          level: "warning",
+          category: "unexplainedVariance",
+          message: msg,
+          detail: {
+            ...perClassDetail,
+            total: parseFloat(totalUnexplained.toFixed(2)),
+          },
+        });
       }
 
       // 5. Build reconciliation by tax class
@@ -7236,9 +7428,12 @@ export const ttbRouter = router({
       const packagedOnHandLiters = (sbd.bottlingLiters - sbd.bottlingLossLiters)
         + (sbd.keggingLiters - sbd.keggingLossLiters)
         - batchScopedDistributionsLiters;
-      // Exclude brandy from wine reconciliation total (Part I is wine-only)
+      // Exclude brandy from wine reconciliation total (Part I is wine-only).
+      // Phase 3 C5: no clamp — a negative packaged-on-hand (distributions exceed
+      // reconstructed packaging within batch scope) must reduce the reconstructed
+      // system total so the mismatch surfaces as variance, not be floored to zero.
       const systemTotalOnHand = wineOnlyReconstructedOnHand
-        + litersToWineGallons(Math.max(0, packagedOnHandLiters));
+        + litersToWineGallons(packagedOnHandLiters);
 
       // ============================================
       // AGGREGATE-BASED TTB WATERFALL
@@ -7289,25 +7484,8 @@ export const ttbRouter = router({
         ? new Date(finalizedPeriods[finalizedPeriods.length - 1].periodEnd).toISOString().split("T")[0]
         : null;
 
-      // Query waterfall adjustments for the period year
-      const periodYear = reconciliationDateObj.getFullYear();
-      const waterfallAdjs = await db
-        .select({
-          id: ttbWaterfallAdjustments.id,
-          waterfallLine: ttbWaterfallAdjustments.waterfallLine,
-          amountGallons: ttbWaterfallAdjustments.amountGallons,
-          reason: ttbWaterfallAdjustments.reason,
-          notes: ttbWaterfallAdjustments.notes,
-          adjustedAt: ttbWaterfallAdjustments.adjustedAt,
-        })
-        .from(ttbWaterfallAdjustments)
-        .where(
-          and(
-            eq(ttbWaterfallAdjustments.periodYear, periodYear),
-            isNull(ttbWaterfallAdjustments.deletedAt),
-          ),
-        )
-        .orderBy(asc(ttbWaterfallAdjustments.adjustedAt));
+      // (waterfall adjustments are queried earlier — Phase 3 C4 applies them
+      // server-side before the unexplained-variance computation)
 
       // ============================================
       // TOP-LEVEL IDENTITY ASSERTION
@@ -7322,13 +7500,12 @@ export const ttbRouter = router({
       const wfTotalTransfersIn = waterfallData.reduce((s, w) => s + w.transfersIn, 0);
       const wfTotalTransfersOut = waterfallData.reduce((s, w) => s + w.transfersOut, 0);
       const wfTotalPositiveAdj = waterfallData.reduce((s, w) => s + w.positiveAdj, 0);
-      const wfTotalReconAdj = waterfallData.reduce((s, w: any) => s + (w.reconAdj || 0), 0);
       const wfTotalSales = waterfallData.reduce((s, w) => s + w.sales, 0);
       const wfTotalLosses = waterfallData.reduce((s, w) => s + w.losses, 0);
       const wfTotalDistillation = waterfallData.reduce((s, w) => s + w.distillation, 0);
       const wfTotalCalcEnding = waterfallData.reduce((s, w) => s + w.calculatedEnding, 0);
       const topExpectedEnding = wfTotalOpening + wfTotalProduction + wfTotalTransfersIn - wfTotalTransfersOut
-        + wfTotalPositiveAdj + wfTotalReconAdj - wfTotalLosses - wfTotalDistillation - wfTotalSales;
+        + wfTotalPositiveAdj - wfTotalLosses - wfTotalDistillation - wfTotalSales;
       const topIdentityGap = Math.abs(topExpectedEnding - wfTotalCalcEnding);
       if (topIdentityGap > 0.5) {
         const msg = `Top-level identity failure: expected ending ${topExpectedEnding.toFixed(1)} vs calculated ${wfTotalCalcEnding.toFixed(1)} (gap ${topIdentityGap.toFixed(2)} gal)`;
@@ -7408,9 +7585,15 @@ export const ttbRouter = router({
           systemCalculatedOnHand: parseFloat(systemCalculatedOnHand.toFixed(1)),
           // Batch reconstruction (for data quality review)
           systemReconstructedOnHand: parseFloat(systemReconstructedOnHand.toFixed(1)),
-          // Variance: aggregate calculated ending vs physical inventory
-          // Non-zero means the waterfall identity doesn't match what's physically in tanks.
-          variance: 0, // Computed per-tax-class in waterfall; total shown here for legacy compat
+          // Variance: signed sum of per-class unexplained variance (physical − formula
+          // ending). Phase 3 C3: this is the REAL discrepancy, no longer hardcoded 0.
+          variance: parseFloat(totalUnexplained.toFixed(1)),
+          // Honest unexplained variance (physical − per-batch formula ending) and the
+          // SBD per-batch reconstruction drift — both surfaced for the reconciliation UI.
+          totalUnexplained: parseFloat(totalUnexplained.toFixed(2)),
+          totalUnexplainedRaw: parseFloat(totalUnexplainedRaw.toFixed(2)),
+          manualAdjustmentsGal: parseFloat(manualAdjustmentsGal.toFixed(2)),
+          sbdDriftGal: parseFloat(sbdTotalDriftGal.toFixed(2)),
           // Legacy fields for backwards compatibility
           ttbBalance: parseFloat(totalTtb.toFixed(1)),
           currentInventory: parseFloat(totalInventoryByTaxClass.toFixed(1)),
@@ -7420,7 +7603,9 @@ export const ttbRouter = router({
         // Additional breakdown for UI display
         breakdown: {
           bulkInventory: parseFloat(actualBulkGallons.toFixed(1)),
-          // SBD-based packaged inventory (date-bounded, batch-scoped) — replaces LIVE query
+          // SBD-based packaged inventory (date-bounded, batch-scoped) — replaces LIVE query.
+          // Display-cosmetic clamp kept (Phase 3 C5): a shown on-hand packaged figure is
+          // not meaningfully negative; the signal lives in systemTotalOnHand/variance.
           packagedInventory: parseFloat(litersToWineGallons(Math.max(0, packagedOnHandLiters)).toFixed(1)),
           // Keep LIVE value for reference/debugging
           livePackagedInventory: parseFloat(actualPackagedGallons.toFixed(1)),
@@ -7468,6 +7653,10 @@ export const ttbRouter = router({
               filter: parseFloat(filterLossesBeforeGallons.toFixed(2)),
               bottling: parseFloat(bottlingLossesBeforeGallons.toFixed(2)),
               transfer: parseFloat(transferLossesBeforeGallons.toFixed(2)),
+              // Signed (negative): source query filters adjustmentAmount < 0, and this
+              // term enters processLossesLiters as a negative, so displaying it signed
+              // makes the breakdown reconcile to `total`. Phase 3 C5 removed the
+              // conversion clamp that used to mask this to 0.00.
               volumeAdjustments: parseFloat(volumeAdjustmentsBeforeGallons.toFixed(2)),
               kegFills: parseFloat(kegFillLossesBeforeGallons.toFixed(2)),
               total: parseFloat(lossesGallons.toFixed(2)),
@@ -7532,14 +7721,13 @@ export const ttbRouter = router({
             transfersIn: parseFloat(waterfallData.reduce((sum, w) => sum + w.transfersIn, 0).toFixed(2)),
             transfersOut: parseFloat(waterfallData.reduce((sum, w) => sum + w.transfersOut, 0).toFixed(2)),
             positiveAdj: parseFloat(waterfallData.reduce((sum, w) => sum + w.positiveAdj, 0).toFixed(2)),
-            reconAdj: parseFloat(waterfallData.reduce((sum, w: any) => sum + (w.reconAdj || 0), 0).toFixed(2)),
             packaging: parseFloat(waterfallData.reduce((sum, w) => sum + w.packaging, 0).toFixed(2)),
             losses: parseFloat(waterfallData.reduce((sum, w) => sum + w.losses, 0).toFixed(2)),
             distillation: parseFloat(waterfallData.reduce((sum, w) => sum + w.distillation, 0).toFixed(2)),
             sales: parseFloat(waterfallData.reduce((sum, w) => sum + w.sales, 0).toFixed(2)),
             calculatedEnding: parseFloat(waterfallData.reduce((sum, w) => sum + w.calculatedEnding, 0).toFixed(2)),
             physical: parseFloat(waterfallData.reduce((sum, w) => sum + w.physical, 0).toFixed(2)),
-            variance: parseFloat(waterfallData.reduce((sum, w) => sum + w.variance, 0).toFixed(2)),
+            unexplainedVariance: parseFloat(waterfallData.reduce((sum, w) => sum + w.unexplainedVariance, 0).toFixed(2)),
           },
         },
         // DEBUG: Trace variance source

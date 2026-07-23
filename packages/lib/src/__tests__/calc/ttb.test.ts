@@ -141,10 +141,12 @@ describe("Volume Conversions", () => {
       expect(litersToWineGallons(0)).toBe(0);
     });
 
-    it("should return 0 for negative inputs", () => {
-      expect(litersToWineGallons(-1)).toBe(0);
-      expect(litersToWineGallons(-100)).toBe(0);
-      expect(litersToWineGallons(-0.001)).toBe(0);
+    // Phase 3 C5: conversion is SIGNED — the old clamp-to-0 hid net-negative
+    // reconciliation/variance signal. Negatives now convert straight through.
+    it("should convert negative inputs to negative gallons (signed)", () => {
+      expect(litersToWineGallons(-1)).toBeCloseTo(-0.264172, 5);
+      expect(litersToWineGallons(-100)).toBeCloseTo(-26.4172, 3);
+      expect(litersToWineGallons(-0.001)).toBeCloseTo(-0.000264172, 8);
     });
 
     it("should handle very small volumes", () => {
@@ -174,9 +176,10 @@ describe("Volume Conversions", () => {
       expect(wineGallonsToLiters(0)).toBe(0);
     });
 
-    it("should return 0 for negative inputs", () => {
-      expect(wineGallonsToLiters(-1)).toBe(0);
-      expect(wineGallonsToLiters(-500)).toBe(0);
+    // Phase 3 C5: signed conversion (clamp-to-0 removed).
+    it("should convert negative inputs to negative liters (signed)", () => {
+      expect(wineGallonsToLiters(-1)).toBeCloseTo(-3.78541, 4);
+      expect(wineGallonsToLiters(-500)).toBeCloseTo(-1892.705, 2);
     });
 
     it("should handle 1 gallon", () => {
@@ -217,9 +220,9 @@ describe("Volume Conversions", () => {
       expect(mlToWineGallons(0)).toBe(0);
     });
 
-    it("should handle negative inputs (delegates to litersToWineGallons)", () => {
-      // -500ml => -0.5L => litersToWineGallons(-0.5) => 0
-      expect(mlToWineGallons(-500)).toBe(0);
+    it("should handle negative inputs (delegates to signed litersToWineGallons)", () => {
+      // Phase 3 C5: -500ml => -0.5L => litersToWineGallons(-0.5) => signed negative
+      expect(mlToWineGallons(-500)).toBeCloseTo(-0.132086, 5);
     });
 
     it("should handle a standard case of 473ml (US pint)", () => {

@@ -115,6 +115,21 @@ Not a problem (verified correct): juice is excluded until it becomes cider/pomme
 - **This phase unblocks the reverted transfer-delete/correction** — a safe delete/reversal falls out once recompute is authoritative and manual-correction is respected. See `project_transfer_volume_tracking` memory.
 
 ### Phase 3 — Replace TTB plugs with real derivations + a TRUE variance
+> **STATUS: DONE 2026-07-21** (branch `recon/phase3-deplug`, commits C0–C8). Every plug is dead:
+> Line-29 = recorded losses only; Line-9 flips deleted; section-balancing loops deleted (gaps
+> measured, not absorbed); `reconAdj` deleted (waterfall carries honest `unexplainedVariance`);
+> `ttbWaterfallAdjustments` applied server-side (explain variance; Phase 6 writes through this);
+> negative-value clamps removed (signed conversions, per-batch `negativeBatchEnding` components);
+> carbonatedWine/sparklingWine got real bulk columns. The form now reports TRUE variance:
+> 2024 −576.7 gal (non-event-sourced year), 2025 1,136.3 gal (the owner-accepted backlog, named),
+> 2026 347.2 gal (carbonation-reclassification gap, visible in its own column). 3-state UI
+> (green/amber-with-itemization/red) on TTBFormPreview, BatchReconciliation, TTBReconciliationSummary.
+> Filed snapshots persist their varianceAnalysis (migration 0146). Day-boundary fix landed LAST and
+> measured **−4.997 gal** (one real Dec-31 event) vs the ±1,300-gal phantom it produced pre-de-plug —
+> the sequencing thesis verified. Out-of-scope-inflow attribution PROVEN a no-op (same-class boundary
+> transfers cancel in unexplained; emitting components would have rebuilt a plug). Follow-ups: the 2026
+> waterfall −261.5 = packaged/carbonation-reclassification residual (decompose in Phase 4/6);
+> +20.85 carbonated bulk-vs-bottled asymmetry; getPeriodDateRange server-TZ boundary instant.
 - Promote `sbdTotalDriftL` to the headline reconciliation metric; stop reporting the plugged `variance ≈ 0`.
 - Replace the Line 29 loss plug, Line 9 gains flip, and `reconAdj` with itemized derivations. Where a residual genuinely remains, label it "unexplained variance" and alert — never hide it.
 - Apply `ttbWaterfallAdjustments` server-side (§2.13).

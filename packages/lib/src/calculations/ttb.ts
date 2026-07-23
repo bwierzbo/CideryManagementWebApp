@@ -302,28 +302,35 @@ export function classifyBatchTaxClass(
 /**
  * Convert liters to wine gallons.
  *
- * @param liters - Volume in liters
- * @returns Volume in wine gallons
+ * Signed: a negative liters value converts to a negative gallons value. Phase 3
+ * (C5) removed the clamp-to-zero that used to hide net-negative flows, so that a
+ * real negative signal (e.g. a reconstructed batch ending below zero) surfaces in
+ * reconciliation/variance instead of being silently absorbed. Display-only sites
+ * that need a floor of zero must apply their own `Math.max(0, ...)`.
+ *
+ * @param liters - Volume in liters (may be negative)
+ * @returns Volume in wine gallons (sign preserved)
  *
  * @example
  * litersToWineGallons(1000) // 264.17 wine gallons
  */
 export function litersToWineGallons(liters: number): number {
-  if (liters < 0) return 0;
   return liters * WINE_GALLONS_PER_LITER;
 }
 
 /**
  * Convert wine gallons to liters.
  *
- * @param gallons - Volume in wine gallons
- * @returns Volume in liters
+ * Signed: see `litersToWineGallons`. A negative gallons value converts to a
+ * negative liters value; the clamp-to-zero was removed in Phase 3 (C5).
+ *
+ * @param gallons - Volume in wine gallons (may be negative)
+ * @returns Volume in liters (sign preserved)
  *
  * @example
  * wineGallonsToLiters(264.17) // ~1000 liters
  */
 export function wineGallonsToLiters(gallons: number): number {
-  if (gallons < 0) return 0;
   return gallons * LITERS_PER_WINE_GALLON;
 }
 
@@ -755,6 +762,39 @@ export interface FermentersSection {
 }
 
 /**
+ * Phase 3: per-class variance itemization — every gallon a balancing
+ * mechanism would otherwise silently absorb, under an honest name.
+ * `unexplained` is SIGNED: positive = volume missing (would have been plugged
+ * into Line 29 losses), negative = surplus (would have been flipped into
+ * Line 9 gains).
+ */
+export interface TTBVarianceComponent {
+  kind: "outOfScopeInflow" | "negativeBatchEnding" | "roundingResidual" | "sectionBalancing" | "other";
+  /** Signed gallons. */
+  amount: number;
+  batchId?: string;
+  note: string;
+}
+
+export interface TTBVarianceClassAnalysis {
+  /** Signed unexplained gallons for this class. */
+  unexplained: number;
+  /** Real recorded operational losses (racking/filter/bottling/etc.). */
+  recordedLosses: number;
+  /** Manual ttb_waterfall_adjustments applied for this class (0 until applied server-side). */
+  manualAdjustments: number;
+  components: TTBVarianceComponent[];
+}
+
+export interface TTBVarianceAnalysis {
+  byTaxClass: Record<string, TTBVarianceClassAnalysis>;
+  /** Sum of |per-class unexplained| direction-preserving total (signed sum). */
+  totalUnexplained: number;
+  /** Headline data-quality metric: stored vs reconstructed drift, gallons. */
+  sbdDriftGal?: number;
+}
+
+/**
  * Complete TTB Form 5120.17 data structure
  */
 export interface TTBForm512017Data {
@@ -813,6 +853,14 @@ export interface TTBForm512017Data {
     /** Whether the books balance */
     balanced: boolean;
   };
+
+  /**
+   * Phase 3 variance itemization: what the form's balancing mechanisms
+   * absorb, per tax class, under honest names. While the plugs are still
+   * active (Phase 3 C1) this REPORTS what they absorb; after de-plug it IS
+   * the unexplained variance.
+   */
+  varianceAnalysis?: TTBVarianceAnalysis;
 
   /** Distillery operations (cider sent, brandy received) */
   distilleryOperations?: DistilleryOperations;

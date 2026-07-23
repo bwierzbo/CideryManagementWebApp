@@ -151,6 +151,8 @@ export default function TTBReportsPage() {
       periodType,
       periodStart: startDateStr,
       periodEnd: endDateStr,
+      // Phase 3 C7: a filed period records what was unexplained at filing time
+      varianceAnalysis: formData.formData.varianceAnalysis,
       data: {
         beginningInventoryBulkGallons: formData.formData.beginningInventory.bulk,
         beginningInventoryBottledGallons: formData.formData.beginningInventory.bottled,
