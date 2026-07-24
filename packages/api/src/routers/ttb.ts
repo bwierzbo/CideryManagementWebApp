@@ -441,6 +441,10 @@ interface BatchTTBContribution {
   sales: number;
   distillation: number;
   ending: number;
+  // C8 packaged-ledger (wine gallons, per-run basis shared with bulk):
+  openingPackaged: number;          // packaged on-hand at period start
+  packagedEnding: number;           // packaged on-hand at period end
+  unrecordedDistribution: number;   // ledger removals over the window not backed by recorded sales
   identityCheck: number;
   lossBreakdown: {
     racking: number;
@@ -499,6 +503,12 @@ interface BatchReconciliationResult {
     adjustments: number;
   };
   crossClassByTaxClass: Record<string, { in: number; out: number }>;
+  // C8: packaged-goods ledger per tax class (wine gallons), computed ONCE here so
+  // bulk (byTaxClass.ending) and packaged share one per-run basis. Consumed by the
+  // getReconciliationSummary waterfall instead of a second ledger pass. removedWindow
+  // = ledger removals over [start,end]; the waterfall nets recorded sales off it to
+  // derive unrecordedDistribution (keeping the sales basis it already used).
+  packagedByTaxClass: Record<string, { openingPackaged: number; packagedEnding: number; removedWindow: number }>;
   byTaxClass: Record<string, {
     opening: number;
     production: number;
@@ -536,6 +546,91 @@ interface BatchReconciliationResult {
   vesselCapacityWarnings: number;
 }
 
+/** One packaged-run row's on-hand + removed volume (wine gallons), as-of a date. */
+export interface PackagedLedgerEntry {
+  onHand: number;
+  removed: number;
+}
+
+/**
+ * Packaged-goods ledger (C8): per bottle-run / keg-fill, as-of a date, on ONE
+ * consistent basis so packaged on-hand and packaged removals never diverge.
+ *
+ * Per run, as-of `asOf`:
+ *   removed = distributed_at flag set ? full net volume
+ *                                     : recorded inventory_distributions (capped at net)
+ *   onHand  = net packaged − removed
+ * Kegs distribute all-or-nothing via distributed_at (no partial
+ * inventory_distributions), so removed = net when flagged else 0.
+ * onHand + removed = net packaged for every run.
+ *
+ * Hoisted from a getReconciliationSummary closure so computeReconciliationFromBatches
+ * consumes the SAME ledger per batch — bulk and packaged share one per-run basis.
+ * Returns both a per-tax-class and a per-batch view (identical totals).
+ */
+async function computePackagedLedger(
+  asOf: string,
+  batchTaxClassMap: Map<string, TTBTaxClass | null>,
+): Promise<{
+  byTaxClass: Record<string, PackagedLedgerEntry>;
+  byBatch: Record<string, PackagedLedgerEntry>;
+}> {
+  const byTaxClass: Record<string, PackagedLedgerEntry> = {};
+  const byBatch: Record<string, PackagedLedgerEntry> = {};
+  const add = (tc: string, batchId: string, onHand: number, removed: number) => {
+    if (!byTaxClass[tc]) byTaxClass[tc] = { onHand: 0, removed: 0 };
+    byTaxClass[tc].onHand += onHand;
+    byTaxClass[tc].removed += removed;
+    if (!byBatch[batchId]) byBatch[batchId] = { onHand: 0, removed: 0 };
+    byBatch[batchId].onHand += onHand;
+    byBatch[batchId].removed += removed;
+  };
+  const bottleLedger = await db.execute(sql`
+    SELECT br.batch_id AS "batchId", b.product_type AS "productType",
+      (br.volume_taken_liters::numeric - (CASE WHEN br.loss_unit = 'gal'
+         THEN COALESCE(br.loss::numeric, 0) * 3.78541 ELSE COALESCE(br.loss::numeric, 0) END)) AS net_l,
+      (br.distributed_at IS NOT NULL AND br.distributed_at::date <= ${asOf}::date) AS flagged,
+      COALESCE((
+        SELECT SUM((idr.quantity_distributed::numeric * ii.package_size_ml::numeric) / 1000.0)
+        FROM inventory_distributions idr
+        JOIN inventory_items ii ON idr.inventory_item_id = ii.id
+        WHERE ii.bottle_run_id = br.id AND idr.distribution_date::date <= ${asOf}::date
+      ), 0) AS inv_l
+    FROM bottle_runs br
+    JOIN batches b ON br.batch_id = b.id
+    WHERE br.voided_at IS NULL AND b.deleted_at IS NULL
+      AND COALESCE(b.reconciliation_status, 'pending') NOT IN ('duplicate', 'excluded')
+      AND br.packaged_at::date <= ${asOf}::date
+  `);
+  for (const row of bottleLedger.rows as any[]) {
+    const tc = getTaxClassFromMap(batchTaxClassMap, row.batchId, row.productType);
+    if (!tc) continue;
+    const net = litersToWineGallons(Number(row.net_l || 0));
+    const inv = litersToWineGallons(Number(row.inv_l || 0));
+    const removed = row.flagged ? net : Math.min(net, inv);
+    add(tc, row.batchId, net - removed, removed);
+  }
+  const kegLedger = await db.execute(sql`
+    SELECT kf.batch_id AS "batchId", b.product_type AS "productType",
+      ((CASE WHEN kf.volume_taken_unit = 'gal' THEN COALESCE(kf.volume_taken::numeric, 0) * 3.78541 ELSE COALESCE(kf.volume_taken::numeric, 0) END)
+       - (CASE WHEN kf.loss_unit = 'gal' THEN COALESCE(kf.loss::numeric, 0) * 3.78541 ELSE COALESCE(kf.loss::numeric, 0) END)) AS net_l,
+      (kf.distributed_at IS NOT NULL AND kf.distributed_at::date <= ${asOf}::date) AS flagged
+    FROM keg_fills kf
+    JOIN batches b ON kf.batch_id = b.id
+    WHERE kf.voided_at IS NULL AND kf.deleted_at IS NULL AND b.deleted_at IS NULL
+      AND COALESCE(b.reconciliation_status, 'pending') NOT IN ('duplicate', 'excluded')
+      AND kf.filled_at::date <= ${asOf}::date
+  `);
+  for (const row of kegLedger.rows as any[]) {
+    const tc = getTaxClassFromMap(batchTaxClassMap, row.batchId, row.productType);
+    if (!tc) continue;
+    const net = litersToWineGallons(Number(row.net_l || 0));
+    const removed = row.flagged ? net : 0;
+    add(tc, row.batchId, net - removed, removed);
+  }
+  return { byTaxClass, byBatch };
+}
+
 /**
  * Compute TTB reconciliation from batch operations.
  * Reconstructs all volumes purely from operations — never uses currentVolumeLiters.
@@ -555,6 +650,7 @@ async function computeReconciliationFromBatches(
     identityCheck: 0,
     lossBreakdown: { racking: 0, filter: 0, bottling: 0, kegging: 0, transfer: 0, pressTransfer: 0, adjustments: 0 },
     crossClassByTaxClass: {},
+    packagedByTaxClass: {},
     byTaxClass: {},
     batchesWithIdentityIssues: 0,
     batchesWithDrift: 0,
@@ -661,6 +757,15 @@ async function computeReconciliationFromBatches(
 
   // Resolve tax class map: use provided map or build one
   const taxClassMap = batchTaxClassMapInput ?? (await buildBatchTaxClassMap()).map;
+
+  // C8: packaged-goods ledger, as-of period start + end, on the SAME per-run basis
+  // used for bulk. Consumed per batch below (packaged ending, unrecorded removals)
+  // and returned per tax class so the getReconciliationSummary waterfall reuses this
+  // one ledger instead of a second independent pass.
+  const [pkgLedgerStart, pkgLedgerEnd] = await Promise.all([
+    computePackagedLedger(startDate, taxClassMap),
+    computePackagedLedger(endDate, taxClassMap),
+  ]);
 
   const idList = sql.join(batchIds.map((id) => sql`${id}`), sql`, `);
 
@@ -1269,6 +1374,14 @@ async function computeReconciliationFromBatches(
     const packagingGal = litersToWineGallons(periodBottlingTakenL + periodKeggingTakenL - periodBottlingLossL - periodKeggingLossL);
     const salesGal = litersToWineGallons(periodSalesL);
     const distillationGal = litersToWineGallons(periodDistillationL);
+    // C8: packaged on-hand (start/end) and window removals for THIS batch, from the
+    // shared per-run ledger (already in wine gallons). unrecordedDistribution = ledger
+    // removals over the window not backed by recorded sales (salesGal, inventory_distributions).
+    const openingPackagedGal = pkgLedgerStart.byBatch[batchId]?.onHand || 0;
+    const packagedEndingGal = pkgLedgerEnd.byBatch[batchId]?.onHand || 0;
+    const ledgerRemovedWindowGal = (pkgLedgerEnd.byBatch[batchId]?.removed || 0)
+      - (pkgLedgerStart.byBatch[batchId]?.removed || 0);
+    const unrecordedDistributionGal = ledgerRemovedWindowGal - salesGal;
     // Use raw conversion to preserve negative endings (batches over-packaged/transferred);
     // litersToWineGallons clamps negatives to 0 which inflates the waterfall total.
     const endingGal = endingL * WINE_GALLONS_PER_LITER;
@@ -1341,6 +1454,9 @@ async function computeReconciliationFromBatches(
       sales: parseFloat(salesGal.toFixed(3)),
       distillation: parseFloat(distillationGal.toFixed(3)),
       ending: parseFloat(endingGal.toFixed(3)),
+      openingPackaged: parseFloat(openingPackagedGal.toFixed(3)),
+      packagedEnding: parseFloat(packagedEndingGal.toFixed(3)),
+      unrecordedDistribution: parseFloat(unrecordedDistributionGal.toFixed(3)),
       identityCheck: parseFloat(identityGal.toFixed(3)),
       lossBreakdown: {
         racking: parseFloat(lossBreakdown.racking.toFixed(3)),
@@ -1520,6 +1636,25 @@ async function computeReconciliationFromBatches(
     crossClassByTaxClass[tc].out = parseFloat(crossClassByTaxClass[tc].out.toFixed(1));
   }
 
+  // C8: packaged ledger per tax class (from the ONE shared ledger, over ALL its
+  // rows — same basis the waterfall used from its old closure). removedWindow is
+  // raw (not rounded) so the waterfall's `unrec = removedWindow − actualSales`
+  // stays numerically identical to the pre-hoist computation.
+  const packagedByTaxClass: BatchReconciliationResult["packagedByTaxClass"] = {};
+  const pkgClasses = new Set<string>([
+    ...Object.keys(pkgLedgerStart.byTaxClass),
+    ...Object.keys(pkgLedgerEnd.byTaxClass),
+  ]);
+  for (const tc of pkgClasses) {
+    const s = pkgLedgerStart.byTaxClass[tc] || { onHand: 0, removed: 0 };
+    const e = pkgLedgerEnd.byTaxClass[tc] || { onHand: 0, removed: 0 };
+    packagedByTaxClass[tc] = {
+      openingPackaged: s.onHand,
+      packagedEnding: e.onHand,
+      removedWindow: e.removed - s.removed,
+    };
+  }
+
   return {
     batches: contributions,
     totals: roundedTotals,
@@ -1534,6 +1669,7 @@ async function computeReconciliationFromBatches(
       adjustments: parseFloat(aggLoss.adjustments.toFixed(1)),
     },
     crossClassByTaxClass,
+    packagedByTaxClass,
     byTaxClass,
     batchesWithIdentityIssues,
     batchesWithDrift,
@@ -3885,9 +4021,16 @@ export const ttbRouter = router({
         };
 
         // Wine 16-21% column (pommeau): produced by wine spirits (Line 4)
-        // Pommeau = juice fortified with apple brandy. The full pommeau volume goes on
-        // Line 4 ("Produced by addition of wine spirits") in the per-class column.
-        // The total column Line 4 shows only the brandy portion (spirits entering wine system).
+        // Pommeau = juice fortified with apple brandy.
+        //
+        // Pommeau booking methodology v2 (2026+): cider entering pommeau is a
+        // change-of-class booked ONCE (Line 10); brandy (the wine spirits) is
+        // Line 4. Years <= 2025 keep the FILED methodology (the full pommeau
+        // volume — cider + brandy — on Line 4 via pommeauProducedGallons), which
+        // double-books transfer-built cider (also on Line 10 via its cross-class
+        // transfer) and inflates Line 12. Filed years stay frozen so recomputes
+        // match the filing — the resulting 2025 +45.07 wine16To21 delta is
+        // documented in EXPECTED_DRIFT_2025 (zero tax impact). See pommeauLine4Gallons below.
         const pommeauChangeIn = roundGallons(changeOfClassIn["wine16To21"] || 0);
         const pommeauChangeOut = roundGallons(changeOfClassOut["wine16To21"] || 0);
         const pommeauGains = roundGallons(gainsByTaxClass["wine16To21"] || 0);
@@ -3897,7 +4040,58 @@ export const ttbRouter = router({
         const pommeauPacked = roundGallons(pommeauBottled + pommeauKegFilled - pommeauBottlingLoss);
         const pommeauDistillation = roundGallons(distillationByTaxClass["wine16To21"] || 0);
         const pommeauRecordedLosses = roundGallons(lossesByTaxClass["wine16To21"] || 0);
-        const pommeauLine12 = roundGallons(beginningPommeauBulkGallons + pommeauProducedGallons + pommeauChangeIn + pommeauGains);
+
+        // Line 4 (wine spirits) for the pommeau column. Filed years keep
+        // pommeauProducedGallons (full pommeau volume, cider double-booked with
+        // Line 10 — frozen, see comment above). For 2026+ book by construction type
+        // so nothing is double- or zero-counted:
+        //   - transfer-built pommeau (cider arrived via a live cross-class transfer):
+        //       Line 4 = only the brandy that fortified it; the cider is Line 10.
+        //   - composed pommeau (blended at creation, no live cider transfer):
+        //       full initial (juice + brandy) stays on Line 4 as the filed methodology
+        //       (its juice never was a separate change-of-class, so it is not on Line 10).
+        let pommeauLine4Gallons = pommeauProducedGallons;
+        if (year >= 2026) {
+          // Brandy (wine spirits) transferred into ANY pommeau batch this period.
+          const brandyIntoPommeauRows = await db
+            .select({ liters: sql<number>`COALESCE(SUM(CAST(${batchTransfers.volumeTransferred} AS DECIMAL)), 0)` })
+            .from(batchTransfers)
+            .innerJoin(sql`batches src`, sql`src.id = ${batchTransfers.sourceBatchId}`)
+            .innerJoin(sql`batches dst`, sql`dst.id = ${batchTransfers.destinationBatchId}`)
+            .where(
+              and(
+                isNull(batchTransfers.deletedAt),
+                sql`src.product_type = 'brandy'`,
+                sql`dst.product_type = 'pommeau'`,
+                sql`dst.deleted_at IS NULL`,
+                sql`COALESCE(dst.reconciliation_status, 'pending') NOT IN ('duplicate', 'excluded')`,
+                gte(batchTransfers.transferredAt, startDate),
+                lt(batchTransfers.transferredAt, endExclusive),
+              ),
+            );
+          // Composed pommeau (initial>0, new in period, NO live cross-class cider
+          // transfer feeding it) keeps its full initial — same batches as
+          // pommeauWithInitialSum minus the transfer-built ones (whose cider is Line 10).
+          const composedPommeauRows = await db
+            .select({ liters: sql<number>`COALESCE(SUM(CAST(${batches.initialVolumeLiters} AS DECIMAL)), 0)` })
+            .from(batches)
+            .where(
+              and(
+                isNull(batches.deletedAt),
+                sql`COALESCE(${batches.reconciliationStatus}, 'pending') NOT IN ('duplicate', 'excluded')`,
+                eq(batches.productType, "pommeau"),
+                or(isNull(batches.parentBatchId), eq(batches.isRackingDerivative, false)),
+                sql`CAST(${batches.initialVolumeLiters} AS DECIMAL) > 0`,
+                gte(batches.startDate, startDate),
+                sql`${ttbMembershipTs} < ${endExclusive}`,
+                sql`NOT EXISTS (SELECT 1 FROM batch_transfers bt2 JOIN batches s2 ON bt2.source_batch_id = s2.id WHERE bt2.destination_batch_id = ${batches.id} AND bt2.deleted_at IS NULL AND s2.product_type NOT IN ('brandy', 'pommeau'))`,
+              ),
+            );
+          const brandyIntoPommeauLiters = Number(brandyIntoPommeauRows[0]?.liters || 0);
+          const composedPommeauLiters = Number(composedPommeauRows[0]?.liters || 0);
+          pommeauLine4Gallons = roundGallons(litersToWineGallons(brandyIntoPommeauLiters + composedPommeauLiters));
+        }
+        const pommeauLine12 = roundGallons(beginningPommeauBulkGallons + pommeauLine4Gallons + pommeauChangeIn + pommeauGains);
         // Phase 3 C2: no plug/flip — Line 29 = recorded losses, Line 32 = true sum.
         const pommeauLossesRaw = roundGallons(
           pommeauLine12 - pommeauPacked - pommeauDistillation - pommeauChangeOut - endingPommeauBulkGallons
@@ -3909,7 +4103,7 @@ export const ttbRouter = router({
           line1_onHandBeginning: beginningPommeauBulkGallons,
           line2_produced: 0,
           line3_sweetening: 0,
-          line4_wineSpirits: pommeauProducedGallons,
+          line4_wineSpirits: pommeauLine4Gallons,
           line5_blending: 0,
           line6_amelioration: 0,
           line7_receivedInBond: 0,
@@ -7370,80 +7564,16 @@ export const ttbRouter = router({
       const batchReconByTaxClass = batchRecon.byTaxClass;
 
       // ============================================
-      // PACKAGED-GOODS LEDGER (packaged-flow scope fix)
-      // Packaged on-hand and packaged removals MUST share one per-run ledger.
-      // The pre-fix asymmetry: on-hand was decided by the binary
-      // `bottle_runs`/`keg_fills` `distributed_at` flag (full run volume),
-      // while removals (`sales`) came from a DIFFERENT source
-      // (`inventory_distributions`). A run flagged distributed with missing or
-      // partial distribution records was dropped from on-hand WITHOUT a matching
-      // removal, so the packaged product vanished into unexplainedVariance.
-      //
-      // Per bottle run, as-of a date:
-      //   removed = distributed_at flag set  ? full net volume
-      //                                       : recorded inventory_distributions (capped at net)
-      //   onHand  = net packaged − removed
-      // Kegs distribute all-or-nothing via the distributed_at flag (they have no
-      // partial inventory_distributions rows), so removed = net when flagged else 0.
-      // onHand + removed = net packaged for every run, so the packaged ledger is
-      // internally consistent by construction: physical (endPkg) and the removal
-      // subtracted from calculatedEnding are on ONE basis and ONE window.
-      const computePackagedLedger = async (
-        asOf: string,
-      ): Promise<Record<string, { onHand: number; removed: number }>> => {
-        const acc: Record<string, { onHand: number; removed: number }> = {};
-        const add = (tc: string, onHand: number, removed: number) => {
-          if (!acc[tc]) acc[tc] = { onHand: 0, removed: 0 };
-          acc[tc].onHand += onHand;
-          acc[tc].removed += removed;
-        };
-        const bottleLedger = await db.execute(sql`
-          SELECT br.batch_id AS "batchId", b.product_type AS "productType",
-            (br.volume_taken_liters::numeric - (CASE WHEN br.loss_unit = 'gal'
-               THEN COALESCE(br.loss::numeric, 0) * 3.78541 ELSE COALESCE(br.loss::numeric, 0) END)) AS net_l,
-            (br.distributed_at IS NOT NULL AND br.distributed_at::date <= ${asOf}::date) AS flagged,
-            COALESCE((
-              SELECT SUM((idr.quantity_distributed::numeric * ii.package_size_ml::numeric) / 1000.0)
-              FROM inventory_distributions idr
-              JOIN inventory_items ii ON idr.inventory_item_id = ii.id
-              WHERE ii.bottle_run_id = br.id AND idr.distribution_date::date <= ${asOf}::date
-            ), 0) AS inv_l
-          FROM bottle_runs br
-          JOIN batches b ON br.batch_id = b.id
-          WHERE br.voided_at IS NULL AND b.deleted_at IS NULL
-            AND COALESCE(b.reconciliation_status, 'pending') NOT IN ('duplicate', 'excluded')
-            AND br.packaged_at::date <= ${asOf}::date
-        `);
-        for (const row of bottleLedger.rows as any[]) {
-          const tc = getTaxClassFromMap(batchTaxClassMap, row.batchId, row.productType);
-          if (!tc) continue;
-          const net = litersToWineGallons(Number(row.net_l || 0));
-          const inv = litersToWineGallons(Number(row.inv_l || 0));
-          const removed = row.flagged ? net : Math.min(net, inv);
-          add(tc, net - removed, removed);
-        }
-        const kegLedger = await db.execute(sql`
-          SELECT kf.batch_id AS "batchId", b.product_type AS "productType",
-            ((CASE WHEN kf.volume_taken_unit = 'gal' THEN COALESCE(kf.volume_taken::numeric, 0) * 3.78541 ELSE COALESCE(kf.volume_taken::numeric, 0) END)
-             - (CASE WHEN kf.loss_unit = 'gal' THEN COALESCE(kf.loss::numeric, 0) * 3.78541 ELSE COALESCE(kf.loss::numeric, 0) END)) AS net_l,
-            (kf.distributed_at IS NOT NULL AND kf.distributed_at::date <= ${asOf}::date) AS flagged
-          FROM keg_fills kf
-          JOIN batches b ON kf.batch_id = b.id
-          WHERE kf.voided_at IS NULL AND kf.deleted_at IS NULL AND b.deleted_at IS NULL
-            AND COALESCE(b.reconciliation_status, 'pending') NOT IN ('duplicate', 'excluded')
-            AND kf.filled_at::date <= ${asOf}::date
-        `);
-        for (const row of kegLedger.rows as any[]) {
-          const tc = getTaxClassFromMap(batchTaxClassMap, row.batchId, row.productType);
-          if (!tc) continue;
-          const net = litersToWineGallons(Number(row.net_l || 0));
-          const removed = row.flagged ? net : 0;
-          add(tc, net - removed, removed);
-        }
-        return acc;
-      };
-      const packagedLedgerEnd = await computePackagedLedger(reconciliationDate);
-      const packagedLedgerStart = await computePackagedLedger(batchReconStartDate);
+      // PACKAGED-GOODS LEDGER (C8: unified into computeReconciliationFromBatches)
+      // Packaged on-hand and packaged removals share ONE per-run ledger with the
+      // bulk reconstruction — computeReconciliationFromBatches now computes it (via
+      // the hoisted computePackagedLedger) over the SAME period and returns it as
+      // packagedByTaxClass. The waterfall consumes that here instead of a second
+      // independent ledger pass, so bulk and packaged can never drift on basis.
+      // openingPackaged/packagedEnding = ledger on-hand at period start/end;
+      // removedWindow = ledger removals over [start,end]. unrecordedDistribution is
+      // derived below by netting recorded sales off removedWindow (unchanged basis).
+      const packagedLedger = batchRecon.packagedByTaxClass;
 
       for (const key of waterfallTaxClasses) {
         const sbdTc = sbdWaterfallByTaxClass[key];
@@ -7468,19 +7598,18 @@ export const ttbRouter = router({
         // SBD-derived packaging (net product volume transferred from bulk to packaged)
         const sbdPackaging = reconTc?.packaging || 0;
 
-        // Packaged-goods ledger (per-run on-hand + removal, one consistent basis).
-        const ledgerEnd = packagedLedgerEnd[key] || { onHand: 0, removed: 0 };
-        const ledgerStart = packagedLedgerStart[key] || { onHand: 0, removed: 0 };
+        // Packaged-goods ledger (C8: the ONE ledger from computeReconciliationFromBatches).
+        const ledger = packagedLedger[key] || { openingPackaged: 0, packagedEnding: 0, removedWindow: 0 };
 
         // Opening includes ALL on-premises inventory: bulk + packaged at period start.
         // This ensures the TTB "On Premises" line reflects everything physically in bond.
         const openBulk = sbdTc?.opening || 0;
-        const openPkg = ledgerStart.onHand;
+        const openPkg = ledger.openingPackaged;
         const openingTotal = openBulk + openPkg;
 
         // Ending includes ALL on-premises inventory: bulk + packaged at period end.
         const sbdBulkEnding = sbdTc?.ending || 0;
-        const endPkg = ledgerEnd.onHand;
+        const endPkg = ledger.packagedEnding;
         // Phase 3 C5: no clamp — a negative packaged ending (class distributes more
         // than it packaged, a scope/data mismatch) must flow into unexplainedVariance
         // below, not be floored to zero and hidden.
@@ -7491,7 +7620,7 @@ export const ttbRouter = router({
         // by recorded distributions (runs flagged distributed with missing/partial
         // inventory_distributions). It is a named removal component — the packaged
         // product left on-hand and must be subtracted just like `sales`, not hidden.
-        const packagedRemovalWindow = ledgerEnd.removed - ledgerStart.removed;
+        const packagedRemovalWindow = ledger.removedWindow;
         const unrecordedDistribution = packagedRemovalWindow - actualSales;
 
         // Formula: opening(total) + inflows - outflows = ending(total).
