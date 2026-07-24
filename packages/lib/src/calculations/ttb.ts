@@ -801,6 +801,34 @@ export interface TTBVarianceAnalysis {
 /**
  * Complete TTB Form 5120.17 data structure
  */
+/** Which prior-period source seeds a period's opening inventory. */
+export type TTBOpeningSourceType = "snapshot" | "ttb_opening_balance" | "calculated";
+
+/**
+ * Warn-only diagnostic about how a period's opening inventory was seeded.
+ * Never blocks form generation — surfaces facts the reviewer should see.
+ */
+export interface TTBOpeningWarning {
+  level: "warning";
+  /**
+   * `openingGap` — opening came from a snapshot that does NOT end the day
+   * before the period start, so the uncovered span is silently dropped.
+   * `openingReconstructed` — opening was reconstructed/manually seeded while a
+   * draft (un-finalized) prior-period snapshot exists that should be finalized.
+   */
+  category: "openingGap" | "openingReconstructed";
+  message: string;
+}
+
+/** How a period's opening inventory was resolved (surfaced, not enforced). */
+export interface TTBOpeningSourceInfo {
+  source: TTBOpeningSourceType;
+  /** True iff the snapshot's periodEnd is exactly the day before period start. */
+  adjacent: boolean;
+  /** Days between the snapshot's periodEnd and the day before period start. */
+  gapDays: number;
+}
+
 export interface TTBForm512017Data {
   /** Reporting period information */
   reportingPeriod: TTBReportingPeriod;
@@ -873,6 +901,19 @@ export interface TTBForm512017Data {
    * drift (status "new_drift" with newDriftCount > 0).
    */
   filedDrift?: FiledDriftResult;
+
+  /**
+   * Phase 4 C5: how this period's opening inventory was resolved (snapshot /
+   * manual seed / reconstructed) and whether the snapshot chains cleanly to the
+   * period start. Informational — the opening VALUES are unchanged by this.
+   */
+  openingSource?: TTBOpeningSourceInfo;
+
+  /**
+   * Phase 4 C5: warn-only diagnostics about the opening chain (e.g. a
+   * non-adjacent snapshot leaving an uncovered gap). Empty/absent when clean.
+   */
+  openingWarnings?: TTBOpeningWarning[];
 
   /** Distillery operations (cider sent, brandy received) */
   distilleryOperations?: DistilleryOperations;

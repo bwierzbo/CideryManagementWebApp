@@ -94,6 +94,8 @@ import {
   computeFiledDrift,
   type FiledDriftResult,
   type ExpectedDriftEntry,
+  type TTBOpeningSourceInfo,
+  type TTBOpeningWarning,
 } from "lib";
 import { fetchBatchVolumeEvents } from "../services/batch-volume-events";
 import { recomputeBatchVolume } from "../services/batch-volume-recompute";
@@ -1540,6 +1542,124 @@ async function computeReconciliationFromBatches(
   };
 }
 
+/** Whole days between two "YYYY-MM-DD" date strings (later − earlier). */
+function daysBetweenDateStrings(earlier: string, later: string): number {
+  const a = Date.parse(`${earlier}T00:00:00Z`);
+  const b = Date.parse(`${later}T00:00:00Z`);
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return 0;
+  return Math.round((b - a) / 86_400_000);
+}
+
+/**
+ * Resolve which prior-period source seeds a TTB period's opening inventory, and
+ * whether that source chains cleanly to the period start.
+ *
+ * Shared by generateForm512017 and getBeginningInventory so both agree on the
+ * finalized-snapshot lookup (previously duplicated with NO adjacency check: a
+ * period whose immediately-prior snapshot was missing silently opened from an
+ * OLDER snapshot, dropping the uncovered gap).
+ *
+ * Warn-only: a non-adjacent snapshot is still returned and used — the gap is
+ * only reported. Never blocks form generation.
+ *
+ * `adjacent` ⇔ the finalized snapshot's periodEnd is exactly the day before
+ * `startDate` (date-string arithmetic, day granularity).
+ */
+async function resolveOpeningSource(startDate: Date): Promise<{
+  source: TTBOpeningSourceInfo["source"];
+  snapshot?: typeof ttbPeriodSnapshots.$inferSelect;
+  adjacent: boolean;
+  gapDays: number;
+  warnings: TTBOpeningWarning[];
+}> {
+  const startDateStr = startDate.toISOString().split("T")[0];
+  const dayBefore = new Date(startDate);
+  dayBefore.setDate(dayBefore.getDate() - 1);
+  const dayBeforeStr = dayBefore.toISOString().split("T")[0];
+
+  const warnings: TTBOpeningWarning[] = [];
+
+  // Tier 1: most recent FINALIZED snapshot ending before the period start.
+  const [snapshot] = await db
+    .select()
+    .from(ttbPeriodSnapshots)
+    .where(
+      and(
+        sql`${ttbPeriodSnapshots.periodEnd} < ${startDateStr}::date`,
+        eq(ttbPeriodSnapshots.status, "finalized"),
+      ),
+    )
+    .orderBy(desc(ttbPeriodSnapshots.periodEnd))
+    .limit(1);
+
+  if (snapshot) {
+    const adjacent = snapshot.periodEnd === dayBeforeStr;
+    const gapDays = adjacent
+      ? 0
+      : daysBetweenDateStrings(snapshot.periodEnd, dayBeforeStr);
+    if (!adjacent) {
+      warnings.push({
+        level: "warning",
+        category: "openingGap",
+        message: `Opening from snapshot ended ${snapshot.periodEnd}; ${gapDays} days uncovered before period start`,
+      });
+    }
+    return { source: "snapshot", snapshot, adjacent, gapDays, warnings };
+  }
+
+  // No finalized snapshot before this period — classify the fallback source,
+  // mirroring generateForm512017's manual-seed (opening balance, first period
+  // only) vs reconstructed decision.
+  const [settings] = await db
+    .select({
+      ttbOpeningBalanceDate: organizationSettings.ttbOpeningBalanceDate,
+      ttbOpeningBalances: organizationSettings.ttbOpeningBalances,
+    })
+    .from(organizationSettings)
+    .limit(1);
+
+  const openingBalanceDate = settings?.ttbOpeningBalanceDate
+    ? new Date(settings.ttbOpeningBalanceDate)
+    : null;
+  const dayAfterOpening = openingBalanceDate ? new Date(openingBalanceDate) : null;
+  if (dayAfterOpening) dayAfterOpening.setDate(dayAfterOpening.getDate() + 2);
+  const isFirstPeriod = !!(
+    openingBalanceDate &&
+    dayAfterOpening &&
+    startDate >= openingBalanceDate &&
+    startDate <= dayAfterOpening
+  );
+  const source: TTBOpeningSourceInfo["source"] =
+    settings?.ttbOpeningBalances && isFirstPeriod
+      ? "ttb_opening_balance"
+      : "calculated";
+
+  // A draft (un-finalized) prior-period snapshot means the chain is breakable:
+  // finalizing it would let this period open from it instead of reconstructing.
+  const [priorDraft] = await db
+    .select({ periodEnd: ttbPeriodSnapshots.periodEnd })
+    .from(ttbPeriodSnapshots)
+    .where(
+      and(
+        sql`${ttbPeriodSnapshots.periodEnd} < ${startDateStr}::date`,
+        sql`${ttbPeriodSnapshots.status} <> 'finalized'`,
+      ),
+    )
+    .orderBy(desc(ttbPeriodSnapshots.periodEnd))
+    .limit(1);
+
+  if (priorDraft) {
+    warnings.push({
+      level: "warning",
+      category: "openingReconstructed",
+      message:
+        "opening reconstructed from events; finalize the prior period's snapshot to chain openings",
+    });
+  }
+
+  return { source, adjacent: false, gapDays: 0, warnings };
+}
+
 export const ttbRouter = router({
   /**
    * READ-ONLY reconciliation diagnostic: reconstruct EVERY batch's on-hand
@@ -1717,20 +1837,12 @@ export const ttbRouter = router({
         const beginningBottledByClass: Record<string, number> = {};
 
         // 1. Check for previous period snapshot
-        // Format startDate as string for comparison
-        const startDateStr = startDate.toISOString().split("T")[0];
-
-        const [previousSnapshot] = await db
-          .select()
-          .from(ttbPeriodSnapshots)
-          .where(
-            and(
-              sql`${ttbPeriodSnapshots.periodEnd} < ${startDateStr}::date`,
-              eq(ttbPeriodSnapshots.status, "finalized")
-            )
-          )
-          .orderBy(desc(ttbPeriodSnapshots.periodEnd))
-          .limit(1);
+        // Phase 4 C5: shared opening-source resolution with adjacency check.
+        // `previousSnapshot` (below) drives the opening VALUES exactly as before;
+        // `openingResolution` additionally surfaces whether that snapshot chains
+        // cleanly to the period start (warn-only — values are unchanged).
+        const openingResolution = await resolveOpeningSource(startDate);
+        const previousSnapshot = openingResolution.snapshot;
 
         // Hoisted beginning bulk variables for calculated path
         let beginningBulkLiters = 0;
@@ -4336,6 +4448,12 @@ export const ttbRouter = router({
           varianceAnalysis,
           filedDrift,
           beginningInventory,
+          openingSource: {
+            source: openingResolution.source,
+            adjacent: openingResolution.adjacent,
+            gapDays: openingResolution.gapDays,
+          },
+          openingWarnings: openingResolution.warnings,
           wineProduced: {
             total: wineProducedGallons, // Press runs + juice purchases (pommeau juice already included)
           },
@@ -5155,22 +5273,24 @@ export const ttbRouter = router({
     .query(async ({ input }) => {
       try {
         // 1. Check for previous finalized snapshot
-        const [previousSnapshot] = await db
-          .select()
-          .from(ttbPeriodSnapshots)
-          .where(
-            and(
-              eq(ttbPeriodSnapshots.status, "finalized"),
-              lt(ttbPeriodSnapshots.periodEnd, input.periodStart.toISOString().split("T")[0])
-            )
-          )
-          .orderBy(desc(ttbPeriodSnapshots.periodEnd))
-          .limit(1);
+        // Phase 4 C5: shared opening-source resolution with adjacency check.
+        // `openingSource`/`openingWarnings` surface whether the snapshot chains
+        // cleanly to the period start; the returned VALUES are unchanged.
+        const openingResolution = await resolveOpeningSource(input.periodStart);
+        const previousSnapshot = openingResolution.snapshot;
+        const openingSource = {
+          source: openingResolution.source,
+          adjacent: openingResolution.adjacent,
+          gapDays: openingResolution.gapDays,
+        };
+        const openingWarnings = openingResolution.warnings;
 
         if (previousSnapshot) {
           // Use ending inventory from previous finalized snapshot
           return {
             source: "snapshot" as const,
+            openingSource,
+            openingWarnings,
             snapshotId: previousSnapshot.id,
             snapshotPeriodEnd: previousSnapshot.periodEnd,
             bulk: {
@@ -5212,6 +5332,8 @@ export const ttbRouter = router({
             const balances = settings.ttbOpeningBalances;
             return {
               source: "opening_balances" as const,
+              openingSource,
+              openingWarnings,
               openingBalanceDate: settings.ttbOpeningBalanceDate,
               bulk: balances.bulk,
               bottled: balances.bottled,
@@ -5223,6 +5345,8 @@ export const ttbRouter = router({
         // 3. Return zeros if no prior data
         return {
           source: "none" as const,
+          openingSource,
+          openingWarnings,
           bulk: {
             hardCider: 0,
             wineUnder16: 0,

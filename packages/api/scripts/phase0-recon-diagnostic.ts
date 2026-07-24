@@ -234,6 +234,30 @@ for (const year of YEARS) {
     } else {
       console.log("filedDrift: (none — no filed snapshot for this period)");
     }
+
+    // --- Phase 4 C5: opening-source consistency -------------------------
+    // Attached by generateForm512017 for every period. Expected: 2025/2026
+    // adjacent-snapshot (clean, no warnings); 2024 is the first year (report
+    // what it shows).
+    const os = form.openingSource;
+    if (os) {
+      yearOut.openingSource = {
+        source: os.source,
+        adjacent: os.adjacent,
+        gapDays: os.gapDays,
+      };
+      yearOut.openingWarnings = form.openingWarnings ?? [];
+      console.log(
+        `openingSource: source=${os.source}, adjacent=${os.adjacent}, gapDays=${os.gapDays}`,
+      );
+      const warns = form.openingWarnings ?? [];
+      if (warns.length > 0) {
+        console.log("  opening warnings:");
+        for (const w of warns) console.log(`    [${w.category}] ${w.message}`);
+      }
+    } else {
+      console.log("openingSource: (none)");
+    }
   } catch (e: any) {
     yearOut.formError = e.message;
     console.log(`generateForm512017 FAILED: ${e.message}`);
