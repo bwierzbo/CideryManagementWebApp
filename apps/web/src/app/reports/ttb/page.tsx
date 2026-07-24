@@ -30,7 +30,7 @@ import {
 } from "lucide-react";
 import { trpc } from "@/utils/trpc";
 import { toast } from "@/hooks/use-toast";
-import { TTBFormPreview } from "@/components/reports/TTBFormPreview";
+import { TTBFormPreview, FiledComparisonBadge } from "@/components/reports/TTBFormPreview";
 import { TTBPeriodFinalization } from "@/components/reports/TTBPeriodFinalization";
 import { ReportExportDropdown } from "@/components/reports/ReportExportDropdown";
 import { downloadTTBFormPDF, type TTBFormPDFData } from "@/utils/pdf/ttbForm512017";
@@ -335,6 +335,14 @@ export default function TTBReportsPage() {
                 <Save className="w-4 h-4 mr-1" />
                 {saveSnapshotMutation.isPending ? "Saving..." : "Save Snapshot"}
               </Button>
+
+              {/* Compact filed-comparison badge for FILED annual periods
+                  (Phase 4 C6) — reuses the page-level form query, no recompute. */}
+              {formData?.formData?.filedDrift && (
+                <span className="ml-auto">
+                  <FiledComparisonBadge drift={formData.formData.filedDrift} />
+                </span>
+              )}
             </div>
           </CardContent>
         </Card>

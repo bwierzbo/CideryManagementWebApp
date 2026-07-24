@@ -144,6 +144,123 @@ function VarianceBreakdown({ analysis }: { analysis: TTBForm512017Data["variance
 }
 
 // ---------------------------------------------------------------------------
+// Filed comparison (Phase 4 C6 — filed years are frozen)
+// ---------------------------------------------------------------------------
+
+// Per-line table behind the amber/red filed-comparison badge: label, filed,
+// recomputed, expected delta, residual, status.
+function FiledDriftTable({
+  lines,
+  tone,
+}: {
+  lines: NonNullable<TTBForm512017Data["filedDrift"]>["lines"];
+  tone: "amber" | "red";
+}) {
+  if (lines.length === 0) return null;
+  const box =
+    tone === "red"
+      ? "border-red-300 bg-red-50 text-red-900"
+      : "border-amber-300 bg-amber-50 text-amber-900";
+  const head = tone === "red" ? "text-red-800" : "text-amber-800";
+  return (
+    <div className={`border ${box} rounded p-2 text-[10px] space-y-1`}>
+      <p className={`font-semibold uppercase ${head}`}>Filed vs recompute (wine gallons)</p>
+      <table className="w-full tabular-nums">
+        <thead>
+          <tr className="text-left">
+            <th className="pr-2 font-semibold">Line</th>
+            <th className="px-1 text-right font-semibold">Filed</th>
+            <th className="px-1 text-right font-semibold">Recomp</th>
+            <th className="px-1 text-right font-semibold">Exp Δ</th>
+            <th className="px-1 text-right font-semibold">Resid</th>
+            <th className="pl-1 font-semibold">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {lines.map((l, i) => (
+            <tr key={i}>
+              <td className="pr-2">{l.label}</td>
+              <td className="px-1 text-right">{l.filedGal == null ? "—" : fmtAlways(l.filedGal)}</td>
+              <td className="px-1 text-right">{l.recomputedGal == null ? "—" : fmtAlways(l.recomputedGal)}</td>
+              <td className="px-1 text-right">{fmtAlways(l.expectedDeltaGal)}</td>
+              <td className="px-1 text-right">{l.residualGal == null ? "—" : fmtAlways(l.residualGal)}</td>
+              <td className="pl-1">{l.status}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// Filed-vs-recompute badge (present only for FILED annual periods). Mirrors the
+// variance badge's 3-state + expandable pattern:
+//  clean         → green "Matches filing"
+//  expected_only → amber "Matches filing + documented deltas" (expandable)
+//  new_drift     → red   "Recompute has drifted…" (expandable, drifted lines)
+export function FiledComparisonBadge({ drift }: { drift: TTBForm512017Data["filedDrift"] }) {
+  if (!drift) return null;
+
+  if (drift.status === "clean") {
+    return (
+      <span className="ml-2">
+        <Badge variant="default" className="bg-green-600 text-[10px] py-0">
+          <CheckCircle className="w-3 h-3 mr-1" />Matches filing
+        </Badge>
+      </span>
+    );
+  }
+
+  if (drift.status === "new_drift") {
+    const driftedLines = drift.lines.filter((l) => l.status === "new_drift");
+    return (
+      <details className="ml-2 relative">
+        <summary className="list-none cursor-pointer">
+          <Badge variant="destructive" className="text-[10px] py-0">
+            <AlertTriangle className="w-3 h-3 mr-1" />
+            Recompute has drifted from the filed form — investigate
+          </Badge>
+        </summary>
+        <div className="absolute right-0 top-full z-10 mt-1 w-96">
+          <FiledDriftTable lines={driftedLines} tone="red" />
+        </div>
+      </details>
+    );
+  }
+
+  // expected_only — documented deltas hold; show the compared (non-skipped) lines.
+  const comparedLines = drift.lines.filter((l) => l.status !== "skipped");
+  return (
+    <details className="ml-2 relative">
+      <summary className="list-none cursor-pointer">
+        <Badge variant="outline" className="border-amber-500 bg-amber-50 text-amber-700 text-[10px] py-0">
+          <CheckCircle className="w-3 h-3 mr-1" />
+          Matches filing + documented deltas
+        </Badge>
+      </summary>
+      <div className="absolute right-0 top-full z-10 mt-1 w-96">
+        <FiledDriftTable lines={comparedLines} tone="amber" />
+      </div>
+    </details>
+  );
+}
+
+// Small amber note for opening-chain diagnostics (Phase 4 C5). Warn-only.
+function OpeningWarningsNote({ warnings }: { warnings: TTBForm512017Data["openingWarnings"] }) {
+  if (!warnings || warnings.length === 0) return null;
+  return (
+    <div className="border border-amber-300 bg-amber-50 rounded p-2 text-[10px] text-amber-900 space-y-0.5">
+      {warnings.map((w, i) => (
+        <div key={i} className="flex gap-1">
+          <AlertTriangle className="w-3 h-3 mt-px flex-shrink-0 text-amber-600" />
+          <span>{w.message}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
@@ -350,8 +467,16 @@ export function TTBFormPreview({ formData, periodLabel, orgInfo }: TTBFormPrevie
                 </details>
               );
             })()}
+            {/* Filed comparison — only for FILED annual periods (Phase 4 C6). */}
+            <FiledComparisonBadge drift={formData.filedDrift} />
           </div>
         </div>
+        {/* Opening-chain diagnostics (Phase 4 C5) — warn-only. */}
+        {formData.openingWarnings && formData.openingWarnings.length > 0 && (
+          <div className="mt-2">
+            <OpeningWarningsNote warnings={formData.openingWarnings} />
+          </div>
+        )}
       </div>
 
       {/* ============================================================ */}
