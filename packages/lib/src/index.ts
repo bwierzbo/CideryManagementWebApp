@@ -19,6 +19,8 @@ export * from "./calculations/batch-volume";
 export * from "./calculations/sugar";
 export * from "./calculations/pasteurization";
 export * from "./calculations/ttb";
+export * from "./calculations/ttb-filed";
+export * from "./calculations/filed-drift";
 export * from "./calculations/so2";
 
 // Re-export recipe domain logic (client-safe)
