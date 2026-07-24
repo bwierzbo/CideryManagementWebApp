@@ -206,6 +206,34 @@ for (const year of YEARS) {
     plug.clampedVolume = null; // filled from recon summary below if exposed
     yearOut.plugInstrumentation = plug;
     console.log("plug instrumentation:", JSON.stringify(plug, null, 1));
+
+    // --- Phase 4 C4: filed-vs-recompute drift ---------------------------
+    // Attached by generateForm512017 when a FILED annual snapshot covers the
+    // period. Expected: 2025 "expected_only" (0 new_drift), 2024 "clean".
+    const fd = form.filedDrift;
+    if (fd) {
+      yearOut.filedDrift = {
+        status: fd.status,
+        newDriftCount: fd.newDriftCount,
+        maxResidualGal: fd.maxResidualGal,
+      };
+      const newDriftLines = (fd.lines ?? [])
+        .filter((l: any) => l.status === "new_drift")
+        .map((l: any) =>
+          `${l.label}: recomputed=${l.recomputedGal}, filed=${l.filedGal}, ` +
+          `delta=${l.deltaGal}, expected=${l.expectedDeltaGal}, residual=${l.residualGal}`,
+        );
+      console.log(
+        `filedDrift: status=${fd.status}, newDriftCount=${fd.newDriftCount}, ` +
+        `maxResidualGal=${fd.maxResidualGal}`,
+      );
+      if (newDriftLines.length > 0) {
+        console.log("  NEW DRIFT lines:");
+        for (const line of newDriftLines) console.log(`    ${line}`);
+      }
+    } else {
+      console.log("filedDrift: (none — no filed snapshot for this period)");
+    }
   } catch (e: any) {
     yearOut.formError = e.message;
     console.log(`generateForm512017 FAILED: ${e.message}`);

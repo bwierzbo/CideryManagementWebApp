@@ -91,6 +91,9 @@ import {
   type BrandyTransfer,
   type CiderBrandyInventory,
   type CiderBrandyReconciliation,
+  computeFiledDrift,
+  type FiledDriftResult,
+  type ExpectedDriftEntry,
 } from "lib";
 import { fetchBatchVolumeEvents } from "../services/batch-volume-events";
 import { recomputeBatchVolume } from "../services/batch-volume-recompute";
@@ -4275,6 +4278,45 @@ export const ttbRouter = router({
         // and line32_total during initial construction above — no post-hoc update needed.
 
         // ============================================
+        // Phase 4: filed-vs-recompute drift
+        // ============================================
+        // If a FILED annual snapshot covers this period, compare the recompute
+        // to the filed numbers, tolerating the documented permanent deltas
+        // (surface==="form" only — checkpoint-surface deltas belong to the
+        // reconciliation waterfall, not the form). Surfaces NEW drift beside
+        // varianceAnalysis without changing any line value.
+        let filedDrift: FiledDriftResult | undefined;
+        if (periodType === "annual") {
+          const [filedSnap] = await db
+            .select({
+              filedForm: ttbPeriodSnapshots.filedForm,
+              expectedDrift: ttbPeriodSnapshots.expectedDrift,
+            })
+            .from(ttbPeriodSnapshots)
+            .where(
+              and(
+                eq(ttbPeriodSnapshots.periodType, "annual"),
+                eq(ttbPeriodSnapshots.year, year),
+                eq(ttbPeriodSnapshots.isFiled, true),
+              ),
+            )
+            .limit(1);
+
+          if (filedSnap?.filedForm && Array.isArray(filedSnap.expectedDrift)) {
+            const formEntries = (filedSnap.expectedDrift as ExpectedDriftEntry[]).filter(
+              (e) => e.surface === "form",
+            );
+            // Only the recomputed columns/materials are needed to resolve the
+            // form-surface field paths.
+            filedDrift = computeFiledDrift(
+              { bulkWinesByTaxClass, bottledWinesByTaxClass, materials },
+              filedSnap.filedForm,
+              formEntries,
+            );
+          }
+        }
+
+        // ============================================
         // Build Response
         // ============================================
 
@@ -4292,6 +4334,7 @@ export const ttbRouter = router({
           materials,
           fermenters,
           varianceAnalysis,
+          filedDrift,
           beginningInventory,
           wineProduced: {
             total: wineProducedGallons, // Press runs + juice purchases (pommeau juice already included)

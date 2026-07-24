@@ -7,6 +7,8 @@
  * @see https://www.ttb.gov/forms/f512017.pdf
  */
 
+import type { FiledDriftResult } from "./filed-drift";
+
 // ============================================
 // Constants
 // ============================================
@@ -863,6 +865,14 @@ export interface TTBForm512017Data {
    * the unexplained variance.
    */
   varianceAnalysis?: TTBVarianceAnalysis;
+
+  /**
+   * Phase 4: filed-vs-recompute drift. Present only when an is_filed snapshot
+   * covers the requested annual period. Compares the recomputed form to the
+   * FILED numbers, tolerating the documented permanent deltas and flagging NEW
+   * drift (status "new_drift" with newDriftCount > 0).
+   */
+  filedDrift?: FiledDriftResult;
 
   /** Distillery operations (cider sent, brandy received) */
   distilleryOperations?: DistilleryOperations;
