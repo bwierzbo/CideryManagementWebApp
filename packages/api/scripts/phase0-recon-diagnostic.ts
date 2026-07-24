@@ -206,6 +206,58 @@ for (const year of YEARS) {
     plug.clampedVolume = null; // filled from recon summary below if exposed
     yearOut.plugInstrumentation = plug;
     console.log("plug instrumentation:", JSON.stringify(plug, null, 1));
+
+    // --- Phase 4 C4: filed-vs-recompute drift ---------------------------
+    // Attached by generateForm512017 when a FILED annual snapshot covers the
+    // period. Expected: 2025 "expected_only" (0 new_drift), 2024 "clean".
+    const fd = form.filedDrift;
+    if (fd) {
+      yearOut.filedDrift = {
+        status: fd.status,
+        newDriftCount: fd.newDriftCount,
+        maxResidualGal: fd.maxResidualGal,
+      };
+      const newDriftLines = (fd.lines ?? [])
+        .filter((l: any) => l.status === "new_drift")
+        .map((l: any) =>
+          `${l.label}: recomputed=${l.recomputedGal}, filed=${l.filedGal}, ` +
+          `delta=${l.deltaGal}, expected=${l.expectedDeltaGal}, residual=${l.residualGal}`,
+        );
+      console.log(
+        `filedDrift: status=${fd.status}, newDriftCount=${fd.newDriftCount}, ` +
+        `maxResidualGal=${fd.maxResidualGal}`,
+      );
+      if (newDriftLines.length > 0) {
+        console.log("  NEW DRIFT lines:");
+        for (const line of newDriftLines) console.log(`    ${line}`);
+      }
+    } else {
+      console.log("filedDrift: (none — no filed snapshot for this period)");
+    }
+
+    // --- Phase 4 C5: opening-source consistency -------------------------
+    // Attached by generateForm512017 for every period. Expected: 2025/2026
+    // adjacent-snapshot (clean, no warnings); 2024 is the first year (report
+    // what it shows).
+    const os = form.openingSource;
+    if (os) {
+      yearOut.openingSource = {
+        source: os.source,
+        adjacent: os.adjacent,
+        gapDays: os.gapDays,
+      };
+      yearOut.openingWarnings = form.openingWarnings ?? [];
+      console.log(
+        `openingSource: source=${os.source}, adjacent=${os.adjacent}, gapDays=${os.gapDays}`,
+      );
+      const warns = form.openingWarnings ?? [];
+      if (warns.length > 0) {
+        console.log("  opening warnings:");
+        for (const w of warns) console.log(`    [${w.category}] ${w.message}`);
+      }
+    } else {
+      console.log("openingSource: (none)");
+    }
   } catch (e: any) {
     yearOut.formError = e.message;
     console.log(`generateForm512017 FAILED: ${e.message}`);

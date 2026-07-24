@@ -12,7 +12,15 @@
  * They will FAIL until the calculation fixes are applied.
  */
 import { describe, it, expect, beforeAll } from "vitest";
+import { eq } from "drizzle-orm";
+import { db, ttbPeriodSnapshots } from "db";
 import { appRouter } from "..";
+import {
+  FILED_2024,
+  FILED_2025,
+  EXPECTED_DRIFT_2024,
+  EXPECTED_DRIFT_2025,
+} from "lib";
 
 // Admin context — same pattern as ttb-parity.test.ts
 const testContext = {
@@ -53,121 +61,26 @@ function expectClose(actual: number, expected: number, label: string, tol = TOLE
 }
 
 // ============================================
-// KNOWN-CORRECT 2025 PDF VALUES
-// From verified TTB Form 5120.17 filing
+// KNOWN-CORRECT 2025 PDF VALUES + PERMANENT DELTAS
 // ============================================
+// Both the filed numbers (FILED_2025) and the documented recompute-vs-filed
+// deltas (EXPECTED_DRIFT_2025) now live in packages/lib/src/calculations/
+// ttb-filed.ts (Phase 4 C1). This test consumes them so there is exactly one
+// source of truth, shared with the DB seed and the runtime comparator.
+//
+// FILED_2025 is the verified 2025 Form 5120.17; the deltas exist because the
+// fall-2025 production backlog was data-entered in 2026 with 2026-dated events,
+// so filed reflects physical reality while the recompute reflects events exactly
+// as entered (owner decision 2026-07-20: no re-dating, no amended filing).
+// If one of these drifts, the ENGINE changed (investigate) — the data
+// explanation did not.
+const PDF = FILED_2025;
 
-const PDF = {
-  sectionA: {
-    hardCider: {
-      line1_opening: 1061.0,
-      line2_produced: 4807.7,
-      line10_changeOfClassIn: 5.0,
-      line12_totalIn: 5873.7,
-      line13_packaged: 148.9,
-      line16_distillation: 753.2,
-      line24_changeOfClassOut: 641.4, // perry no longer cross-class (cider→perry are both hardCider)
-      line29_losses: 238.2,       // all losses: bulk + bottling. Line 30 reserved for physical inventory shortages only. +5 gal from distillery adj.
-      line31_ending: 4092.3,      // LIVE currentVolumeLiters — after data fixes
-      line32_totalOut: 5873.7,
-    },
-    wineUnder16: {
-      line1_opening: 0.0,
-      line2_produced: 56.2,
-      line10_changeOfClassIn: 641.4, // perry no longer cross-class (cider→perry are both hardCider)
-      line12_totalIn: 697.6,      // adjusted for perry classification
-      line13_packaged: 628.2,
-      line24_changeOfClassOut: 5.0,
-      line29_losses: 46.6,        // all losses: bulk + bottling. Line 30 reserved for physical inventory shortages only.
-      line31_ending: 17.9,
-      line32_totalOut: 697.6,     // adjusted for perry classification
-    },
-    wine16To21: {
-      line1_opening: 60.0,
-      line4_wineSpirits: 119.0,
-      line12_totalIn: 179.0,
-      line13_packaged: 55.2,
-      line29_losses: 1.5,         // all losses: bulk (1.3) + bottling (0.2). Line 30 reserved for physical inventory shortages only.
-      line31_ending: 122.3,
-      line32_totalOut: 179.0,
-    },
-  },
-  sectionB: {
-    hardCider: {
-      line2_bottledFromBulk: 148.9,
-      line8_removedTaxPaid: 148.9,
-      line20_endingBottled: 0.0,
-    },
-    wineUnder16: {
-      line2_bottledFromBulk: 628.2,
-      line8_removedTaxPaid: 566.3,
-      line20_endingBottled: 61.9,
-    },
-    wine16To21: {
-      line2_bottledFromBulk: 55.2,
-      line8_removedTaxPaid: 55.2,
-      line20_endingBottled: 0.0,
-    },
-  },
-  materials: {
-    applesLbs: 63299,
-    juiceGal: 3872,
-    otherFruitLbs: 786,
-    sugarLbs: 40,
-  },
-  brandy: {
-    receivedGal: 55.0,
-    receivedProofGal: 77.0,
-    usedGal: 29.9,
-    usedProofGal: 41.9,
-    remainingGal: 25.1,
-    remainingProofGal: 35.1,
-  },
-};
-
-// ============================================
-// PERMANENT RECOMPUTE-vs-FILED DELTAS
-// ============================================
-// The PDF constants above are the FILED 2025 numbers and remain the documented
-// source of truth. Some recomputed lines permanently differ from what was
-// filed. Cause: the fall-2025 production backlog was data-entered in 2026 with
-// 2026-dated events, so the filed numbers reflect physical reality while the
-// recompute reflects events exactly as entered. Owner decision (2026-07-20):
-// no event re-dating, no amended filing — so these deltas are documented here,
-// not hidden. Each entry is `delta = recomputed_actual - filed_expected`
-// (rounded to 0.1 gal) keyed by the exact assertion label. If one of these
-// drifts, the ENGINE changed (investigate) — the data explanation did not.
-const KNOWN_DELTA: Record<string, number> = {
-  // Hard Cider — the backlog lands here. Recompute counts fall-2025 volume as
-  // still-on-hand (booked 2026) rather than lost/ended in 2025, deflating Line
-  // 31 ending by ~1.15k gal.
-  // Phase 3 C2 (de-plug): Line 29 is now the REAL recorded operational losses,
-  // no longer the balance-forcing plug. The old +1111.6 delta was the plugged
-  // backlog it absorbed; that discrepancy is now surfaced as the honest
-  // unexplained variance (~1096 gal, see the "gap vs unexplained" balance test),
-  // NOT hidden in losses. Delta is now just the small recorded-loss difference.
-  "HC Line 29 Losses": 15.4, // actual 253.6 (recorded losses) vs filed 238.2
-  "HC Line 31 Ending": -1156.1, // actual 2936.2 vs filed 4092.3
-  "HC Line 12 Total In": 1.6, // actual 5875.3 vs filed 5873.7 (rounding of backlog inflows)
-  // Wine <16% — plum/quince packaging booked 2026, so less packaged/ending in 2025.
-  "W<16 Line 13 Packaged": -35.5, // actual 592.7 vs filed 628.2
-  // Phase 3 C2 (de-plug): Line 29 = real recorded losses (37.1), not the plug.
-  // The former +18.0 plugged amount is now honest unexplained variance (~27.5).
-  "W<16 Line 29 Losses": -9.5, // actual 37.1 (recorded losses) vs filed 46.6
-  "W<16 Line 31 Ending": -5.0, // actual 12.9 vs filed 17.9
-  "W<16 Line 12 Total In": -22.4, // actual 675.2 vs filed 697.6
-  "W<16-B Line 2 Bottled": -35.5, // actual 592.7 vs filed 628.2 (same event as Line 13)
-  "W<16-B Line 20 Ending": -35.5, // actual 26.4 vs filed 61.9
-  // Wine 16-21% (Pommeau) — extra 2025 blend inflow present in recompute.
-  "W16-21 Line 12 Total In": 45.7, // actual 224.7 vs filed 179.0
-  // Materials — apple weight off by one small backlog receipt (tol 100).
-  "Materials Apples (lbs)": -357.0, // actual 62942 vs filed 63299
-  // Opening balances: SBD reconstruction of the Dec-31-2024 carried-forward
-  // batches runs ~10 gal below the filed opening. This is reconstruction drift
-  // on opening (not the backlog), permanent given no re-dating of history.
-  "Waterfall total opening": -9.8, // actual 1111.3 vs filed 1121.0 (tol 5)
-  "HC waterfall opening": -10.2, // actual 1051.8 vs filed 1062.0 (tol 5)
-};
+// KNOWN_DELTA keyed by the exact assertion label, derived from the shared
+// entries (delta = recomputed_actual − filed_expected, rounded to 0.1 gal).
+const KNOWN_DELTA: Record<string, number> = Object.fromEntries(
+  EXPECTED_DRIFT_2025.map((e) => [e.label, e.deltaGal]),
+);
 
 // This suite asserts the recompute equals the FILED numbers plus the documented
 // permanent deltas above (KNOWN_DELTA). It runs unconditionally.
@@ -1147,4 +1060,49 @@ describe("TTB Golden 2025 — Reconciliation Summary", () => {
       expect(pct, `${pct.toFixed(0)}% batches exceed vessel capacity`).toBeLessThan(20);
     });
   });
+});
+
+// ============================================
+// FILED-SNAPSHOT SOURCE PARITY (Phase 4 C2)
+// ============================================
+// The seeded filed_form / expected_drift jsonb on the 2024 & 2025 period
+// snapshots MUST stay byte-for-byte equal to the lib constants they were seeded
+// from. This guard fails if the DB rows drift from packages/lib (e.g. someone
+// re-seeds from a stale copy, or edits the constants without re-running
+// seed-filed-snapshots.ts). It keeps the runtime comparator (C4) honest.
+describe("TTB Filed-Snapshot Source Parity", () => {
+  const SNAPSHOTS = [
+    {
+      year: 2024,
+      id: "fb3964e1-3560-43a1-9ec6-377e9cc1778a",
+      filedForm: FILED_2024,
+      expectedDrift: EXPECTED_DRIFT_2024,
+    },
+    {
+      year: 2025,
+      id: "f968b31f-7ee7-43bc-9e06-510cfd3920c0",
+      filedForm: FILED_2025,
+      expectedDrift: EXPECTED_DRIFT_2025,
+    },
+  ] as const;
+
+  for (const snap of SNAPSHOTS) {
+    it(`${snap.year} snapshot filed_form/expected_drift equals lib constants`, async () => {
+      const [row] = await db
+        .select({
+          isFiled: ttbPeriodSnapshots.isFiled,
+          filedForm: ttbPeriodSnapshots.filedForm,
+          expectedDrift: ttbPeriodSnapshots.expectedDrift,
+        })
+        .from(ttbPeriodSnapshots)
+        .where(eq(ttbPeriodSnapshots.id, snap.id));
+
+      expect(row, `${snap.year} filed snapshot ${snap.id} must exist`).toBeDefined();
+      expect(row.isFiled, `${snap.year} snapshot must be flagged is_filed`).toBe(true);
+      // jsonb round-trips as plain JSON — compare against the JSON projection of
+      // the lib constants so readonly/`as const` typing doesn't affect equality.
+      expect(row.filedForm).toEqual(JSON.parse(JSON.stringify(snap.filedForm)));
+      expect(row.expectedDrift).toEqual(JSON.parse(JSON.stringify(snap.expectedDrift)));
+    });
+  }
 });

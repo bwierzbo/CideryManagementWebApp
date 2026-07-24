@@ -155,6 +155,22 @@ Not a problem (verified correct): juice is excluded until it becomes cider/pomme
 - **Fix the period day-boundary here (bug-hunt finding #1), NOT standalone.** `generateForm512017` compares timestamp columns with `lte(col, endDate)` where `endDate` = 00:00 of the last day, silently dropping the entire last calendar day (understates removals/production/ending). The surgical fix (a next-day-midnight `endExclusive` with `lt`/`>= endExclusive` on ~40 timestamp comparisons) is correct and preserves internal parity — BUT tested in isolation it produced a **+1285/−1319 gal Hard Cider swing that only ~19 gal of real Dec-31 activity explains**, because the form plugs-to-balance (Line 29) and amplifies small boundary changes. So the boundary fix must land *after* the plugs are replaced, when its effect is a real number instead of plug noise. The isolated patch is reproducible: add `const endExclusive = new Date(endDate); endExclusive.setDate(endExclusive.getDate()+1)` after the `getPeriodDateRange` destructure, then `lte(col,endDate)→lt(col,endExclusive)`, `<= ${endDate}→< ${endExclusive}`, `> ${endDate}→>= ${endExclusive}` on timestamp columns only (leave `endDate.toISOString()` date-strings, `batches.endDate` column checks, and the display field). Golden tests will need re-derivation once it lands.
 
 ### Phase 4 — Snapshot-vs-recompute drift detection
+> **STATUS: DONE 2026-07-24** (branch `recon/phase4-filed-drift`, commits C1–C8). The filed 2024/2025
+> numbers + their documented expected deltas live in ONE canonical source
+> (`packages/lib/src/calculations/ttb-filed.ts`) materialized onto the two finalized snapshots
+> (migration 0148: is_filed/filed_at/filed_form/expected_drift), with a golden describe block that
+> fails CI if DB and constants diverge. `computeFiledDrift` runs on every form generation for a filed
+> year: 2024 verifies "clean" (flow lines skipped per the freeze), 2025 "expected_only" (max residual
+> 0.05 gal); any NEW drift is a red alarm in CI and in the UI (3-state Filed-comparison badge on
+> TTBFormPreview + reports/ttb page). Opening-source resolution is shared and adjacency-checked with
+> warn-only openingGap/openingReconstructed warnings (2025/2026 open from adjacent snapshots).
+> Pommeau booking methodology v2 (2026+, prospective gate like ttb_origin_year): the filed
+> methodology's cider double-count (line 4 + line 10, baked into filed 2025 line 4 = 119, zero tax
+> impact) ends — cider books once as change-of-class, brandy on line 4; 2026 pommeau gap
+> +29.6 → +3.96, form variance 40.3 → **14.7 gal**; 2024/2025 byte-identical. Packaged ledger
+> unified into computeReconciliationFromBatches (one per-run basis, byte-identical outputs),
+> proving the hardCider −13.3 checkpoint residual is a packaging-loss BASIS difference
+> (bulk reducer gross vs ledger net) — the named follow-up. Golden 75/75 throughout.
 - Store filed 2024/2025 numbers in the DB (they currently live only in tests) and add a runtime path that compares a recomputed period against its filed `ttbPeriodSnapshot`, flagging drift.
 - Enforce opening-source consistency across period boundaries (§2.9).
 

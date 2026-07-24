@@ -344,6 +344,16 @@ export const ttbPeriodSnapshots = pgTable(
     notes: text("notes"),
     adjustments: text("adjustments"), // JSON string for manual adjustments
 
+    // Filed-snapshot drift detection (migration 0148, Phase 4)
+    // When is_filed, this snapshot records the numbers as SUBMITTED to TTB:
+    // `filedForm` = the filed Form 5120.17 values, `expectedDrift` = the
+    // owner-accepted recompute-vs-filed deltas. A runtime recompute of the
+    // period is compared to these to surface NEW drift only.
+    isFiled: boolean("is_filed").notNull().default(false),
+    filedAt: date("filed_at"),
+    filedForm: jsonb("filed_form"),
+    expectedDrift: jsonb("expected_drift"),
+
     // Audit
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
