@@ -19,6 +19,16 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Save,
   Lock,
   Loader2,
@@ -27,6 +37,8 @@ import {
   Info,
   FileText,
   Calendar,
+  Printer,
+  BadgeCheck,
 } from "lucide-react";
 import { trpc } from "@/utils/trpc";
 import { useToast } from "@/hooks/use-toast";
@@ -51,6 +63,7 @@ export function TTBPeriodFinalization({
 }: TTBPeriodFinalizationProps) {
   const { toast } = useToast();
   const [showFinalizeDialog, setShowFinalizeDialog] = useState(false);
+  const [showFiledDialog, setShowFiledDialog] = useState(false);
   const utils = trpc.useUtils();
 
   // Get beginning inventory source
@@ -77,6 +90,13 @@ export function TTBPeriodFinalization({
         title: result.created ? "Snapshot Created" : "Snapshot Updated",
         description: "Period data has been saved as a draft.",
       });
+      result.warnings?.forEach((w) =>
+        toast({
+          title: "Checkpoint warning",
+          description: w.message,
+          variant: "destructive",
+        }),
+      );
       refetchSnapshots();
     },
     onError: (error) => {
@@ -90,15 +110,42 @@ export function TTBPeriodFinalization({
 
   // Finalize period mutation
   const finalizeMutation = trpc.ttb.finalizePeriodSnapshot.useMutation({
-    onSuccess: () => {
+    onSuccess: (result) => {
       toast({
         title: "Period Finalized",
         description:
           "This period has been finalized. The ending inventory will be used as beginning inventory for the next period.",
       });
+      result.warnings?.forEach((w) =>
+        toast({
+          title: "Checkpoint warning",
+          description: w.message,
+          variant: "destructive",
+        }),
+      );
       setShowFinalizeDialog(false);
       refetchSnapshots();
       utils.ttb.getBeginningInventory.invalidate();
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Mark-as-filed mutation (Phase 7 C4) — freezes the period for drift monitoring.
+  const markFiledMutation = trpc.ttb.markPeriodFiled.useMutation({
+    onSuccess: () => {
+      toast({
+        title: "Period Filed",
+        description:
+          "This period is recorded as filed with TTB and frozen for drift monitoring.",
+      });
+      setShowFiledDialog(false);
+      refetchSnapshots();
     },
     onError: (error) => {
       toast({
@@ -171,6 +218,18 @@ export function TTBPeriodFinalization({
     }
   };
 
+  const handleMarkFiled = () => {
+    if (currentSnapshot) {
+      markFiledMutation.mutate({ snapshotId: currentSnapshot.id });
+    }
+  };
+
+  const handleOpenPrint = () => {
+    const params = new URLSearchParams({ periodType, year: String(year) });
+    if (periodNumber) params.set("periodNumber", String(periodNumber));
+    window.open(`/reports/ttb/print?${params.toString()}`, "_blank");
+  };
+
   const formatGallons = (gallons: number) => {
     return gallons.toLocaleString("en-US", {
       minimumFractionDigits: 1,
@@ -180,6 +239,7 @@ export function TTBPeriodFinalization({
 
   const isLoading = isLoadingInventory || isLoadingSnapshots;
   const isFinalized = currentSnapshot?.status === "finalized";
+  const isFiled = !!currentSnapshot?.isFiled;
   const hasDraft = currentSnapshot?.status === "draft" || currentSnapshot?.status === "review";
 
   return (
@@ -198,7 +258,13 @@ export function TTBPeriodFinalization({
                 </CardDescription>
               </div>
             </div>
-            {isFinalized && (
+            {isFiled && (
+              <Badge className="bg-blue-100 text-blue-800">
+                <BadgeCheck className="w-3 h-3 mr-1" />
+                Filed
+              </Badge>
+            )}
+            {isFinalized && !isFiled && (
               <Badge className="bg-green-100 text-green-800">
                 <CheckCircle className="w-3 h-3 mr-1" />
                 Finalized
@@ -315,20 +381,58 @@ export function TTBPeriodFinalization({
               )}
 
               {isFinalized && (
-                <div className="flex items-center gap-3 p-4 bg-green-50 border border-green-200 rounded-lg">
-                  <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0" />
-                  <div>
-                    <p className="text-sm font-medium text-green-800">
-                      Period Finalized
-                    </p>
-                    <p className="text-xs text-green-700 mt-0.5">
-                      This period was finalized on{" "}
-                      {currentSnapshot?.finalizedAt
-                        ? new Date(currentSnapshot.finalizedAt).toLocaleDateString()
-                        : "N/A"}
-                      . The ending inventory is now being used as the beginning
-                      inventory for subsequent periods.
-                    </p>
+                <div className="space-y-4">
+                  <div className="flex items-center gap-3 p-4 bg-green-50 border border-green-200 rounded-lg">
+                    <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0" />
+                    <div>
+                      <p className="text-sm font-medium text-green-800">
+                        Period Finalized
+                      </p>
+                      <p className="text-xs text-green-700 mt-0.5">
+                        This period was finalized on{" "}
+                        {currentSnapshot?.finalizedAt
+                          ? new Date(currentSnapshot.finalizedAt).toLocaleDateString()
+                          : "N/A"}
+                        . The ending inventory is now being used as the beginning
+                        inventory for subsequent periods.
+                      </p>
+                    </div>
+                  </div>
+
+                  {isFiled && (
+                    <div className="flex items-center gap-3 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                      <BadgeCheck className="w-5 h-5 text-blue-600 flex-shrink-0" />
+                      <div>
+                        <p className="text-sm font-medium text-blue-800">
+                          Filed with TTB
+                        </p>
+                        <p className="text-xs text-blue-700 mt-0.5">
+                          Recorded as filed on{" "}
+                          {currentSnapshot?.filedAt
+                            ? new Date(currentSnapshot.filedAt).toLocaleDateString()
+                            : "N/A"}
+                          . The filed form is frozen — any future recompute
+                          difference is flagged as drift.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex gap-3 justify-end">
+                    <Button variant="outline" onClick={handleOpenPrint}>
+                      <Printer className="w-4 h-4 mr-2" />
+                      Print / Save as PDF
+                    </Button>
+                    {!isFiled && (
+                      <Button
+                        onClick={() => setShowFiledDialog(true)}
+                        disabled={markFiledMutation.isPending}
+                        className="bg-blue-600 hover:bg-blue-700"
+                      >
+                        <BadgeCheck className="w-4 h-4 mr-2" />
+                        Mark as filed
+                      </Button>
+                    )}
                   </div>
                 </div>
               )}
@@ -393,6 +497,44 @@ export function TTBPeriodFinalization({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Mark-as-filed confirmation (Phase 7 C4) */}
+      <AlertDialog open={showFiledDialog} onOpenChange={setShowFiledDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Mark this period as filed with TTB?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Records this period as filed with TTB and freezes it for drift
+              monitoring — any future recompute difference becomes an alarm.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={markFiledMutation.isPending}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                handleMarkFiled();
+              }}
+              disabled={markFiledMutation.isPending}
+              className="bg-blue-600 hover:bg-blue-700"
+            >
+              {markFiledMutation.isPending ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Filing...
+                </>
+              ) : (
+                <>
+                  <BadgeCheck className="w-4 h-4 mr-2" />
+                  Mark as filed
+                </>
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

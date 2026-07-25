@@ -3,10 +3,72 @@
  * Report of Wine Premises Operations - Hard Cider
  */
 
-import type { TTBFormPDFData } from "../pdf/ttbForm512017";
 import { formatDate as formatDateUtil, formatDateTime } from "@/utils/date-format";
 
-// Re-export the type for convenience
+/**
+ * Serialized TTB Form data (dates as strings from tRPC).
+ *
+ * Inlined here when the pdfMake TTB export (utils/pdf/ttbForm512017.ts) was
+ * retired in favor of the print-CSS form page (Phase 7 C3). This Excel export
+ * is now the sole consumer of the type.
+ */
+export interface TTBFormPDFData {
+  reportingPeriod: {
+    type: "monthly" | "quarterly" | "annual";
+    startDate: string | Date;
+    endDate: string | Date;
+    year: number;
+    month?: number;
+    quarter?: number;
+  };
+  beginningInventory: {
+    bulk: number;
+    bottled: number;
+    total: number;
+  };
+  wineProduced: {
+    total: number;
+  };
+  receipts: {
+    total: number;
+  };
+  taxPaidRemovals: {
+    tastingRoom: number;
+    wholesale: number;
+    onlineDtc: number;
+    events: number;
+    uncategorized: number;
+    total: number;
+  };
+  otherRemovals: {
+    samples: number;
+    breakage: number;
+    processLosses: number;
+    spoilage: number;
+    total: number;
+  };
+  endingInventory: {
+    bulk: number;
+    bottled: number;
+    total: number;
+  };
+  taxSummary: {
+    taxableGallons: number;
+    grossTax: number;
+    smallProducerCredit: number;
+    creditEligibleGallons: number;
+    netTaxOwed: number;
+    effectiveRate: number;
+  };
+  reconciliation: {
+    totalAvailable: number;
+    totalAccountedFor: number;
+    variance: number;
+    balanced: boolean;
+  };
+}
+
+// Re-export the type under the Excel-specific name for convenience
 export type { TTBFormPDFData as TTBFormExcelData };
 
 // Lazy import xlsx to avoid SSR issues

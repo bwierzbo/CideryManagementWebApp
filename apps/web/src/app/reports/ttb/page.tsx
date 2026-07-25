@@ -27,14 +27,15 @@ import {
   AlertCircle,
   History,
   Loader2,
+  Printer,
 } from "lucide-react";
 import { trpc } from "@/utils/trpc";
 import { toast } from "@/hooks/use-toast";
 import { TTBFormPreview, FiledComparisonBadge } from "@/components/reports/TTBFormPreview";
+import { LIQ774Preview } from "@/components/reports/LIQ774Preview";
 import { TTBPeriodFinalization } from "@/components/reports/TTBPeriodFinalization";
 import { ReportExportDropdown } from "@/components/reports/ReportExportDropdown";
-import { downloadTTBFormPDF, type TTBFormPDFData } from "@/utils/pdf/ttbForm512017";
-import { downloadTTBFormExcel } from "@/utils/excel/ttbForm512017";
+import { downloadTTBFormExcel, type TTBFormPDFData } from "@/utils/excel/ttbForm512017";
 
 const currentYear = new Date().getFullYear();
 const years = [currentYear, currentYear - 1, currentYear - 2];
@@ -65,12 +66,18 @@ export default function TTBReportsPage() {
   const [selectedPeriod, setSelectedPeriod] = useState(new Date().getMonth() + 1);
   const [activeTab, setActiveTab] = useState("generate");
   const [hasInitialized, setHasInitialized] = useState(false);
+  // Federal (TTB F 5120.17) vs State (WA LIQ-774) view.
+  const [formType, setFormType] = useState<"federal" | "state">("federal");
 
   // Fetch organization settings for orgInfo
   const { data: orgSettings } = trpc.settings.getOrganizationSettings.useQuery();
 
   // Fetch the latest needed period from backend
   const { data: latestNeeded } = trpc.ttb.getLatestNeededPeriod.useQuery();
+
+  // Cheap filing-frequency status (reads settings only, no form generation) for
+  // the re-verify banner. Flags a stale or overridden filing-frequency setting.
+  const { data: freqStatus } = trpc.ttb.getFilingFrequencyStatus.useQuery();
 
   // Initialize period type, year, and period from the latest needed period
   useEffect(() => {
@@ -100,6 +107,22 @@ export default function TTBReportsPage() {
     }
   );
 
+  // WA LIQ-774 (State view) — only fetched when the State tab is active.
+  const {
+    data: liq774Data,
+    isLoading: isLoadingLiq774,
+    refetch: refetchLiq774,
+  } = trpc.ttb.generateLIQ774.useQuery(
+    {
+      periodType,
+      year: selectedYear,
+      periodNumber: periodType !== "annual" ? selectedPeriod : undefined,
+    },
+    {
+      enabled: hasInitialized && formType === "state",
+    }
+  );
+
   // Get report history
   const { data: historyData, isLoading: isLoadingHistory } = trpc.ttb.getReportHistory.useQuery(
     { limit: 10, year: selectedYear },
@@ -112,23 +135,6 @@ export default function TTBReportsPage() {
       toast({
         title: "Report Saved",
         description: "TTB report snapshot saved successfully",
-      });
-    },
-    onError: (error) => {
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive",
-      });
-    },
-  });
-
-  // Submit report mutation
-  const submitReportMutation = trpc.ttb.submitReport.useMutation({
-    onSuccess: () => {
-      toast({
-        title: "Report Submitted",
-        description: "TTB report marked as submitted",
       });
     },
     onError: (error) => {
@@ -193,19 +199,26 @@ export default function TTBReportsPage() {
     });
   };
 
-  const handleExportPDF = async () => {
-    if (!formData) return;
-
-    const filename = `TTB-Form-5120.17-${formData.periodLabel.replace(/\s+/g, "-")}.pdf`;
-    await downloadTTBFormPDF(
-      formData.formData as TTBFormPDFData,
-      formData.periodLabel,
-      filename
-    );
-    toast({
-      title: "PDF Downloaded",
-      description: `${filename} has been downloaded`,
+  const handleOpenPrintView = () => {
+    const params = new URLSearchParams({
+      periodType,
+      year: String(selectedYear),
     });
+    if (periodType !== "annual") {
+      params.set("periodNumber", String(selectedPeriod));
+    }
+    window.open(`/reports/ttb/print?${params.toString()}`, "_blank");
+  };
+
+  const handleOpenLIQ774PrintView = () => {
+    const params = new URLSearchParams({
+      periodType,
+      year: String(selectedYear),
+    });
+    if (periodType !== "annual") {
+      params.set("periodNumber", String(selectedPeriod));
+    }
+    window.open(`/reports/ttb/print-liq774?${params.toString()}`, "_blank");
   };
 
   const handleExportExcel = async () => {
@@ -235,9 +248,43 @@ export default function TTBReportsPage() {
             TTB Form 5120.17
           </h1>
           <p className="text-gray-600 mt-1">
-            Report of Wine Premises Operations
+            {formType === "federal"
+              ? "Report of Wine Premises Operations"
+              : "WA LIQ-774 — Domestic Winery Summary Tax Report"}
           </p>
         </div>
+
+        {/* Federal (TTB) / State (WA LIQ-774) switcher */}
+        <Tabs
+          value={formType}
+          onValueChange={(v) => setFormType(v as "federal" | "state")}
+          className="mb-4"
+        >
+          <TabsList>
+            <TabsTrigger value="federal">Federal — TTB F 5120.17</TabsTrigger>
+            <TabsTrigger value="state">State — WA LIQ-774</TabsTrigger>
+          </TabsList>
+        </Tabs>
+
+        {/* Filing-frequency re-verify note (near the period controls) */}
+        {freqStatus && (freqStatus.mismatch || freqStatus.stale) && (
+          <div className="mb-4 flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+            <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+            <p className="text-xs text-amber-800">
+              {freqStatus.mismatch
+                ? "Your saved TTB/state filing frequency no longer matches the last computed determination. "
+                : "Your filing frequency hasn't been verified in over a year. "}
+              Review it in{" "}
+              <a
+                href="/admin"
+                className="font-medium underline hover:text-amber-900"
+              >
+                Tax Reporting settings
+              </a>
+              .
+            </p>
+          </div>
+        )}
 
         {/* Compact Period Selector */}
         <Card className="mb-4">
@@ -316,29 +363,51 @@ export default function TTBReportsPage() {
                 </Select>
               )}
 
-              <Button size="sm" onClick={() => refetchForm()} disabled={isLoadingForm}>
-                {isLoadingForm ? <Loader2 className="w-4 h-4 animate-spin" /> : "Go"}
+              <Button
+                size="sm"
+                onClick={() => (formType === "state" ? refetchLiq774() : refetchForm())}
+                disabled={formType === "state" ? isLoadingLiq774 : isLoadingForm}
+              >
+                {(formType === "state" ? isLoadingLiq774 : isLoadingForm) ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  "Go"
+                )}
               </Button>
 
-              <ReportExportDropdown
-                onExportPDF={formData ? handleExportPDF : undefined}
-                onExportExcel={formData ? handleExportExcel : undefined}
-                disabled={!formData}
-              />
+              {/* Excel export + snapshot are federal-only (LIQ-774 has no snapshot/excel yet). */}
+              {formType === "federal" && (
+                <ReportExportDropdown
+                  onExportExcel={formData ? handleExportExcel : undefined}
+                  disabled={!formData}
+                />
+              )}
 
               <Button
                 variant="outline"
                 size="sm"
-                onClick={handleSaveSnapshot}
-                disabled={!formData || saveSnapshotMutation.isPending}
+                onClick={formType === "state" ? handleOpenLIQ774PrintView : handleOpenPrintView}
+                disabled={formType === "state" ? !liq774Data : !formData}
               >
-                <Save className="w-4 h-4 mr-1" />
-                {saveSnapshotMutation.isPending ? "Saving..." : "Save Snapshot"}
+                <Printer className="w-4 h-4 mr-1" />
+                Print / Save as PDF
               </Button>
+
+              {formType === "federal" && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleSaveSnapshot}
+                  disabled={!formData || saveSnapshotMutation.isPending}
+                >
+                  <Save className="w-4 h-4 mr-1" />
+                  {saveSnapshotMutation.isPending ? "Saving..." : "Save Snapshot"}
+                </Button>
+              )}
 
               {/* Compact filed-comparison badge for FILED annual periods
                   (Phase 4 C6) — reuses the page-level form query, no recompute. */}
-              {formData?.formData?.filedDrift && (
+              {formType === "federal" && formData?.formData?.filedDrift && (
                 <span className="ml-auto">
                   <FiledComparisonBadge drift={formData.formData.filedDrift} />
                 </span>
@@ -362,7 +431,37 @@ export default function TTBReportsPage() {
 
           {/* Form Preview Tab */}
           <TabsContent value="generate">
-            {isLoadingForm ? (
+            {formType === "state" ? (
+              isLoadingLiq774 ? (
+                <Card>
+                  <CardContent className="py-12">
+                    <div className="flex flex-col items-center justify-center">
+                      <Loader2 className="w-8 h-8 animate-spin text-amber-600 mb-4" />
+                      <p className="text-gray-500">Generating WA LIQ-774 data...</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              ) : liq774Data ? (
+                <LIQ774Preview
+                  data={liq774Data.liq774}
+                  periodLabel={liq774Data.periodLabel}
+                  orgInfo={orgSettings ? {
+                    name: orgSettings.name,
+                    address: orgSettings.address,
+                    stateLicenseNumber: orgSettings.stateLicenseNumber,
+                  } : undefined}
+                  channelAttribution={liq774Data.channelAttribution}
+                />
+              ) : (
+                <Card>
+                  <CardContent className="py-12">
+                    <div className="text-center text-gray-500">
+                      Select a period and click &quot;Go&quot; to view the LIQ-774.
+                    </div>
+                  </CardContent>
+                </Card>
+              )
+            ) : isLoadingForm ? (
               <Card>
                 <CardContent className="py-12">
                   <div className="flex flex-col items-center justify-center">
@@ -499,15 +598,6 @@ export default function TTBReportsPage() {
                                 >
                                   View
                                 </Button>
-                                {report.status === "draft" && (
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => submitReportMutation.mutate(report.id)}
-                                  >
-                                    Submit
-                                  </Button>
-                                )}
                               </div>
                             </td>
                           </tr>

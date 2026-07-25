@@ -354,6 +354,13 @@ export const ttbPeriodSnapshots = pgTable(
     filedForm: jsonb("filed_form"),
     expectedDrift: jsonb("expected_drift"),
 
+    // Period ↔ checkpoint linkage (migration 0152, Phase 7 C4). The latest
+    // finalized, non-superseded reconciliation checkpoint on or before period_end
+    // at save/finalize time — the reconciliation basis this period opens from.
+    reconciliationSnapshotId: uuid("reconciliation_snapshot_id").references(
+      () => ttbReconciliationSnapshots.id,
+    ),
+
     // Audit
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -446,6 +453,12 @@ export const ttbReconciliationSnapshots = pgTable(
 
     // Tax class breakdown (JSON) - optional detailed breakdown
     taxClassBreakdown: text("tax_class_breakdown"), // JSON for detailed per-class data
+
+    // Checkpoint data model (Phase 6 C1, migration 0149)
+    varianceAnalysis: jsonb("variance_analysis"), // Full waterfall (per-class + totals) + components at lock time
+    unexplainedVarianceGal: numeric("unexplained_variance_gal", { precision: 12, scale: 3 }), // Signed aggregate unexplained (net of accepted adjustments)
+    acceptedAdjustmentIds: jsonb("accepted_adjustment_ids"), // Array of waterfall adjustment ids that explained variance in the window
+    amendsId: uuid("amends_id"), // Self-ref: this finalized row supersedes the referenced checkpoint (amend = new row)
 
     // Reconciliation status
     isReconciled: boolean("is_reconciled").notNull().default(false),
@@ -738,6 +751,10 @@ export const ttbWaterfallAdjustments = pgTable(
     // (filed-snapshot opening basis), the CHECKPOINT summary (reconstruction
     // basis), or both. Migration 0147.
     scope: text("scope").notNull().default("both"),
+    // Optional TTB tax class this adjustment targets (migration 0150). NULL =
+    // aggregate-level (reduces only the aggregate unexplained total). A value
+    // (hardCider, wineUnder16, …) also reduces that class's per-class variance.
+    taxClass: text("tax_class"),
     adjustedBy: uuid("adjusted_by").references(() => users.id),
     adjustedAt: timestamp("adjusted_at").notNull().defaultNow(),
     createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -803,3 +820,38 @@ export interface TTBOpeningBalances {
     grapeSpirits: number;
   };
 }
+
+/**
+ * Reconciliation Runs (Phase 5 — automated-reconciliation PRD, migration 0154)
+ *
+ * Durable log of automated (cron) and manual reconciliation health checks. Each
+ * row is one read-only pass of the health check over the existing reconciliation
+ * engines. The dashboard "Reconciliation health" card reads the latest row;
+ * alert-on-change compares consecutive rows.
+ */
+export const reconciliationRuns = pgTable(
+  "reconciliation_runs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ranAt: timestamp("ran_at", { withTimezone: true }).notNull().defaultNow(),
+    // 'cron' | 'manual'
+    trigger: text("trigger").notNull().$type<"cron" | "manual">(),
+    // Roll-up: 'clean' | 'attention' | 'drift'
+    status: text("status").notNull().$type<"clean" | "attention" | "drift">(),
+    // # batches the reconciliation page would flag as fail / warning.
+    perBatchFailCount: integer("per_batch_fail_count").notNull().default(0),
+    perBatchWarnCount: integer("per_batch_warn_count").notNull().default(0),
+    // Signed aggregate unexplained variance (post-adjustment), gallons.
+    totalUnexplainedGal: numeric("total_unexplained_gal", { precision: 12, scale: 3 }),
+    // Phase 6 C3 checkpoint drift: 'clean' | 'drifted' | null (no checkpoint).
+    checkpointDriftStatus: text("checkpoint_drift_status"),
+    // Per filed year: { [year]: 'clean' | 'expected_only' | 'new_drift', ... }
+    filedDrift: jsonb("filed_drift"),
+    // openingWarnings, per-year detail, changedSinceLastRun.
+    details: jsonb("details"),
+    durationMs: integer("duration_ms"),
+  },
+  (table) => ({
+    ranAtIdx: index("reconciliation_runs_ran_at_idx").on(table.ranAt),
+  }),
+);

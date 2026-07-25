@@ -100,6 +100,67 @@ export const FILED_2025 = {
 } as const;
 
 /**
+ * FILED_2025 re-expressed in the RECOMPUTE form's shape (Phase 7 C4b).
+ *
+ * The runtime `full`-mode comparator derives its canonical field set from the
+ * numeric leaves of the filed form under `bulkWinesByTaxClass`,
+ * `bottledWinesByTaxClass`, and `materials`, then compares each leaf same-path
+ * against the recompute. FILED_2025 is stored in the human-facing sectionA/B
+ * shape (kept verbatim for the golden suite), so this projection maps its values
+ * onto the recompute keys. It covers EXACTLY the lines the golden suite asserts,
+ * so `full`-mode runtime coverage mirrors the golden CI coverage. Values are
+ * sourced from FILED_2025 (no transcription) — only the key names differ.
+ */
+export const FILED_2025_FORM = {
+  bulkWinesByTaxClass: {
+    hardCider: {
+      line1_onHandBeginning: FILED_2025.sectionA.hardCider.line1_opening,
+      line2_produced: FILED_2025.sectionA.hardCider.line2_produced,
+      line12_total: FILED_2025.sectionA.hardCider.line12_totalIn,
+      line13_bottled: FILED_2025.sectionA.hardCider.line13_packaged,
+      line16_distillingMaterial: FILED_2025.sectionA.hardCider.line16_distillation,
+      line29_losses: FILED_2025.sectionA.hardCider.line29_losses,
+      line31_onHandEnd: FILED_2025.sectionA.hardCider.line31_ending,
+    },
+    wineUnder16: {
+      line1_onHandBeginning: FILED_2025.sectionA.wineUnder16.line1_opening,
+      line2_produced: FILED_2025.sectionA.wineUnder16.line2_produced,
+      line12_total: FILED_2025.sectionA.wineUnder16.line12_totalIn,
+      line13_bottled: FILED_2025.sectionA.wineUnder16.line13_packaged,
+      line29_losses: FILED_2025.sectionA.wineUnder16.line29_losses,
+      line31_onHandEnd: FILED_2025.sectionA.wineUnder16.line31_ending,
+    },
+    wine16To21: {
+      line1_onHandBeginning: FILED_2025.sectionA.wine16To21.line1_opening,
+      line4_wineSpirits: FILED_2025.sectionA.wine16To21.line4_wineSpirits,
+      line12_total: FILED_2025.sectionA.wine16To21.line12_totalIn,
+      line13_bottled: FILED_2025.sectionA.wine16To21.line13_packaged,
+      line31_onHandEnd: FILED_2025.sectionA.wine16To21.line31_ending,
+    },
+  },
+  bottledWinesByTaxClass: {
+    hardCider: {
+      line2_bottled: FILED_2025.sectionB.hardCider.line2_bottledFromBulk,
+      line8_removedTaxpaid: FILED_2025.sectionB.hardCider.line8_removedTaxPaid,
+      line20_onHandEnd: FILED_2025.sectionB.hardCider.line20_endingBottled,
+    },
+    wineUnder16: {
+      line2_bottled: FILED_2025.sectionB.wineUnder16.line2_bottledFromBulk,
+      line8_removedTaxpaid: FILED_2025.sectionB.wineUnder16.line8_removedTaxPaid,
+      line20_onHandEnd: FILED_2025.sectionB.wineUnder16.line20_endingBottled,
+    },
+    wine16To21: {
+      line2_bottled: FILED_2025.sectionB.wine16To21.line2_bottledFromBulk,
+      line8_removedTaxpaid: FILED_2025.sectionB.wine16To21.line8_removedTaxPaid,
+    },
+  },
+  materials: {
+    applesReceivedLbs: FILED_2025.materials.applesLbs,
+    appleJuiceGallons: FILED_2025.materials.juiceGal,
+  },
+} as const;
+
+/**
  * FILED_2024 mirrors the verified 2024 Form 5120.17 (filed 2025-01-13).
  * Source: the FILED table in docs/reconciliation-phase0-report.md §C and the
  * FILED constant in packages/api/scripts/phase0-recon-diagnostic.ts.
@@ -185,6 +246,25 @@ export interface ExpectedDriftEntry {
   mode?: FiledDriftMode;
   /** Why this delta exists — the audit trail for the owner decision. */
   reason: string;
+}
+
+/**
+ * How a filed snapshot's drift is evaluated (Phase 7 C4b).
+ * - `"entries"`: compare ONLY the listed entries (field↔filedField). Used for
+ *   2024, whose flow lines are not event-sourced and must not be mass-compared.
+ * - `"full"`: compare a canonical field set derived from the filed form — every
+ *   numeric leaf under `bulkWinesByTaxClass`, `bottledWinesByTaxClass`, and
+ *   `materials` — at the default tolerance, with `entries` acting as per-field
+ *   overrides (delta / tolerance / skip, matched by `field`). Any leaf beyond
+ *   tolerance without a covering override is NEW drift. Used for 2025 and every
+ *   future filing (markPeriodFiled writes `{ mode: "full", entries: [] }`).
+ */
+export type FiledDriftEvalMode = "full" | "entries";
+
+/** The `expected_drift` jsonb payload stored on a filed period snapshot. */
+export interface ExpectedDriftPayload {
+  mode: FiledDriftEvalMode;
+  entries: ExpectedDriftEntry[];
 }
 
 /**
@@ -312,6 +392,21 @@ export const EXPECTED_DRIFT_2025: ExpectedDriftEntry[] = [
     tolerance: 100,
     reason:
       "Apple weight off by one small backlog receipt (value is lbs, wide tolerance).",
+  },
+  {
+    // Full-mode override (Phase 7 C4b): juice is a canonical materials leaf; the
+    // recompute matches filed within the wide gallon tolerance the golden suite
+    // already allows, so it carries no documented delta — only its tolerance.
+    label: "Materials Juice (gal)",
+    field: "materials.appleJuiceGallons",
+    filedField: "materials.juiceGal",
+    taxClass: null,
+    section: "materials",
+    surface: "form",
+    deltaGal: 0,
+    tolerance: 50,
+    reason:
+      "Juice gallons reconstructed from press/purchase events land within ~50 gal of filed (rounding of many small receipts); no re-dating needed.",
   },
   {
     label: "Waterfall total opening",
@@ -452,3 +547,21 @@ export const EXPECTED_DRIFT_2024: ExpectedDriftEntry[] = [
     reason: "Minor reconstruction drift on wine16To21 ending.",
   },
 ];
+
+// ---------------------------------------------------------------------------
+// Filed-drift payloads (Phase 7 C4b) — the `expected_drift` jsonb seeded onto
+// each filed period snapshot. The golden source-parity guard deep-equals the DB
+// rows against these, and the runtime comparator reads them to pick full vs
+// entries mode. Paired with the filed FORM each snapshot stores:
+//   2024 → FILED_2024      (native sectionA shape, entries mode / skip lines)
+//   2025 → FILED_2025_FORM (recompute shape, full mode with entry overrides)
+// ---------------------------------------------------------------------------
+export const FILED_DRIFT_PAYLOAD_2024: ExpectedDriftPayload = {
+  mode: "entries",
+  entries: EXPECTED_DRIFT_2024,
+};
+
+export const FILED_DRIFT_PAYLOAD_2025: ExpectedDriftPayload = {
+  mode: "full",
+  entries: EXPECTED_DRIFT_2025,
+};

@@ -22,6 +22,7 @@ import "./COGSSummaryWidget";
 import "./LowInventoryWidget";
 import "./RecentActivityWidget";
 import "./UpcomingTasksWidget";
+import "./ReconciliationHealthWidget";
 
 // Re-export widget components for direct use
 export { ProductionStatusWidget } from "./ProductionStatusWidget";
@@ -37,3 +38,4 @@ export { COGSSummaryWidget } from "./COGSSummaryWidget";
 export { LowInventoryWidget } from "./LowInventoryWidget";
 export { RecentActivityWidget } from "./RecentActivityWidget";
 export { UpcomingTasksWidget } from "./UpcomingTasksWidget";
+export { ReconciliationHealthWidget } from "./ReconciliationHealthWidget";
