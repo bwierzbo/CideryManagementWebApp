@@ -175,9 +175,27 @@ Not a problem (verified correct): juice is excluded until it becomes cider/pomme
 - Enforce opening-source consistency across period boundaries (§2.9).
 
 ### Phase 5 — Automation & trust surface (fold in existing PRD)
+> **STATUS: DONE 2026-07-25** (branch `recon/phase6-7-checkpoint-filing`). Nightly health check
+> (Vercel cron 09:00 UTC, CRON_SECRET-guarded route; admin Run-now button for local) reuses the
+> existing engines only: per-batch counts, post-adjustment unexplained, checkpoint drift, filed-year
+> drift, opening warnings → clean/attention/drift roll-up with alert-on-change, stored in
+> `reconciliation_runs` (migration 0154) + one audit_logs entry per run. Dashboard
+> ReconciliationHealthWidget reads the latest stored run. Live: attention — 0 fails/2 warns,
+> 13.01 gal unexplained (the documented HC basis residual), filed years clean/expected_only.
+> OWNER ACTIVATION: set CRON_SECRET in Vercel + verify project root vs apps/web/vercel.json.
 - Implement `.claude/prds/automated-reconciliation.md`: nightly recon job → `audit_logs`, dashboard "last reconciled at X / N drift items" badge, period-boundary snapshots, drift alerts.
 
 ### Phase 6 — Reconciliation checkpoint model (user-facing workflow)
+> **STATUS: DONE 2026-07-25** (commits 4e67b4c..4c3deab). ttb_reconciliation_snapshots IS the
+> checkpoint table: DB-trigger immutability on finalized rows (migration 0149), completeReconciliation
+> (server-authoritative engine re-run, dryRun, tolerance gate on POST-adjustment net: 0.5 gal/class,
+> 1.0 aggregate), amendment chains (amends_id; supersession-aware reads), checkpoint-drift detection
+> (backdated edits behind a locked checkpoint light up; legacy physical-basis checkpoints get a
+> neutral note). Accept-variance-with-reason writes scoped, CLASS-SCOPED ttbWaterfallAdjustments
+> (migration 0150 tax_class; raw→accepted→net always displayed) — an understood residual like the HC
+> −13.3 basis difference can be accepted and locked past. Plain-language CheckpointPanel on
+> /reports/reconciliation + CheckpointHistory on /audit-trail/reconciliation; Phase-2 Pin/Unpin UI
+> harvested from an orphaned component (deleted).
 The product model the owner described, built on the Phase 1–3 authoritative engine:
 - **Run reconciliation any time** for a chosen "as-of" date: show per-batch + aggregate volumes reconstructed from history, the true variance, and any batches needing attention (unreconciled / manually-corrected).
 - **Complete/lock a reconciliation** → writes a checkpoint (`ttbReconciliationSnapshots`) that means "numbers trusted-accurate through this date." The next reconciliation/period starts from it (opening = prior checkpoint ending). A completed checkpoint should be immutable (amend = new checkpoint).
@@ -185,6 +203,19 @@ The product model the owner described, built on the Phase 1–3 authoritative en
 - UX for a non-accountant owner: plain-language status ("✓ Reconciled through Jun 30 — inventory matches" / "⚠ 3 batches off by 12 gal — review"), one-click drill-in, explicit "accept variance with reason" before locking.
 
 ### Phase 7 — TTB report periods + printable/submittable forms
+> **STATUS: DONE 2026-07-25** (commits 19d9198..f7ecda4). Filing frequency determined from the regs
+> (27 CFR 24.271(b)(1) + 24.300(g), WSLCB 6,000-gal rule) as tested pure functions + a real-data
+> determination (owner: federal ANNUAL/ANNUAL, WA ANNUAL approved — matches actual filing practice)
+> with owner-confirmation card + re-verify banners (migration 0151; WA Board approval on file seeded).
+> Printable 5120.17 via print-CSS (pdfMake path retired) with checkpoint-basis footer and a new_drift
+> DRAFT watermark. Period↔checkpoint linkage (migration 0152) + markPeriodFiled: filed periods
+> persist their form and enter FULL-FIELD drift monitoring ({mode:'full'} expected-drift payloads —
+> 2025 runtime-compares all 28 canonical lines, expected_only, 0 new drift). WA LIQ-774 (migration
+> 0153 distributor_name; LIQ-777 deferred, capture started): computeLIQ774 reproduces the filed 2025
+> tax boxes EXACTLY (631.42/49.68/681.10; box1 −11 gal pinned: post-filing perry reclass), box16≡box9
+> identity as a 3-state flag; preview + print route + Federal/State switcher. Spec doc box-1 prose
+> corrected (arithmetic proof: box 1 = Section A line 12 total handled). Known data gap surfaced:
+> ~505 gal of 2025 distributions lack channel/linkage (historical; filed 2025 remains truth).
 - **Period selection:** monthly / quarterly / annual. OWNER REQUIREMENT (2026-07-20): the system
   should DETERMINE the required filing frequency from the TTB regulations (27 CFR part 24 filing
   thresholds — research exact minimums; owner is annual until minimums are met) and then VERIFY the
