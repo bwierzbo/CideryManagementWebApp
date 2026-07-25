@@ -8710,6 +8710,10 @@ export const ttbRouter = router({
           finalizedAt: ttbReconciliationSnapshots.finalizedAt,
           createdAt: ttbReconciliationSnapshots.createdAt,
           amendsId: ttbReconciliationSnapshots.amendsId,
+          unexplainedVarianceGal: ttbReconciliationSnapshots.unexplainedVarianceGal,
+          // Presence of variance_analysis distinguishes post-Phase-6 (engine-basis)
+          // checkpoints from legacy rows compared on a physical-inventory basis.
+          hasVarianceAnalysis: sql<boolean>`${ttbReconciliationSnapshots.varianceAnalysis} IS NOT NULL`,
         })
         .from(ttbReconciliationSnapshots)
         .orderBy(desc(ttbReconciliationSnapshots.reconciliationDate))
@@ -8746,6 +8750,11 @@ export const ttbRouter = router({
           inventoryOnHand: parseFloat(s.inventoryOnHand || "0"),
           inventoryDifference: parseFloat(s.inventoryDifference || "0"),
           productionTotal: parseFloat(s.productionTotal || "0"),
+          // Unexplained variance recorded at lock time (null for legacy rows).
+          unexplainedVarianceGal:
+            s.unexplainedVarianceGal != null ? parseFloat(s.unexplainedVarianceGal) : null,
+          // Legacy = pre-Phase-6 checkpoint (no variance_analysis) → physical basis.
+          isLegacy: !s.hasVarianceAnalysis,
           // The amendment that supersedes this row (null if still current).
           supersededBy: supersededByMap.get(s.id) ?? null,
         })),

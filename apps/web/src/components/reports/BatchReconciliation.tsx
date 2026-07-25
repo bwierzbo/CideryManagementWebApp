@@ -72,6 +72,7 @@ import {
   EyeOff,
   Copy,
   Lock,
+  Unlock,
   AlertCircle,
   Info,
 } from "lucide-react";
@@ -84,6 +85,7 @@ import {
 } from "@/utils/error-handling";
 import { litersToWineGallons, wineGallonsToLiters } from "lib/src/calculations/ttb";
 import { ReportExportDropdown } from "@/components/reports/ReportExportDropdown";
+import { CheckpointPanel } from "@/components/reports/CheckpointPanel";
 import { arrayToCSV, downloadCSV } from "@/utils/csv/exportHelpers";
 
 const PRODUCT_TYPES = [
@@ -151,6 +153,8 @@ function ValidationStatusMenu({
   onForceVerify,
   onResetToPending,
   onSetStatus,
+  onPinVolume,
+  onClearPinnedVolume,
   disabled,
   hasReconIssue,
 }: {
@@ -158,6 +162,8 @@ function ValidationStatusMenu({
   onForceVerify: (batchId: string) => void;
   onResetToPending: (batchId: string) => void;
   onSetStatus: (batchId: string, status: ReconciliationStatus) => void;
+  onPinVolume: (batch: any) => void;
+  onClearPinnedVolume: (batch: any) => void;
   disabled: boolean;
   hasReconIssue?: boolean;
 }) {
@@ -245,6 +251,18 @@ function ValidationStatusMenu({
               Reset to Pending
             </DropdownMenuItem>
           </>
+        )}
+        <DropdownMenuSeparator />
+        {batch.volumeManuallyCorrected ? (
+          <DropdownMenuItem onClick={() => onClearPinnedVolume(batch)}>
+            <Unlock className="w-3.5 h-3.5 mr-2 text-indigo-500" />
+            Unpin Volume (recompute)
+          </DropdownMenuItem>
+        ) : (
+          <DropdownMenuItem onClick={() => onPinVolume(batch)}>
+            <Lock className="w-3.5 h-3.5 mr-2 text-indigo-500" />
+            Pin Volume (manual correction)
+          </DropdownMenuItem>
         )}
       </DropdownMenuContent>
     </DropdownMenu>
@@ -393,6 +411,8 @@ function ExpandableReconciliationRow({
   onForceVerify,
   onResetToPending,
   onSetStatus,
+  onPinVolume,
+  onClearPinnedVolume,
   isVerifying,
   reconMap,
   volumeUnit,
@@ -404,6 +424,8 @@ function ExpandableReconciliationRow({
   onForceVerify: (batchId: string) => void;
   onResetToPending: (batchId: string) => void;
   onSetStatus: (batchId: string, status: ReconciliationStatus) => void;
+  onPinVolume: (batch: any) => void;
+  onClearPinnedVolume: (batch: any) => void;
   isVerifying: boolean;
   reconMap: Map<string, any>;
   volumeUnit: VolumeUnit;
@@ -472,6 +494,11 @@ function ExpandableReconciliationRow({
                 <Badge variant="outline" className="bg-indigo-50 text-indigo-700 border-indigo-200 text-[10px] px-1.5 py-0 h-4">
                   Carried Forward
                 </Badge>
+              )}
+              {batch.volumeManuallyCorrected && (
+                <span title="Volume manually corrected (pinned)">
+                  <Lock className="w-3.5 h-3.5 text-indigo-500 flex-shrink-0" />
+                </span>
               )}
             </div>
             <span className="text-xs text-gray-500">{batch.batchNumber}</span>
@@ -544,6 +571,8 @@ function ExpandableReconciliationRow({
             onForceVerify={onForceVerify}
             onResetToPending={onResetToPending}
             onSetStatus={onSetStatus}
+            onPinVolume={onPinVolume}
+            onClearPinnedVolume={onClearPinnedVolume}
             disabled={isVerifying}
             hasReconIssue={hasReconIssue}
           />
@@ -783,6 +812,11 @@ export function BatchReconciliation() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [batchToDelete, setBatchToDelete] = useState<any>(null);
 
+  // Pin volume (manual correction) dialog — HARVEST pin/unpin
+  const [pinDialogBatch, setPinDialogBatch] = useState<any | null>(null);
+  const [pinVolumeInput, setPinVolumeInput] = useState("");
+  const [pinReasonInput, setPinReasonInput] = useState("");
+
   // Sorting
   const [sortField, setSortField] = useState<SortField>("startDate");
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
@@ -1018,6 +1052,24 @@ export function BatchReconciliation() {
     },
   });
 
+  // Pin/unpin a batch volume as manually corrected (HARVEST pin)
+  const pinVolumeMutation = trpc.batch.setVolumeManualCorrection.useMutation({
+    onSuccess: (result) => {
+      utils.batch.listForReconciliation.invalidate();
+      utils.ttb.getReconciliationSummary.invalidate();
+      showSuccess(
+        result.corrected ? "Volume Pinned" : "Volume Unpinned",
+        result.corrected
+          ? `Volume pinned at ${result.volumeLiters.toFixed(1)} L — reconciliation will not fight this value`
+          : `Recomputed from history: ${result.volumeLiters.toFixed(1)} L`,
+      );
+      setPinDialogBatch(null);
+    },
+    onError: (error) => {
+      handleTransactionError(error, "Batch", "Volume Correction");
+    },
+  });
+
   const rawBatches = data?.batches || [];
   const statusCounts = data?.statusCounts || { verified: 0, pending: 0, total: 0, newProduction: 0, carriedForward: 0, passing: 0, warnings: 0, failing: 0 };
 
@@ -1182,6 +1234,20 @@ export function BatchReconciliation() {
     });
   };
 
+  const handlePinVolume = (batch: any) => {
+    setPinVolumeInput(formatVolume(batch.currentVolumeLiters));
+    setPinReasonInput("");
+    setPinDialogBatch(batch);
+  };
+
+  const handleClearPinnedVolume = (batch: any) => {
+    pinVolumeMutation.mutate({
+      batchId: batch.id,
+      corrected: false,
+      reason: "Unpinned via reconciliation page — recompute from event history",
+    });
+  };
+
   // Bulk actions (from selection bar)
   const handleResetToPending = () => {
     if (selectedIds.size === 0) return;
@@ -1337,6 +1403,17 @@ export function BatchReconciliation() {
             Automated validation for TTB Form 5120.17 reporting. Batches are verified when all data quality checks pass.
           </p>
         </div>
+
+        {/* Checkpoint panel */}
+        <CheckpointPanel
+          asOfDate={reconEndDate}
+          periodYear={parseInt(reconEndDate.slice(0, 4), 10)}
+          summary={reconciliationData}
+          onChanged={() => {
+            utils.ttb.getReconciliationSummary.invalidate();
+            utils.batch.listForReconciliation.invalidate();
+          }}
+        />
 
         {/* Filter Bar */}
         <Card className="mb-4">
@@ -1987,6 +2064,8 @@ export function BatchReconciliation() {
                         onForceVerify={handleForceVerify}
                         onResetToPending={handleResetSingleToPending}
                         onSetStatus={handleSetSingleStatus}
+                        onPinVolume={handlePinVolume}
+                        onClearPinnedVolume={handleClearPinnedVolume}
                         isVerifying={validateAndVerifyMutation.isPending || bulkUpdateMutation.isPending}
                         reconMap={reconMap}
                         volumeUnit={volumeUnit}
@@ -2451,6 +2530,74 @@ export function BatchReconciliation() {
           </Collapsible>
         </div>
         )}
+
+        {/* Pin Volume (manual correction) Dialog */}
+        <AlertDialog
+          open={pinDialogBatch !== null}
+          onOpenChange={(open) => { if (!open) setPinDialogBatch(null); }}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle className="flex items-center gap-2">
+                <Lock className="w-5 h-5 text-indigo-600" />
+                Pin Volume — Manual Correction
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                Pin &ldquo;{pinDialogBatch?.customName || pinDialogBatch?.name}&rdquo; at a
+                known-correct volume. While pinned, the reconciliation checks and the
+                self-heal recompute will respect this value instead of the event
+                history. Unpin later to snap back to what the ledger says.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <div className="space-y-3 py-1">
+              <div>
+                <label className="text-sm font-medium text-gray-700">Corrected volume (L)</label>
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.1"
+                  value={pinVolumeInput}
+                  onChange={(e) => setPinVolumeInput(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-gray-700">
+                  Reason <span className="text-gray-400">(required, min 10 characters)</span>
+                </label>
+                <Input
+                  value={pinReasonInput}
+                  onChange={(e) => setPinReasonInput(e.target.value)}
+                  placeholder="e.g. Physically measured tank on 2026-07-21"
+                />
+              </div>
+            </div>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={(e) => {
+                  e.preventDefault();
+                  if (!pinDialogBatch) return;
+                  pinVolumeMutation.mutate({
+                    batchId: pinDialogBatch.id,
+                    corrected: true,
+                    correctedVolumeLiters: parseFloat(pinVolumeInput) || 0,
+                    reason: pinReasonInput,
+                  });
+                }}
+                className="bg-indigo-600 hover:bg-indigo-700"
+                disabled={
+                  pinVolumeMutation.isPending ||
+                  pinReasonInput.trim().length < 10 ||
+                  pinVolumeInput === "" ||
+                  isNaN(parseFloat(pinVolumeInput)) ||
+                  parseFloat(pinVolumeInput) < 0
+                }
+              >
+                {pinVolumeMutation.isPending ? "Pinning..." : "Pin Volume"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
         {/* Delete Confirmation Dialog */}
         <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
