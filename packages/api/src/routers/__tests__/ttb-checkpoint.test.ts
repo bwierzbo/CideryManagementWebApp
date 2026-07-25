@@ -19,6 +19,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import {
   db,
   ttbReconciliationSnapshots,
+  ttbWaterfallAdjustments,
   batches,
   batchVolumeAdjustments,
   users,
@@ -31,6 +32,7 @@ const cleanup = {
   snapshotNames: [] as string[],
   batchIds: [] as string[],
   adjustmentIds: [] as string[],
+  waterfallAdjustmentIds: [] as string[],
 };
 
 let adminUserId: string;
@@ -72,6 +74,13 @@ afterAll(async () => {
   if (cleanup.batchIds.length > 0) {
     await db.delete(batchVolumeAdjustments).where(inArray(batchVolumeAdjustments.batchId, cleanup.batchIds));
     await db.delete(batches).where(inArray(batches.id, cleanup.batchIds));
+  }
+  // Class-scoped waterfall adjustments created by the accept-unblocks test —
+  // hard-delete our throwaway rows so real reconciliation returns to normal.
+  if (cleanup.waterfallAdjustmentIds.length > 0) {
+    await db
+      .delete(ttbWaterfallAdjustments)
+      .where(inArray(ttbWaterfallAdjustments.id, cleanup.waterfallAdjustmentIds));
   }
 });
 
@@ -281,5 +290,77 @@ describe("checkpoint drift detection (C3)", () => {
     const driftedLater: any = await caller.ttb.getReconciliationSummary({ endDate: "2099-12-31" });
     expect(driftedLater.checkpointDrift.checkpointId).toBe(ckpt.id);
     expect(driftedLater.checkpointDrift.status).toBe("drifted");
+  }, 180000);
+});
+
+describe("class-scoped accepted variances (migration 0150)", () => {
+  it("is data-neutral with no class-scoped rows, then a class-scoped accept nets the class down and unblocks the lock", async () => {
+    const asOfDate = "2025-12-31";
+    const periodYear = 2025;
+
+    // 1. Data-neutrality: with zero class-scoped rows, every waterfall row's NET
+    //    equals its RAW and acceptedGal is 0 (net gating collapses to raw).
+    const base: any = await caller.ttb.getReconciliationSummary({ endDate: asOfDate });
+    const baseRows: any[] = base.waterfall.byTaxClass ?? [];
+    expect(baseRows.length).toBeGreaterThan(0);
+    for (const w of baseRows) {
+      expect(w.acceptedGal).toBe(0);
+      expect(w.netUnexplainedVariance).toBe(w.unexplainedVariance);
+    }
+
+    // 2. The real 2025 lock is blocked (per-class and/or aggregate over tolerance).
+    const blockedPreview = await caller.ttb.completeReconciliation({
+      asOfDate,
+      name: `${MARKER}-classscope-preview`,
+      dryRun: true,
+    });
+    expect(blockedPreview.ok).toBe(false);
+    expect("blockers" in blockedPreview && blockedPreview.blockers.length).toBeGreaterThan(0);
+
+    // 3. Accept EVERY class with a non-trivial raw residual via a class-scoped
+    //    'other' row whose amount == the class's raw (effect of 'other' == amount,
+    //    so net = raw − amount ≈ 0). This also drives the aggregate to ≈ 0.
+    const toAccept = baseRows.filter((w) => Math.abs(w.unexplainedVariance) > 0.05);
+    expect(toAccept.length).toBeGreaterThan(0);
+    for (const w of toAccept) {
+      const row = await caller.ttb.createWaterfallAdjustment({
+        periodYear,
+        waterfallLine: "other",
+        amountGallons: w.unexplainedVariance,
+        reason: `${MARKER} class-scoped accept for ${w.taxClass}`,
+        taxClass: w.taxClass,
+        scope: "both",
+      });
+      cleanup.waterfallAdjustmentIds.push(row.id);
+    }
+
+    // 4. Re-query: raw is UNCHANGED (honest), acceptedGal reflects the row, and
+    //    net collapses to ≈ 0 for each accepted class.
+    const after: any = await caller.ttb.getReconciliationSummary({ endDate: asOfDate });
+    const afterById = new Map<string, any>(
+      (after.waterfall.byTaxClass ?? []).map((w: any) => [w.taxClass, w]),
+    );
+    for (const w of toAccept) {
+      const now = afterById.get(w.taxClass);
+      expect(now).toBeTruthy();
+      expect(now.unexplainedVariance).toBe(w.unexplainedVariance); // raw preserved
+      expect(Math.abs(now.acceptedGal - w.unexplainedVariance)).toBeLessThanOrEqual(0.05);
+      expect(Math.abs(now.netUnexplainedVariance)).toBeLessThanOrEqual(0.5);
+    }
+
+    // 5. The lock is now unblocked (per-class net + aggregate within tolerance).
+    const unblocked = await caller.ttb.completeReconciliation({
+      asOfDate,
+      name: `${MARKER}-classscope-unblocked`,
+      dryRun: true,
+    });
+    expect("blockers" in unblocked && unblocked.blockers.length).toBe(0);
+    expect(unblocked.ok).toBe(true);
+
+    // 6. listWaterfallAdjustments returns the taxClass on the new rows.
+    const listed = await caller.ttb.listWaterfallAdjustments({ periodYear });
+    const mine = listed.filter((r) => cleanup.waterfallAdjustmentIds.includes(r.id));
+    expect(mine.length).toBe(toAccept.length);
+    expect(mine.every((r) => r.taxClass != null)).toBe(true);
   }, 180000);
 });

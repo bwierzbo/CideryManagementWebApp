@@ -744,6 +744,10 @@ export const ttbWaterfallAdjustments = pgTable(
     // (filed-snapshot opening basis), the CHECKPOINT summary (reconstruction
     // basis), or both. Migration 0147.
     scope: text("scope").notNull().default("both"),
+    // Optional TTB tax class this adjustment targets (migration 0150). NULL =
+    // aggregate-level (reduces only the aggregate unexplained total). A value
+    // (hardCider, wineUnder16, …) also reduces that class's per-class variance.
+    taxClass: text("tax_class"),
     adjustedBy: uuid("adjusted_by").references(() => users.id),
     adjustedAt: timestamp("adjusted_at").notNull().defaultNow(),
     createdAt: timestamp("created_at").notNull().defaultNow(),

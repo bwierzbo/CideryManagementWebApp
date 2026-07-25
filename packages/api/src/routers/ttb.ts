@@ -72,6 +72,7 @@ import {
   productTypeToTaxClass,
   classifyBatchTaxClass,
   co2VolumesToGramsPer100ml,
+  TTB_TAX_CLASSES,
   type BatchClassificationData,
   type TTBClassificationConfig,
   type TTBTaxClass,
@@ -3747,6 +3748,10 @@ async function computeReconciliationSummary(
         calculatedEnding: number;
         physical: number;
         unexplainedVariance: number;
+        // Phase 6: class-scoped manual adjustment applied to this class (default
+        // 0) and the resulting net unexplained (unexplainedVariance − acceptedGal).
+        acceptedGal: number;
+        netUnexplainedVariance: number;
         bulk: number;
         packaged: number;
         bulkEnding: number;
@@ -3922,6 +3927,9 @@ async function computeReconciliationSummary(
             calculatedEnding: parseFloat(calculatedEnding.toFixed(2)),
             physical: parseFloat(physical.toFixed(2)),
             unexplainedVariance: parseFloat(unexplainedVariance.toFixed(2)),
+            // Defaults; overwritten below once class-scoped adjustments are known.
+            acceptedGal: 0,
+            netUnexplainedVariance: parseFloat(unexplainedVariance.toFixed(2)),
             bulk: parseFloat((bulkByTaxClass[key] || 0).toFixed(2)),
             packaged: parseFloat(endPkg.toFixed(2)),
             bulkEnding: parseFloat(bulkEnding.toFixed(2)),
@@ -3989,6 +3997,7 @@ async function computeReconciliationSummary(
           amountGallons: ttbWaterfallAdjustments.amountGallons,
           reason: ttbWaterfallAdjustments.reason,
           notes: ttbWaterfallAdjustments.notes,
+          taxClass: ttbWaterfallAdjustments.taxClass,
           adjustedAt: ttbWaterfallAdjustments.adjustedAt,
         })
         .from(ttbWaterfallAdjustments)
@@ -4006,10 +4015,34 @@ async function computeReconciliationSummary(
       // waterfall line; its effect on the calculated ending is +amount for
       // opening/production/other and -amount for losses/distillation. Applied
       // adjustments EXPLAIN variance: unexplained = physical - (formula + effect).
-      const manualAdjustmentsGal = waterfallAdjs.reduce((s, a) => {
+      // Phase 6: a row may target a single tax class (migration 0150). Its effect
+      // nets down BOTH that class's per-class unexplained AND the aggregate;
+      // classless rows (tax_class NULL) reduce only the aggregate, as before. The
+      // aggregate total is invariant to whether a row is class-scoped, so this is
+      // byte-neutral when no class-scoped rows exist.
+      const adjEffect = (a: { waterfallLine: string; amountGallons: string | null }) => {
         const amt = parseFloat(a.amountGallons || "0") || 0;
-        return a.waterfallLine === "losses" || a.waterfallLine === "distillation" ? s - amt : s + amt;
-      }, 0);
+        return a.waterfallLine === "losses" || a.waterfallLine === "distillation" ? -amt : amt;
+      };
+      const manualAdjustmentsGal = waterfallAdjs.reduce((s, a) => s + adjEffect(a), 0);
+      // Per-class accepted ending-effect (only class-scoped rows).
+      const acceptedByClass: Record<string, number> = {};
+      for (const a of waterfallAdjs) {
+        if (a.taxClass) {
+          acceptedByClass[a.taxClass] = (acceptedByClass[a.taxClass] ?? 0) + adjEffect(a);
+        }
+      }
+      // Net down each waterfall row by its class-scoped accepted amount. Raw
+      // unexplainedVariance is left untouched (raw → accepted → net display).
+      // When a class has no accepted amount, net is left EXACTLY equal to raw
+      // (no recompute) so the field is byte-identical — including -0 — to the
+      // pre-Phase-6 output.
+      for (const w of waterfallData) {
+        const accepted = acceptedByClass[w.taxClass] ?? 0;
+        if (accepted === 0) continue; // acceptedGal/netUnexplainedVariance seeded at push
+        w.acceptedGal = parseFloat(accepted.toFixed(2));
+        w.netUnexplainedVariance = parseFloat((w.unexplainedVariance - accepted).toFixed(2));
+      }
 
       const totalUnexplainedRaw = waterfallData.reduce((s, w) => s + w.unexplainedVariance, 0);
       const totalUnexplained = totalUnexplainedRaw - manualAdjustmentsGal;
@@ -7395,6 +7428,7 @@ export const ttbRouter = router({
             amountGallons: ttbWaterfallAdjustments.amountGallons,
             reason: ttbWaterfallAdjustments.reason,
             notes: ttbWaterfallAdjustments.notes,
+            taxClass: ttbWaterfallAdjustments.taxClass,
             adjustedAt: ttbWaterfallAdjustments.adjustedAt,
           })
           .from(ttbWaterfallAdjustments)
@@ -7407,12 +7441,28 @@ export const ttbRouter = router({
             ),
           )
           .orderBy(asc(ttbWaterfallAdjustments.adjustedAt));
+        const formAdjEffect = (a: { waterfallLine: string; amountGallons: string | null }) => {
+          const amt = parseFloat(a.amountGallons || "0") || 0;
+          return a.waterfallLine === "losses" || a.waterfallLine === "distillation" ? -amt : amt;
+        };
         const manualAdjustmentsGal = roundGallons(
-          waterfallAdjustments.reduce((s, a) => {
-            const amt = parseFloat(a.amountGallons || "0") || 0;
-            return a.waterfallLine === "losses" || a.waterfallLine === "distillation" ? s - amt : s + amt;
-          }, 0),
+          waterfallAdjustments.reduce((s, a) => s + formAdjEffect(a), 0),
         );
+        // Phase 6: record class-scoped effects on their class's varianceByClass
+        // entry (migration 0150). Aggregate math below is unchanged (it already
+        // subtracts ALL adjustments), so this is byte-neutral with no class rows.
+        for (const a of waterfallAdjustments) {
+          if (a.taxClass) {
+            (varianceByClass[a.taxClass] ??= {
+              unexplained: 0,
+              recordedLosses: 0,
+              manualAdjustments: 0,
+              components: [],
+            }).manualAdjustments = roundGallons(
+              varianceByClass[a.taxClass].manualAdjustments + formAdjEffect(a),
+            );
+          }
+        }
 
         const rawFormVariance = roundGallons(formTotalAvailable - formTotalAccountedFor);
         const reconciliation = {
@@ -8968,6 +9018,8 @@ export const ttbRouter = router({
             physical: number;
             bulkEnding: number;
             unexplainedVariance: number;
+            acceptedGal: number;
+            netUnexplainedVariance: number;
           }>;
           totals: Record<string, number>;
         };
@@ -8977,8 +9029,10 @@ export const ttbRouter = router({
       const totalUnexplained = Number(s.totals.totalUnexplained ?? 0);
 
       // ---- Tolerance gate --------------------------------------------------
-      // Per-class: raw per-class unexplained (manual waterfall adjustments carry
-      // no tax class, so they apply only at the aggregate level below).
+      // Per-class: POST-adjustment NET unexplained. A class-scoped accepted
+      // variance (migration 0150) nets down its class here, so an accepted class
+      // can lock; classless adjustments only move the aggregate below. With no
+      // class-scoped rows, net == raw, so the gate is unchanged.
       const PER_CLASS_TOL = 0.5;
       const AGG_TOL = 1.0;
       const blockers: Array<{
@@ -8989,12 +9043,13 @@ export const ttbRouter = router({
         toleranceGal: number;
       }> = [];
       for (const w of byTaxClass) {
-        if (Math.abs(w.unexplainedVariance) > PER_CLASS_TOL) {
+        const netUnexplained = w.netUnexplainedVariance ?? w.unexplainedVariance;
+        if (Math.abs(netUnexplained) > PER_CLASS_TOL) {
           blockers.push({
             kind: "per_class",
             taxClass: w.taxClass,
             label: w.label,
-            unexplainedGal: parseFloat(w.unexplainedVariance.toFixed(2)),
+            unexplainedGal: parseFloat(netUnexplained.toFixed(2)),
             toleranceGal: PER_CLASS_TOL,
           });
         }
@@ -9071,6 +9126,8 @@ export const ttbRouter = router({
         physical: w.physical,
         bulkEnding: w.bulkEnding,
         unexplainedVariance: w.unexplainedVariance,
+        acceptedGal: w.acceptedGal ?? 0,
+        netUnexplainedVariance: w.netUnexplainedVariance ?? w.unexplainedVariance,
       }));
 
       const varianceAnalysis = {
@@ -10701,6 +10758,7 @@ export const ttbRouter = router({
           reason: ttbWaterfallAdjustments.reason,
           notes: ttbWaterfallAdjustments.notes,
           scope: ttbWaterfallAdjustments.scope,
+          taxClass: ttbWaterfallAdjustments.taxClass,
           adjustedBy: ttbWaterfallAdjustments.adjustedBy,
           adjustedAt: ttbWaterfallAdjustments.adjustedAt,
         })
@@ -10729,6 +10787,12 @@ export const ttbRouter = router({
         // the annual FORM (filed-snapshot basis), the CHECKPOINT summary
         // (reconstruction basis), or both. Defaults to 'both'.
         scope: z.enum(["both", "form", "checkpoint"]).default("both"),
+        // Optional TTB tax class this adjustment targets (migration 0150).
+        // Omitted/null = aggregate-level; a class value also nets down that
+        // class's per-class unexplained variance.
+        taxClass: z
+          .enum(TTB_TAX_CLASSES as unknown as [TTBTaxClass, ...TTBTaxClass[]])
+          .optional(),
       }),
     )
     .mutation(async ({ input, ctx }) => {
@@ -10741,6 +10805,7 @@ export const ttbRouter = router({
           reason: input.reason,
           notes: input.notes,
           scope: input.scope,
+          taxClass: input.taxClass ?? null,
           adjustedBy: ctx.session?.user?.id,
         })
         .returning();

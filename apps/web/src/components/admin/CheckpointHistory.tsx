@@ -252,12 +252,20 @@ function CheckpointDetail({ id, isLegacy }: { id: string; isLegacy: boolean }) {
                 <TableHead className="h-7 text-xs text-right">Calculated</TableHead>
                 <TableHead className="h-7 text-xs text-right">Physical</TableHead>
                 <TableHead className="h-7 text-xs text-right">Unexplained</TableHead>
+                <TableHead className="h-7 text-xs text-right">Accepted</TableHead>
+                <TableHead className="h-7 text-xs text-right">Net</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {breakdown.map((w, i) => {
                 const unexp = Number(w.unexplainedVariance ?? 0);
-                const over = Math.abs(unexp) > 0.5;
+                const accepted = Number(w.acceptedGal ?? 0);
+                const net =
+                  w.netUnexplainedVariance != null
+                    ? Number(w.netUnexplainedVariance)
+                    : unexp - accepted;
+                const over = Math.abs(net) > 0.5;
+                const sgn = (n: number) => `${n > 0 ? "+" : ""}${n.toFixed(1)}`;
                 return (
                   <TableRow key={w.key ?? w.taxClass ?? i}>
                     <TableCell className="py-1 text-xs">{w.label ?? w.key ?? w.taxClass}</TableCell>
@@ -271,13 +279,18 @@ function CheckpointDetail({ id, isLegacy }: { id: string; isLegacy: boolean }) {
                           ? Number(w.currentInventory).toFixed(1)
                           : "—"}
                     </TableCell>
+                    <TableCell className="py-1 text-xs text-right tabular-nums text-gray-600">
+                      {sgn(unexp)}
+                    </TableCell>
+                    <TableCell className="py-1 text-xs text-right tabular-nums text-gray-500">
+                      {accepted !== 0 ? sgn(accepted) : "—"}
+                    </TableCell>
                     <TableCell
                       className={`py-1 text-xs text-right tabular-nums ${
                         over ? "text-red-700 font-semibold" : "text-gray-600"
                       }`}
                     >
-                      {unexp > 0 ? "+" : ""}
-                      {unexp.toFixed(1)}
+                      {sgn(net)}
                     </TableCell>
                   </TableRow>
                 );

@@ -59,9 +59,13 @@ import { handleTransactionError, showSuccess } from "@/utils/error-handling";
 import { useIsAdmin } from "@/lib/auth/hooks";
 
 // Tolerances mirror the server-side lock gate (completeReconciliation).
-const PER_CLASS_TOL = 0.5; // gal — per tax class (raw physical − formula ending)
+const PER_CLASS_TOL = 0.5; // gal — per tax class (POST-adjustment net)
 const AGG_TOL = 1.0; // gal — aggregate unexplained (post manual-adjustment)
 const DISPLAY_TOL = 0.05; // gal — hide near-zero rows from the breakdown
+
+// Sentinel Select value for an aggregate (classless) adjustment. Radix Select
+// disallows an empty-string item value, so use an explicit token.
+const AGG_CLASS = "__aggregate__";
 
 const WATERFALL_LINES = [
   { value: "opening", label: "Opening balance" },
@@ -83,8 +87,11 @@ function fmtGal(n: number): string {
 
 function fmtDate(d: string | null | undefined): string {
   if (!d) return "—";
-  // Accept 'YYYY-MM-DD' or ISO; render the calendar date without TZ drift.
   return d.slice(0, 10);
+}
+
+function netOf(w: any): number {
+  return Number(w.netUnexplainedVariance ?? w.unexplainedVariance ?? 0);
 }
 
 interface CheckpointPanelProps {
@@ -118,15 +125,22 @@ export function CheckpointPanel({
   const hasSummary = !!summary && summary.hasOpeningBalances !== false;
   const byTaxClass: any[] = summary?.waterfall?.byTaxClass ?? [];
   const totalUnexplained = Number(summary?.totals?.totalUnexplained ?? 0);
-  const manualAdjustmentsGal = Number(summary?.totals?.manualAdjustmentsGal ?? 0);
   const drift = summary?.checkpointDrift ?? null;
   const drifted = drift?.status === "drifted";
 
+  // Over-tolerance is judged on the POST-adjustment NET (class-scoped accepts
+  // net a class down; migration 0150).
   const overClasses = useMemo(
-    () => byTaxClass.filter((w) => Math.abs(Number(w.unexplainedVariance ?? 0)) > PER_CLASS_TOL),
+    () => byTaxClass.filter((w) => Math.abs(netOf(w)) > PER_CLASS_TOL),
     [byTaxClass],
   );
   const aggOver = Math.abs(totalUnexplained) > AGG_TOL;
+
+  // Class options for the accept dialog (from the current waterfall rows).
+  const classOptions = useMemo(
+    () => byTaxClass.map((w) => ({ value: w.taxClass as string, label: (w.label ?? w.taxClass) as string })),
+    [byTaxClass],
+  );
 
   // Legacy vs post-Phase-6 drift: a legacy checkpoint has no variance_analysis
   // (compared on a physical-inventory basis) → neutral note, not a red alarm.
@@ -138,17 +152,16 @@ export function CheckpointPanel({
   const driftIsLegacy = driftResolved && (driftDetail.data as any)?.varianceAnalysis == null;
   const driftIsRed = driftResolved && (driftDetail.data as any)?.varianceAnalysis != null;
 
-  const lastRecon = trpc.ttb.getLastReconciliation.useQuery();
-
   const adjustments = trpc.ttb.listWaterfallAdjustments.useQuery({ periodYear });
 
-  // Lockable = every class within per-class tolerance AND aggregate within
+  // Lockable = every class within per-class tolerance (net) AND aggregate within
   // tolerance AND no post-Phase-6 drift. (Legacy drift is informational only.)
   const lockable = hasSummary && overClasses.length === 0 && !aggOver && !driftIsRed;
   const attentionCount = overClasses.length + (aggOver ? 1 : 0);
 
   // ---- Accept-with-reason (createWaterfallAdjustment) --------------------
   const [acceptOpen, setAcceptOpen] = useState(false);
+  const [acceptClass, setAcceptClass] = useState<string>(AGG_CLASS);
   const [acceptAmount, setAcceptAmount] = useState("");
   const [acceptLine, setAcceptLine] = useState<(typeof WATERFALL_LINES)[number]["value"]>("other");
   const [acceptReason, setAcceptReason] = useState("");
@@ -167,10 +180,12 @@ export function CheckpointPanel({
     onError: (error) => handleTransactionError(error, "Reconciliation", "Accept Variance"),
   });
 
-  const openAccept = () => {
-    // Prefill the signed amount that would zero the aggregate residual with an
-    // 'other' line (effect = +amount → unexplained = raw − amount).
-    setAcceptAmount(totalUnexplained.toFixed(2));
+  // Open the dialog prefilled to net a specific class (or the aggregate) to zero.
+  // With an 'other' line the effect equals the amount, so amount = current net
+  // drives that residual to ~0.
+  const openAccept = (opts: { taxClass?: string; amount: number }) => {
+    setAcceptClass(opts.taxClass ?? AGG_CLASS);
+    setAcceptAmount(opts.amount.toFixed(2));
     setAcceptLine("other");
     setAcceptReason("");
     setAcceptScope("both");
@@ -334,16 +349,17 @@ export function CheckpointPanel({
         {hasSummary && !lockable && !driftIsRed && (
           <VarianceBreakdown
             byTaxClass={byTaxClass}
-            overClasses={overClasses}
             totalUnexplained={totalUnexplained}
             aggOver={aggOver}
-            onAccept={openAccept}
+            onAcceptClass={(w) => openAccept({ taxClass: w.taxClass, amount: netOf(w) })}
+            onAcceptAggregate={() => openAccept({ amount: totalUnexplained })}
           />
         )}
 
         {/* Accepted variances */}
         <AcceptedVariances
           rows={adjustments.data ?? []}
+          classLabels={classOptions}
           onDelete={(id) => setDeleteAdjId(id)}
           deleting={deleteAdjustment.isPending}
         />
@@ -389,12 +405,28 @@ export function CheckpointPanel({
               Accept variance with a reason
             </AlertDialogTitle>
             <AlertDialogDescription>
-              Record a manual explanation for the unexplained residual. This adjusts the aggregate
-              reconciliation total; per-tax-class discrepancies over {PER_CLASS_TOL} gal must be
-              fixed at the source (pin a volume or correct the transfer).
+              Record a manual explanation for a residual you understand and stand behind. A
+              class-scoped accept nets that tax class down (and the aggregate); an aggregate accept
+              only moves the overall total.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <div className="space-y-3 py-1">
+            <div>
+              <Label className="text-sm">Applies to</Label>
+              <Select value={acceptClass} onValueChange={setAcceptClass}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={AGG_CLASS}>Aggregate (no class)</SelectItem>
+                  {classOptions.map((c) => (
+                    <SelectItem key={c.value} value={c.value}>
+                      {c.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <div>
               <Label className="text-sm">Amount (gal, signed)</Label>
               <Input
@@ -426,7 +458,7 @@ export function CheckpointPanel({
               <Textarea
                 value={acceptReason}
                 onChange={(e) => setAcceptReason(e.target.value)}
-                placeholder="e.g. Bottling sample draws not logged as a loss during Q2"
+                placeholder="e.g. Documented packaging-loss basis difference for hard cider"
                 rows={2}
               />
             </div>
@@ -438,7 +470,7 @@ export function CheckpointPanel({
                 Advanced
               </CollapsibleTrigger>
               <CollapsibleContent className="pt-2">
-                <Label className="text-sm">Applies to</Label>
+                <Label className="text-sm">Surface</Label>
                 <Select value={acceptScope} onValueChange={(v) => setAcceptScope(v as any)}>
                   <SelectTrigger>
                     <SelectValue />
@@ -465,6 +497,7 @@ export function CheckpointPanel({
                   amountGallons: parseFloat(acceptAmount),
                   reason: acceptReason.trim(),
                   scope: acceptScope,
+                  ...(acceptClass !== AGG_CLASS ? { taxClass: acceptClass as any } : {}),
                 });
               }}
               disabled={!acceptAmountValid || !acceptReasonValid || createAdjustment.isPending}
@@ -592,21 +625,23 @@ export function CheckpointPanel({
 // -------------------------------------------------------------------------
 function VarianceBreakdown({
   byTaxClass,
-  overClasses,
   totalUnexplained,
   aggOver,
-  onAccept,
+  onAcceptClass,
+  onAcceptAggregate,
 }: {
   byTaxClass: any[];
-  overClasses: any[];
   totalUnexplained: number;
   aggOver: boolean;
-  onAccept: () => void;
+  onAcceptClass: (w: any) => void;
+  onAcceptAggregate: () => void;
 }) {
-  const rows = byTaxClass.filter(
-    (w) => Math.abs(Number(w.unexplainedVariance ?? 0)) > DISPLAY_TOL,
-  );
-  const overKeys = new Set(overClasses.map((w) => w.taxClass));
+  // Show a row if raw, accepted, or net is non-trivial.
+  const rows = byTaxClass.filter((w) => {
+    const raw = Number(w.unexplainedVariance ?? 0);
+    const accepted = Number(w.acceptedGal ?? 0);
+    return Math.abs(raw) > DISPLAY_TOL || Math.abs(accepted) > DISPLAY_TOL;
+  });
 
   return (
     <div className="rounded border border-amber-200 bg-amber-50/60 p-2.5 space-y-2">
@@ -616,29 +651,47 @@ function VarianceBreakdown({
           <TableHeader>
             <TableRow>
               <TableHead className="h-7 text-xs">Tax class</TableHead>
-              <TableHead className="h-7 text-xs text-right">Unexplained (gal)</TableHead>
-              <TableHead className="h-7 text-xs">Status</TableHead>
+              <TableHead className="h-7 text-xs text-right">Raw</TableHead>
+              <TableHead className="h-7 text-xs text-right">Accepted</TableHead>
+              <TableHead className="h-7 text-xs text-right">Net</TableHead>
+              <TableHead className="h-7 text-xs text-right"></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {rows.map((w) => {
-              const v = Number(w.unexplainedVariance ?? 0);
-              const over = overKeys.has(w.taxClass);
+              const raw = Number(w.unexplainedVariance ?? 0);
+              const accepted = Number(w.acceptedGal ?? 0);
+              const net = netOf(w);
+              const over = Math.abs(net) > PER_CLASS_TOL;
               return (
                 <TableRow key={w.taxClass}>
                   <TableCell className="py-1 text-xs">{w.label ?? w.taxClass}</TableCell>
+                  <TableCell className="py-1 text-xs text-right tabular-nums text-gray-600">
+                    {fmtGal(raw)}
+                  </TableCell>
+                  <TableCell className="py-1 text-xs text-right tabular-nums text-gray-500">
+                    {accepted !== 0 ? fmtGal(accepted) : "—"}
+                  </TableCell>
                   <TableCell
                     className={`py-1 text-xs text-right tabular-nums ${
-                      over ? "text-red-700 font-semibold" : "text-gray-600"
+                      over ? "text-red-700 font-semibold" : "text-green-700"
                     }`}
                   >
-                    {fmtGal(v)}
+                    {fmtGal(net)}
                   </TableCell>
-                  <TableCell className="py-1 text-xs">
+                  <TableCell className="py-1 text-right">
                     {over ? (
-                      <span className="text-red-700">Fix at source (pin volume)</span>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => onAcceptClass(w)}
+                        className="h-6 text-[11px] px-2"
+                      >
+                        <Plus className="w-3 h-3 mr-1" />
+                        Accept
+                      </Button>
                     ) : (
-                      <span className="text-green-700">Within tolerance</span>
+                      <CheckCircle className="w-3.5 h-3.5 text-green-500 inline" />
                     )}
                   </TableCell>
                 </TableRow>
@@ -656,22 +709,18 @@ function VarianceBreakdown({
           <span className="font-semibold tabular-nums">
             {Math.abs(totalUnexplained).toFixed(2)} gal
           </span>
-          {aggOver && (
-            <span className="text-red-700"> (over {AGG_TOL} gal tolerance)</span>
-          )}
+          {aggOver && <span className="text-red-700"> (over {AGG_TOL} gal tolerance)</span>}
         </span>
-        <Button size="sm" variant="outline" onClick={onAccept} className="h-7 text-xs">
+        <Button size="sm" variant="outline" onClick={onAcceptAggregate} className="h-7 text-xs">
           <Plus className="w-3.5 h-3.5 mr-1" />
-          Accept with reason
+          Accept aggregate
         </Button>
       </div>
-      {overClasses.length > 0 && (
-        <p className="text-[11px] text-amber-700">
-          A manual adjustment explains the aggregate residual but cannot clear a per-class
-          discrepancy — those need a data fix (pin the batch volume in the table below, or correct
-          the underlying transfer).
-        </p>
-      )}
+      <p className="text-[11px] text-amber-700">
+        Prefer a per-class accept when a single tax class drives the residual; use the aggregate
+        accept only when the driver is genuinely classless (e.g. rounding across classes). A
+        per-class accept nets that class to green.
+      </p>
     </div>
   );
 }
@@ -679,20 +728,25 @@ function VarianceBreakdown({
 // -------------------------------------------------------------------------
 function AcceptedVariances({
   rows,
+  classLabels,
   onDelete,
   deleting,
 }: {
   rows: any[];
+  classLabels: Array<{ value: string; label: string }>;
   onDelete: (id: string) => void;
   deleting: boolean;
 }) {
   if (!rows || rows.length === 0) return null;
+  const labelFor = (taxClass: string | null) =>
+    taxClass ? classLabels.find((c) => c.value === taxClass)?.label ?? taxClass : "Aggregate";
   return (
     <div className="rounded border border-gray-200 p-2.5 space-y-1.5">
       <p className="text-xs font-semibold uppercase text-gray-500">Accepted variances</p>
       <Table>
         <TableHeader>
           <TableRow>
+            <TableHead className="h-7 text-xs">Applies to</TableHead>
             <TableHead className="h-7 text-xs">Line</TableHead>
             <TableHead className="h-7 text-xs text-right">Amount</TableHead>
             <TableHead className="h-7 text-xs">Reason</TableHead>
@@ -704,11 +758,18 @@ function AcceptedVariances({
         <TableBody>
           {rows.map((r) => (
             <TableRow key={r.id}>
+              <TableCell className="py-1 text-xs">
+                {r.taxClass ? (
+                  labelFor(r.taxClass)
+                ) : (
+                  <span className="text-gray-500">Aggregate</span>
+                )}
+              </TableCell>
               <TableCell className="py-1 text-xs capitalize">{r.waterfallLine}</TableCell>
               <TableCell className="py-1 text-xs text-right tabular-nums">
                 {fmtGal(parseFloat(r.amountGallons ?? "0"))}
               </TableCell>
-              <TableCell className="py-1 text-xs max-w-[220px] truncate" title={r.reason}>
+              <TableCell className="py-1 text-xs max-w-[200px] truncate" title={r.reason}>
                 {r.reason}
               </TableCell>
               <TableCell className="py-1 text-xs">
