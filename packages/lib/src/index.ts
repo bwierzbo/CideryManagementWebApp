@@ -22,6 +22,7 @@ export * from "./calculations/ttb";
 export * from "./calculations/ttb-filed";
 export * from "./calculations/filed-drift";
 export * from "./calculations/filing-frequency";
+export * from "./calculations/liq774";
 export * from "./calculations/so2";
 
 // Re-export recipe domain logic (client-safe)
