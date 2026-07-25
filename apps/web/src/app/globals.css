@@ -488,6 +488,51 @@
 }
 
 /* ============================================
+   TTB F 5120.17 PRINT LAYOUT (Phase 7 C3)
+   Scoped to the /reports/ttb/print page via .ttb-print-root so it never
+   affects the on-screen form preview on /reports/ttb.
+   ============================================ */
+.ttb-print-watermark {
+  display: none;
+}
+
+@media print {
+  @page {
+    size: letter portrait;
+    margin: 0.5in;
+  }
+
+  .ttb-print-root {
+    background: white !important;
+  }
+
+  /* Keep each Part (tagged with .ttb-section in TTBFormPreview) from being
+     split across a page boundary where it fits on one page. */
+  .ttb-print-root .ttb-section {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  /* Draft watermark — only rendered in the DOM when the recompute has drifted
+     from the filed form; hidden on screen, shown on every printed page. */
+  .ttb-print-root .ttb-print-watermark {
+    display: block;
+    position: fixed;
+    top: 45%;
+    left: 0;
+    right: 0;
+    text-align: center;
+    transform: rotate(-24deg);
+    font-size: 2.75rem;
+    font-weight: 800;
+    letter-spacing: 0.05em;
+    color: rgba(220, 38, 38, 0.22);
+    z-index: 9999;
+    pointer-events: none;
+  }
+}
+
+/* ============================================
    FONT SIZE SCALING
    User preference for small/medium/large text
    ============================================ */

@@ -27,14 +27,14 @@ import {
   AlertCircle,
   History,
   Loader2,
+  Printer,
 } from "lucide-react";
 import { trpc } from "@/utils/trpc";
 import { toast } from "@/hooks/use-toast";
 import { TTBFormPreview, FiledComparisonBadge } from "@/components/reports/TTBFormPreview";
 import { TTBPeriodFinalization } from "@/components/reports/TTBPeriodFinalization";
 import { ReportExportDropdown } from "@/components/reports/ReportExportDropdown";
-import { downloadTTBFormPDF, type TTBFormPDFData } from "@/utils/pdf/ttbForm512017";
-import { downloadTTBFormExcel } from "@/utils/excel/ttbForm512017";
+import { downloadTTBFormExcel, type TTBFormPDFData } from "@/utils/excel/ttbForm512017";
 
 const currentYear = new Date().getFullYear();
 const years = [currentYear, currentYear - 1, currentYear - 2];
@@ -127,23 +127,6 @@ export default function TTBReportsPage() {
     },
   });
 
-  // Submit report mutation
-  const submitReportMutation = trpc.ttb.submitReport.useMutation({
-    onSuccess: () => {
-      toast({
-        title: "Report Submitted",
-        description: "TTB report marked as submitted",
-      });
-    },
-    onError: (error) => {
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive",
-      });
-    },
-  });
-
   const handleSaveSnapshot = () => {
     if (!formData) return;
 
@@ -197,19 +180,15 @@ export default function TTBReportsPage() {
     });
   };
 
-  const handleExportPDF = async () => {
-    if (!formData) return;
-
-    const filename = `TTB-Form-5120.17-${formData.periodLabel.replace(/\s+/g, "-")}.pdf`;
-    await downloadTTBFormPDF(
-      formData.formData as TTBFormPDFData,
-      formData.periodLabel,
-      filename
-    );
-    toast({
-      title: "PDF Downloaded",
-      description: `${filename} has been downloaded`,
+  const handleOpenPrintView = () => {
+    const params = new URLSearchParams({
+      periodType,
+      year: String(selectedYear),
     });
+    if (periodType !== "annual") {
+      params.set("periodNumber", String(selectedPeriod));
+    }
+    window.open(`/reports/ttb/print?${params.toString()}`, "_blank");
   };
 
   const handleExportExcel = async () => {
@@ -345,10 +324,19 @@ export default function TTBReportsPage() {
               </Button>
 
               <ReportExportDropdown
-                onExportPDF={formData ? handleExportPDF : undefined}
                 onExportExcel={formData ? handleExportExcel : undefined}
                 disabled={!formData}
               />
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleOpenPrintView}
+                disabled={!formData}
+              >
+                <Printer className="w-4 h-4 mr-1" />
+                Print / Save as PDF
+              </Button>
 
               <Button
                 variant="outline"
@@ -523,15 +511,6 @@ export default function TTBReportsPage() {
                                 >
                                   View
                                 </Button>
-                                {report.status === "draft" && (
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => submitReportMutation.mutate(report.id)}
-                                  >
-                                    Submit
-                                  </Button>
-                                )}
                               </div>
                             </td>
                           </tr>

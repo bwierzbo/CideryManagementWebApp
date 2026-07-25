@@ -1844,6 +1844,73 @@ async function resolveOpeningSource(startDate: Date): Promise<{
 }
 
 /**
+ * Resolve the reconciliation checkpoint a reporting period should be anchored to:
+ * the latest FINALIZED, non-superseded checkpoint whose reconciliation date is on
+ * or before the period end. Shared by the printable-form footer (Phase 7 C3) and
+ * the period↔checkpoint linkage on save/finalize (Phase 7 C4). A checkpoint is
+ * superseded when a later finalized amendment points at it via amends_id — the
+ * same rule the checkpoint-drift recompute uses.
+ */
+async function resolveCheckpointForPeriod(periodEnd: string): Promise<{
+  id: string;
+  name: string | null;
+  reconciliationDate: string;
+  finalizedAt: Date | null;
+} | null> {
+  const [checkpoint] = await db
+    .select({
+      id: ttbReconciliationSnapshots.id,
+      name: ttbReconciliationSnapshots.name,
+      reconciliationDate: ttbReconciliationSnapshots.reconciliationDate,
+      finalizedAt: ttbReconciliationSnapshots.finalizedAt,
+    })
+    .from(ttbReconciliationSnapshots)
+    .where(
+      and(
+        eq(ttbReconciliationSnapshots.status, "finalized"),
+        lte(ttbReconciliationSnapshots.reconciliationDate, periodEnd),
+        sql`${ttbReconciliationSnapshots.id} NOT IN (
+          SELECT amends_id FROM ttb_reconciliation_snapshots
+          WHERE amends_id IS NOT NULL AND status = 'finalized'
+        )`,
+      ),
+    )
+    .orderBy(desc(ttbReconciliationSnapshots.reconciliationDate))
+    .limit(1);
+
+  return checkpoint ?? null;
+}
+
+/**
+ * Warn-only diagnostics about the checkpoint a period is anchored to (Phase 7
+ * C4). Mirrors resolveOpeningSource's openingWarnings style: never blocks, just
+ * surfaces facts the filer should see before finalizing.
+ */
+function checkpointWarningsForPeriod(
+  checkpoint: Awaited<ReturnType<typeof resolveCheckpointForPeriod>>,
+  periodEnd: string,
+): TTBOpeningWarning[] {
+  const warnings: TTBOpeningWarning[] = [];
+  if (!checkpoint) {
+    warnings.push({
+      level: "warning",
+      category: "noCheckpoint",
+      message: `No finalized reconciliation checkpoint on or before ${periodEnd}; this period's opening basis is unverified.`,
+    });
+    return warnings;
+  }
+  const gapDays = daysBetweenDateStrings(checkpoint.reconciliationDate, periodEnd);
+  if (gapDays > 7) {
+    warnings.push({
+      level: "warning",
+      category: "staleCheckpoint",
+      message: `Latest reconciliation checkpoint (${checkpoint.reconciliationDate}) is ${gapDays} days before period end ${periodEnd} — reconcile closer to the period end before finalizing.`,
+    });
+  }
+  return warnings;
+}
+
+/**
  * Core reconciliation computation, extracted from the getReconciliationSummary
  * procedure (Phase 6 C2) so completeReconciliation and the checkpoint-drift
  * recompute can reuse the SAME engine instead of duplicating any formula.
@@ -7850,6 +7917,40 @@ export const ttbRouter = router({
     }),
 
   /**
+   * Lightweight filing-context for a period, used by the printable Form 5120.17
+   * footer (Phase 7 C3). Returns the reconciliation checkpoint the period is
+   * anchored to (latest finalized, non-superseded checkpoint on or before the
+   * period end) so the print output can cite the basis. Kept separate from
+   * generateForm512017 so the golden-tested form output stays byte-stable.
+   */
+  getPeriodFilingContext: createRbacProcedure("read", "report")
+    .input(
+      z.object({
+        periodType: z.enum(["monthly", "quarterly", "annual"]),
+        year: z.number().int().min(2020).max(2100),
+        periodNumber: z.number().int().min(1).max(12).optional(),
+      }),
+    )
+    .query(async ({ input }) => {
+      const { periodType, year, periodNumber } = input;
+      const { endDate } = getPeriodDateRange(periodType, year, periodNumber);
+      const periodEndStr = endDate.toISOString().split("T")[0];
+
+      const checkpoint = await resolveCheckpointForPeriod(periodEndStr);
+
+      return {
+        checkpoint: checkpoint
+          ? {
+              id: checkpoint.id,
+              name: checkpoint.name,
+              reconciliationDate: checkpoint.reconciliationDate,
+              finalizedAt: checkpoint.finalizedAt,
+            }
+          : null,
+      };
+    }),
+
+  /**
    * Save a TTB report snapshot for audit/compliance purposes.
    */
   saveReportSnapshot: createRbacProcedure("create", "report")
@@ -8089,41 +8190,13 @@ export const ttbRouter = router({
       }
     }),
 
-  /**
-   * Mark a report as submitted.
-   */
-  submitReport: createRbacProcedure("update", "report")
-    .input(z.string().uuid())
-    .mutation(async ({ input: reportId, ctx }) => {
-      try {
-        const [updated] = await db
-          .update(ttbReportingPeriods)
-          .set({
-            status: "submitted",
-            submittedAt: new Date(),
-            submittedBy: ctx.user.id,
-            updatedAt: new Date(),
-          })
-          .where(eq(ttbReportingPeriods.id, reportId))
-          .returning();
-
-        if (!updated) {
-          throw new TRPCError({
-            code: "NOT_FOUND",
-            message: "Report not found",
-          });
-        }
-
-        return { success: true, report: updated };
-      } catch (error) {
-        if (error instanceof TRPCError) throw error;
-        console.error("Error submitting TTB report:", error);
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: "Failed to submit TTB report",
-        });
-      }
-    }),
+  // NOTE (Phase 7 C4): the legacy `submitReport` mutation (flipped a
+  // `ttb_reporting_periods` row to status="submitted") was removed here. Filing
+  // is now owned by `markPeriodFiled` on `ttb_period_snapshots`, which persists
+  // the filed form and enables drift monitoring. The submitReport status had no
+  // downstream consumers and duplicated the filing concept on a legacy table.
+  // The read-only report LOG (getReportHistory/getReport, saveReportSnapshot)
+  // is retained as a distinct archive of previously-generated reports.
 
   // ============================================
   // TTB Opening Balances & Period Snapshots
@@ -8480,12 +8553,19 @@ export const ttbRouter = router({
           )
           .limit(1);
 
+        // Phase 7 C4: anchor this period to the reconciliation checkpoint that
+        // covers it (latest finalized, non-superseded on or before period end).
+        const periodEndStr = input.periodEnd.split("T")[0];
+        const checkpoint = await resolveCheckpointForPeriod(periodEndStr);
+        const warnings = checkpointWarningsForPeriod(checkpoint, periodEndStr);
+
         const snapshotData = {
           periodType: input.periodType,
           periodStart: input.periodStart,
           periodEnd: input.periodEnd,
           year: input.year,
           periodNumber: input.periodNumber || null,
+          reconciliationSnapshotId: checkpoint?.id ?? null,
           // Bulk wines
           bulkHardCider: input.data.bulkHardCider.toString(),
           bulkWineUnder16: input.data.bulkWineUnder16.toString(),
@@ -8549,7 +8629,7 @@ export const ttbRouter = router({
             .where(eq(ttbPeriodSnapshots.id, existing[0].id))
             .returning();
 
-          return { success: true, snapshot: updated, created: false };
+          return { success: true, snapshot: updated, created: false, warnings };
         } else {
           const [created] = await db
             .insert(ttbPeriodSnapshots)
@@ -8561,7 +8641,7 @@ export const ttbRouter = router({
             })
             .returning();
 
-          return { success: true, snapshot: created, created: true };
+          return { success: true, snapshot: created, created: true, warnings };
         }
       } catch (error) {
         if (error instanceof TRPCError) throw error;
@@ -8601,10 +8681,17 @@ export const ttbRouter = router({
           });
         }
 
+        // Phase 7 C4: re-resolve the anchoring checkpoint at finalize time (a
+        // checkpoint may have been locked since the draft was saved).
+        const periodEndStr = String(snapshot.periodEnd).split("T")[0];
+        const checkpoint = await resolveCheckpointForPeriod(periodEndStr);
+        const warnings = checkpointWarningsForPeriod(checkpoint, periodEndStr);
+
         const [updated] = await db
           .update(ttbPeriodSnapshots)
           .set({
             status: "finalized",
+            reconciliationSnapshotId: checkpoint?.id ?? null,
             finalizedAt: new Date(),
             finalizedBy: ctx.user.id,
             updatedAt: new Date(),
@@ -8612,13 +8699,106 @@ export const ttbRouter = router({
           .where(eq(ttbPeriodSnapshots.id, snapshotId))
           .returning();
 
-        return { success: true, snapshot: updated };
+        return { success: true, snapshot: updated, warnings };
       } catch (error) {
         if (error instanceof TRPCError) throw error;
         console.error("Error finalizing TTB period snapshot:", error);
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: "Failed to finalize TTB period snapshot",
+        });
+      }
+    }),
+
+  /**
+   * Mark a finalized period as FILED with TTB and freeze it for drift monitoring
+   * (Phase 7 C4). Persists `filedForm` = the CURRENT Form 5120.17 output at
+   * filing time, so any later recompute divergence surfaces as new drift. The
+   * expected-drift set is empty by design: a period filed THROUGH the system is
+   * expected to recompute cleanly (unlike the seeded 2024/2025 rows, which carry
+   * owner-accepted deltas). Refuses non-finalized or already-filed periods (the
+   * latter protects the seeded filed rows).
+   */
+  markPeriodFiled: adminProcedure
+    .input(z.object({ snapshotId: z.string().uuid() }))
+    .mutation(async ({ input, ctx }) => {
+      try {
+        const [snapshot] = await db
+          .select()
+          .from(ttbPeriodSnapshots)
+          .where(eq(ttbPeriodSnapshots.id, input.snapshotId))
+          .limit(1);
+
+        if (!snapshot) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Period snapshot not found",
+          });
+        }
+
+        if (snapshot.status !== "finalized") {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Only a finalized period can be marked as filed. Finalize it first.",
+          });
+        }
+
+        if (snapshot.isFiled) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "This period is already marked as filed.",
+          });
+        }
+
+        // Persist the form as it computes RIGHT NOW. Reuse the golden-tested
+        // generator via an in-process tRPC caller (same pattern as
+        // computeFilingFrequencyDetermination) so the filed numbers can't drift
+        // from the form the filer just printed.
+        const { appRouter } = require("./index");
+        const caller = appRouter.createCaller(ctx);
+        const formResult = await caller.ttb.generateForm512017({
+          periodType: snapshot.periodType,
+          year: snapshot.year,
+          periodNumber: snapshot.periodNumber ?? undefined,
+        });
+
+        const filedAt = new Date().toISOString().split("T")[0];
+
+        const [updated] = await db
+          .update(ttbPeriodSnapshots)
+          .set({
+            isFiled: true,
+            filedAt,
+            filedForm: formResult.formData,
+            expectedDrift: [],
+            updatedAt: new Date(),
+          })
+          .where(eq(ttbPeriodSnapshots.id, input.snapshotId))
+          .returning();
+
+        // Audit the filing — this router logs directly to auditLogs.
+        await db.insert(auditLogs).values({
+          tableName: "ttb_period_snapshots",
+          recordId: input.snapshotId,
+          operation: "update",
+          newData: {
+            isFiled: true,
+            filedAt,
+            periodType: snapshot.periodType,
+            year: snapshot.year,
+            periodNumber: snapshot.periodNumber,
+          },
+          changedBy: ctx.session?.user?.id ?? null,
+          reason: "mark TTB period filed",
+        });
+
+        return { success: true, snapshot: updated };
+      } catch (error) {
+        if (error instanceof TRPCError) throw error;
+        console.error("Error marking TTB period as filed:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to mark TTB period as filed",
         });
       }
     }),

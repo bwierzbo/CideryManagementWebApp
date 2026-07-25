@@ -73,7 +73,9 @@ const totalRow = "bg-gray-100 font-bold";
 
 // Section header bar
 const sectionHeader = "bg-gray-800 text-white text-xs font-bold px-3 py-1.5 uppercase tracking-wide";
-const sectionBorder = "border-x-2 border-b-2 border-gray-600";
+// `ttb-section` is a stable print hook (no screen styling attached) — the print
+// page's @media print rules keep each Part from splitting across pages.
+const sectionBorder = "ttb-section border-x-2 border-b-2 border-gray-600";
 const reservedText = "px-3 py-2 text-xs text-gray-400 italic";
 
 // ---------------------------------------------------------------------------
@@ -382,7 +384,7 @@ export function TTBFormPreview({ formData, periodLabel, orgInfo }: TTBFormPrevie
       {/* ============================================================ */}
       {/* FORM HEADER                                                  */}
       {/* ============================================================ */}
-      <div className="border-2 border-gray-600 p-4 print:p-2">
+      <div className="ttb-section border-2 border-gray-600 p-4 print:p-2">
         {/* Top line: form number + OMB */}
         <div className="flex justify-between items-start text-[10px] text-gray-600 mb-1">
           <span>TTB F 5120.17 (09/2025)</span>
