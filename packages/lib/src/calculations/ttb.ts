@@ -815,8 +815,16 @@ export interface TTBOpeningWarning {
    * before the period start, so the uncovered span is silently dropped.
    * `openingReconstructed` — opening was reconstructed/manually seeded while a
    * draft (un-finalized) prior-period snapshot exists that should be finalized.
+   * `noCheckpoint` — no finalized reconciliation checkpoint exists on or before
+   * the period end, so the period's opening basis is unverified (Phase 7 C4).
+   * `staleCheckpoint` — the anchoring checkpoint is more than a week older than
+   * the period end (Phase 7 C4).
    */
-  category: "openingGap" | "openingReconstructed";
+  category:
+    | "openingGap"
+    | "openingReconstructed"
+    | "noCheckpoint"
+    | "staleCheckpoint";
   message: string;
 }
 

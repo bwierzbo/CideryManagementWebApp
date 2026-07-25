@@ -354,6 +354,13 @@ export const ttbPeriodSnapshots = pgTable(
     filedForm: jsonb("filed_form"),
     expectedDrift: jsonb("expected_drift"),
 
+    // Period ↔ checkpoint linkage (migration 0152, Phase 7 C4). The latest
+    // finalized, non-superseded reconciliation checkpoint on or before period_end
+    // at save/finalize time — the reconciliation basis this period opens from.
+    reconciliationSnapshotId: uuid("reconciliation_snapshot_id").references(
+      () => ttbReconciliationSnapshots.id,
+    ),
+
     // Audit
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
