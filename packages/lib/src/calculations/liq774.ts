@@ -310,9 +310,9 @@ export type LIQ774TTBInput = Pick<
  * opening inventory (line 1) and must not net out removals. The only reading
  * consistent with the filed value is box 1 = total wine handled = Section A
  * line 12 (TOTAL available = opening + all inflows) summed per category. We
- * implement that; the residual ~12 gal vs filed is documented reconstruction
+ * implement that; the residual ~11 gal vs filed is documented reconstruction
  * drift (FILED_2025 was adjusted post-filing for perry reclassification). The
- * spec's prose formula is flagged for owner correction.
+ * spec doc's box-1 prose was corrected to match (Phase 7 C6).
  */
 export function computeLIQ774(
   ttbForm: LIQ774TTBInput,
