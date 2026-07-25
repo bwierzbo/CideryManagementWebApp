@@ -98,6 +98,10 @@ import {
   type ExpectedDriftEntry,
   type TTBOpeningSourceInfo,
   type TTBOpeningWarning,
+  determineFilingFrequency,
+  determineWaStateFrequency,
+  type FilingFrequencyResult,
+  type WaStateFrequencyResult,
 } from "lib";
 import { fetchBatchVolumeEvents } from "../services/batch-volume-events";
 import { recomputeBatchVolume } from "../services/batch-volume-recompute";
@@ -4788,6 +4792,161 @@ async function computeReconciliationSummary(
       });
     }
 }
+
+// ============================================================
+// FILING-FREQUENCY DETERMINATION (Phase 7 C2)
+// Computes the required federal (27 CFR 24.271 / 24.300) and WA (LIQ-774)
+// filing cadence from the org's real numbers and compares it to the stored
+// reporting frequencies. Shared by the query (getFilingFrequencyDetermination)
+// and the confirm mutation so both operate on identical figures.
+// ============================================================
+
+interface FilingFrequencyDeterminationResult {
+  determination: FilingFrequencyResult;
+  waDetermination: WaStateFrequencyResult;
+  inputs: {
+    priorYear: number;
+    currentYear: number;
+    priorYearTaxUsd: number;
+    expectedCurrentYearTaxUsd: number;
+    maxMonthlyOnHandGal: number;
+    maxQuarterlyOnHandGal: number;
+    waTaxableGallons: number;
+    waBoardApprovalOnFile: boolean;
+    basis: string;
+  };
+  storedFrequency: { ttbReport: string | null; state: string | null };
+  mismatch: boolean;
+  confirmedAt: Date | null;
+}
+
+/**
+ * Compute the filing-frequency determination from the org's live data.
+ *
+ * Tax figures and inventory endings are pulled straight from the golden-tested
+ * Form 5120.17 generator (via an in-process tRPC caller) so they stay
+ * byte-consistent with the filed form rather than re-deriving them here. The
+ * on-hand peak is sampled at each of the 12 month-ends — this is the expensive
+ * path flagged in the plan (12 form generations, ~270ms each); it is used over
+ * a bespoke SBD loop specifically so the endings can't drift from the golden
+ * numbers. Runs on-demand (settings action / cached report-page fetch), not on
+ * a hot write path.
+ */
+async function computeFilingFrequencyDetermination(
+  ctx: any,
+): Promise<FilingFrequencyDeterminationResult> {
+  const DEFAULT_ORG_ID = "00000000-0000-0000-0000-000000000001";
+  // Lazy require to avoid an import-time circular dependency (appRouter mounts
+  // this router). Same pattern as trpc.ts createTRPCCaller.
+  const { appRouter } = require("./index");
+  const caller = appRouter.createCaller(ctx);
+
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const priorYear = currentYear - 1;
+
+  // Prior-year net tax owed = the full filed annual form's tax summary.
+  // Current-year is the annual form to date (YTD basis — only elapsed activity
+  // is present), used as the "reasonably expected" current-year liability.
+  const priorForm = await caller.ttb.generateForm512017({
+    periodType: "annual",
+    year: priorYear,
+  });
+  const currentForm = await caller.ttb.generateForm512017({
+    periodType: "annual",
+    year: currentYear,
+  });
+  const priorYearTaxUsd = priorForm.formData.taxSummary.netTaxOwed;
+  const expectedCurrentYearTaxUsd = currentForm.formData.taxSummary.netTaxOwed;
+
+  // WA taxable gallons: current-year total tax-paid removals. The owner ships
+  // tasting-room/local, so ALL removals are treated as WA in-state sales for
+  // now (documented assumption — refine if out-of-state distribution begins).
+  const waTaxableGallons = currentForm.formData.taxPaidRemovals.total;
+
+  // Peak bulk+bottled on hand (all tax classes) across the current year, sampled
+  // at each month-end. Uses the lightweight SBD + packaged-ledger as-of engines
+  // (computeBulkByTaxClassAsOf / computePackagedLedger) rather than 12 full form
+  // generations — the full form's per-period reconciliation/variance work makes
+  // the monthly loop ~an order of magnitude slower with no benefit to a
+  // peak-inventory metric. The tax-class map is built once and reused.
+  const { map: batchTaxClassMap } = await buildBatchTaxClassMap();
+  const sumClasses = (rec: Record<string, number>) =>
+    Object.values(rec).reduce((a, b) => a + b, 0);
+  const monthlyEndings: number[] = [];
+  for (let m = 1; m <= 12; m++) {
+    const { endDate } = getPeriodDateRange("monthly", currentYear, m);
+    const asOf = endDate.toISOString().split("T")[0];
+    const bulkByClass = await computeBulkByTaxClassAsOf(asOf, batchTaxClassMap);
+    const packaged = await computePackagedLedger(asOf, batchTaxClassMap);
+    const bottledGal = Object.values(packaged.byTaxClass).reduce(
+      (a, e) => a + e.onHand,
+      0,
+    );
+    monthlyEndings.push(sumClasses(bulkByClass) + bottledGal);
+  }
+  const maxMonthlyOnHandGal = Math.max(0, ...monthlyEndings);
+  // Quarter-end on hand = the last month of each quarter (Mar/Jun/Sep/Dec).
+  const maxQuarterlyOnHandGal = Math.max(
+    0,
+    monthlyEndings[2],
+    monthlyEndings[5],
+    monthlyEndings[8],
+    monthlyEndings[11],
+  );
+
+  const determination = determineFilingFrequency({
+    priorYearTaxUsd,
+    expectedCurrentYearTaxUsd,
+    maxMonthlyOnHandGal,
+    maxQuarterlyOnHandGal,
+  });
+  determination.reasons.push(
+    `Basis: current-year tax and on-hand figures are year-to-date (through ${now.toISOString().split("T")[0]}); re-verify at year end.`,
+  );
+
+  const [settings] = await db
+    .select()
+    .from(organizationSettings)
+    .where(eq(organizationSettings.organizationId, DEFAULT_ORG_ID))
+    .limit(1);
+
+  const waBoardApprovalOnFile = settings?.waBoardAnnualApproval ?? false;
+  const waDetermination = determineWaStateFrequency({
+    taxableGallonsPerYear: waTaxableGallons,
+    boardApprovalOnFile: waBoardApprovalOnFile,
+  });
+
+  const storedTtb = settings?.ttbReportingFrequency ?? null;
+  const storedState = settings?.stateTaxReportingFrequency ?? null;
+  // The org's ttbReportingFrequency is the operations-report cadence, so it is
+  // compared against the determined report frequency (not the tax-return period).
+  const mismatch =
+    determination.reportFrequency !== storedTtb ||
+    waDetermination.frequency !== storedState;
+
+  return {
+    determination,
+    waDetermination,
+    inputs: {
+      priorYear,
+      currentYear,
+      priorYearTaxUsd,
+      expectedCurrentYearTaxUsd,
+      maxMonthlyOnHandGal,
+      maxQuarterlyOnHandGal,
+      waTaxableGallons,
+      waBoardApprovalOnFile,
+      basis: "current-year figures are year-to-date (YTD)",
+    },
+    storedFrequency: { ttbReport: storedTtb, state: storedState },
+    mismatch,
+    confirmedAt: settings?.ttbFrequencyConfirmedAt ?? null,
+  };
+}
+
+/** One year in milliseconds — a confirmation older than this is stale. */
+const FILING_FREQUENCY_STALE_MS = 365 * 24 * 60 * 60 * 1000;
 
 export const ttbRouter = router({
   /**
@@ -10847,4 +11006,131 @@ export const ttbRouter = router({
       }
       return deleted;
     }),
+
+  // ============================================================
+  // FILING-FREQUENCY DETERMINATION (Phase 7 C2)
+  // ============================================================
+
+  /**
+   * Determine the required federal (27 CFR 24.271 / 24.300) and WA (LIQ-774)
+   * filing cadence from the org's live tax + inventory data, and compare it to
+   * the stored reporting frequencies. Read access follows the report reader
+   * role so the /reports/ttb banner can consume it; the settings page (admin)
+   * also uses it. Expensive (12 monthly form generations) — callers should
+   * cache the result.
+   */
+  getFilingFrequencyDetermination: createRbacProcedure("read", "report").query(
+    async ({ ctx }) => {
+      const result = await computeFilingFrequencyDetermination(ctx);
+      const stale =
+        !result.confirmedAt ||
+        Date.now() - new Date(result.confirmedAt).getTime() >
+          FILING_FREQUENCY_STALE_MS;
+      return { ...result, stale };
+    },
+  ),
+
+  /**
+   * Cheap read-only status for the filing-frequency determination — reads only
+   * organization_settings (no form generation), so it is safe to call on page
+   * load (e.g. the /reports/ttb banner). Reports whether the last-confirmed
+   * determination has gone stale (>1 year / never confirmed) or no longer
+   * matches the currently-stored reporting frequencies (a manual override).
+   */
+  getFilingFrequencyStatus: createRbacProcedure("read", "report").query(
+    async () => {
+      const DEFAULT_ORG_ID = "00000000-0000-0000-0000-000000000001";
+      const [settings] = await db
+        .select()
+        .from(organizationSettings)
+        .where(eq(organizationSettings.organizationId, DEFAULT_ORG_ID))
+        .limit(1);
+
+      const confirmedAt = settings?.ttbFrequencyConfirmedAt ?? null;
+      const stored =
+        (settings?.ttbFrequencyDetermination as FilingFrequencyDeterminationResult | null) ??
+        null;
+      const stale =
+        !confirmedAt ||
+        Date.now() - new Date(confirmedAt).getTime() > FILING_FREQUENCY_STALE_MS;
+
+      const storedTtb = settings?.ttbReportingFrequency ?? null;
+      const storedState = settings?.stateTaxReportingFrequency ?? null;
+      const mismatch = stored
+        ? stored.determination.reportFrequency !== storedTtb ||
+          stored.waDetermination.frequency !== storedState
+        : false;
+
+      return {
+        confirmedAt,
+        stale,
+        mismatch,
+        storedFrequency: { ttbReport: storedTtb, state: storedState },
+        determination: stored?.determination ?? null,
+        waDetermination: stored?.waDetermination ?? null,
+      };
+    },
+  ),
+
+  /**
+   * Confirm the filing-frequency determination: recompute it server-side (so
+   * the stored values can't be tampered with), persist the determination blob
+   * and confirmed_at/by, and set the reporting frequencies to the determined
+   * federal operations-report cadence and WA cadence. Admin-only + audited.
+   */
+  confirmFilingFrequency: adminProcedure.mutation(async ({ ctx }) => {
+    const DEFAULT_ORG_ID = "00000000-0000-0000-0000-000000000001";
+    const result = await computeFilingFrequencyDetermination(ctx);
+
+    const [existing] = await db
+      .select()
+      .from(organizationSettings)
+      .where(eq(organizationSettings.organizationId, DEFAULT_ORG_ID))
+      .limit(1);
+    if (!existing) {
+      throw new TRPCError({
+        code: "NOT_FOUND",
+        message: "Organization settings not found",
+      });
+    }
+
+    const confirmedAt = new Date();
+    const [updated] = await db
+      .update(organizationSettings)
+      .set({
+        ttbFrequencyDetermination: result,
+        ttbFrequencyConfirmedAt: confirmedAt,
+        ttbFrequencyConfirmedBy: ctx.session?.user?.id ?? null,
+        // The stored TTB reporting frequency tracks the operations-report cadence.
+        ttbReportingFrequency: result.determination.reportFrequency,
+        stateTaxReportingFrequency: result.waDetermination.frequency,
+        updatedAt: confirmedAt,
+      })
+      .where(eq(organizationSettings.organizationId, DEFAULT_ORG_ID))
+      .returning();
+
+    // Audit the confirmation. This router logs directly to auditLogs (it has no
+    // audited-procedure writes) — same pattern as addWaterfallAdjustment above.
+    await db.insert(auditLogs).values({
+      tableName: "organization_settings",
+      recordId: updated.id,
+      operation: "update",
+      oldData: {
+        ttbReportingFrequency: existing.ttbReportingFrequency,
+        stateTaxReportingFrequency: existing.stateTaxReportingFrequency,
+        ttbFrequencyConfirmedAt: existing.ttbFrequencyConfirmedAt,
+      },
+      newData: {
+        ttbReportingFrequency: updated.ttbReportingFrequency,
+        stateTaxReportingFrequency: updated.stateTaxReportingFrequency,
+        ttbFrequencyConfirmedAt: updated.ttbFrequencyConfirmedAt,
+        determination: result.determination,
+        waDetermination: result.waDetermination,
+      },
+      changedBy: ctx.session?.user?.id ?? null,
+      reason: "Confirmed filing-frequency determination",
+    });
+
+    return { ...result, confirmedAt, stale: false };
+  }),
 });

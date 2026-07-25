@@ -72,6 +72,10 @@ export default function TTBReportsPage() {
   // Fetch the latest needed period from backend
   const { data: latestNeeded } = trpc.ttb.getLatestNeededPeriod.useQuery();
 
+  // Cheap filing-frequency status (reads settings only, no form generation) for
+  // the re-verify banner. Flags a stale or overridden filing-frequency setting.
+  const { data: freqStatus } = trpc.ttb.getFilingFrequencyStatus.useQuery();
+
   // Initialize period type, year, and period from the latest needed period
   useEffect(() => {
     if (latestNeeded && !hasInitialized) {
@@ -238,6 +242,26 @@ export default function TTBReportsPage() {
             Report of Wine Premises Operations
           </p>
         </div>
+
+        {/* Filing-frequency re-verify note (near the period controls) */}
+        {freqStatus && (freqStatus.mismatch || freqStatus.stale) && (
+          <div className="mb-4 flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+            <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+            <p className="text-xs text-amber-800">
+              {freqStatus.mismatch
+                ? "Your saved TTB/state filing frequency no longer matches the last computed determination. "
+                : "Your filing frequency hasn't been verified in over a year. "}
+              Review it in{" "}
+              <a
+                href="/admin"
+                className="font-medium underline hover:text-amber-900"
+              >
+                Tax Reporting settings
+              </a>
+              .
+            </p>
+          </div>
+        )}
 
         {/* Compact Period Selector */}
         <Card className="mb-4">

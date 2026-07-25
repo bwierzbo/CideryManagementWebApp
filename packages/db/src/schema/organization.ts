@@ -436,6 +436,35 @@ export const organizationSettings = pgTable(
       precision: 10,
       scale: 2,
     }),
+    /**
+     * Cached result of the last filing-frequency determination
+     * (ttb.getFilingFrequencyDetermination). Stores the computed federal +
+     * WA determination and the numeric inputs it was derived from, so the UI
+     * can show what the confirmed cadence was based on and flag staleness.
+     */
+    ttbFrequencyDetermination: jsonb("ttb_frequency_determination"),
+    /**
+     * When an admin last confirmed the filing-frequency determination.
+     * Null = never confirmed. A confirmation older than one year is treated
+     * as stale and the UI prompts re-verification.
+     */
+    ttbFrequencyConfirmedAt: timestamp("ttb_frequency_confirmed_at", {
+      withTimezone: true,
+    }),
+    /**
+     * The admin user who last confirmed the filing-frequency determination.
+     */
+    ttbFrequencyConfirmedBy: uuid("ttb_frequency_confirmed_by").references(
+      () => users.id
+    ),
+    /**
+     * Whether the WA WSLCB has approved annual LIQ-774 filing for this winery.
+     * Annual state filing requires BOTH taxable sales ≤6,000 gal/year AND this
+     * approval on file (27 CFR analog: WA WAC domestic-winery reporting).
+     */
+    waBoardAnnualApproval: boolean("wa_board_annual_approval")
+      .notNull()
+      .default(false),
 
     // ==========================================
     // Timestamps
