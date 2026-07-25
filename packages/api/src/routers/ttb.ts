@@ -109,6 +109,10 @@ import {
 } from "lib";
 import { fetchBatchVolumeEvents } from "../services/batch-volume-events";
 import { recomputeBatchVolume } from "../services/batch-volume-recompute";
+import {
+  runReconciliationHealthCheck,
+  getReconciliationHealth,
+} from "../services/reconciliation-health";
 
 /**
  * TTB tax-year membership timestamp for `batches` (Phase 1, migration 0144):
@@ -9089,6 +9093,23 @@ export const ttbRouter = router({
       }).optional()
     )
     .query(async ({ input }) => computeReconciliationSummary(input)),
+
+  /**
+   * Run the automated reconciliation health check (Phase 5). Read-only over the
+   * existing engines; writes one reconciliation_runs row + one audit entry.
+   * Admin-only; also invoked by the guarded nightly cron route with a synthetic
+   * admin ctx. `trigger` defaults to "manual" (the dashboard "Run check now").
+   */
+  runReconciliationHealthCheck: adminProcedure
+    .input(z.object({ trigger: z.enum(["cron", "manual"]).optional() }).optional())
+    .mutation(async ({ input, ctx }) =>
+      runReconciliationHealthCheck(ctx, { trigger: input?.trigger ?? "manual" }),
+    ),
+
+  /** Latest reconciliation health run + short history (dashboard card). */
+  getReconciliationHealth: protectedProcedure
+    .input(z.object({ limit: z.number().int().min(1).max(50).optional() }).optional())
+    .query(async ({ input }) => getReconciliationHealth(input?.limit ?? 10)),
 
   // ============================================
   // RECONCILIATION SNAPSHOTS

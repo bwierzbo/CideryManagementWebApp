@@ -820,3 +820,38 @@ export interface TTBOpeningBalances {
     grapeSpirits: number;
   };
 }
+
+/**
+ * Reconciliation Runs (Phase 5 — automated-reconciliation PRD, migration 0154)
+ *
+ * Durable log of automated (cron) and manual reconciliation health checks. Each
+ * row is one read-only pass of the health check over the existing reconciliation
+ * engines. The dashboard "Reconciliation health" card reads the latest row;
+ * alert-on-change compares consecutive rows.
+ */
+export const reconciliationRuns = pgTable(
+  "reconciliation_runs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ranAt: timestamp("ran_at", { withTimezone: true }).notNull().defaultNow(),
+    // 'cron' | 'manual'
+    trigger: text("trigger").notNull().$type<"cron" | "manual">(),
+    // Roll-up: 'clean' | 'attention' | 'drift'
+    status: text("status").notNull().$type<"clean" | "attention" | "drift">(),
+    // # batches the reconciliation page would flag as fail / warning.
+    perBatchFailCount: integer("per_batch_fail_count").notNull().default(0),
+    perBatchWarnCount: integer("per_batch_warn_count").notNull().default(0),
+    // Signed aggregate unexplained variance (post-adjustment), gallons.
+    totalUnexplainedGal: numeric("total_unexplained_gal", { precision: 12, scale: 3 }),
+    // Phase 6 C3 checkpoint drift: 'clean' | 'drifted' | null (no checkpoint).
+    checkpointDriftStatus: text("checkpoint_drift_status"),
+    // Per filed year: { [year]: 'clean' | 'expected_only' | 'new_drift', ... }
+    filedDrift: jsonb("filed_drift"),
+    // openingWarnings, per-year detail, changedSinceLastRun.
+    details: jsonb("details"),
+    durationMs: integer("duration_ms"),
+  },
+  (table) => ({
+    ranAtIdx: index("reconciliation_runs_ran_at_idx").on(table.ranAt),
+  }),
+);
