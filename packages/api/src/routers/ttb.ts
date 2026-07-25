@@ -95,7 +95,7 @@ import {
   type CiderBrandyReconciliation,
   computeFiledDrift,
   type FiledDriftResult,
-  type ExpectedDriftEntry,
+  type ExpectedDriftPayload,
   type TTBOpeningSourceInfo,
   type TTBOpeningWarning,
   determineFilingFrequency,
@@ -7844,16 +7844,20 @@ export const ttbRouter = router({
             )
             .limit(1);
 
-          if (filedSnap?.filedForm && Array.isArray(filedSnap.expectedDrift)) {
-            const formEntries = (filedSnap.expectedDrift as ExpectedDriftEntry[]).filter(
-              (e) => e.surface === "form",
-            );
-            // Only the recomputed columns/materials are needed to resolve the
-            // form-surface field paths.
+          // Phase 7 C4b: expected_drift is now a { mode, entries } payload.
+          // `full` mode (2025, future filings) compares the canonical leaf set of
+          // the filed form with entries as per-field overrides; `entries` mode
+          // (2024) compares only the listed entries. Only form-surface entries
+          // apply to the FORM comparison (checkpoint-surface deltas belong to the
+          // reconciliation waterfall).
+          const payload = filedSnap?.expectedDrift as ExpectedDriftPayload | undefined;
+          if (filedSnap?.filedForm && payload && Array.isArray(payload.entries)) {
+            const formEntries = payload.entries.filter((e) => e.surface === "form");
             filedDrift = computeFiledDrift(
               { bulkWinesByTaxClass, bottledWinesByTaxClass, materials },
               filedSnap.filedForm,
               formEntries,
+              { mode: payload.mode },
             );
           }
         }
@@ -8764,13 +8768,18 @@ export const ttbRouter = router({
 
         const filedAt = new Date().toISOString().split("T")[0];
 
+        // Phase 7 C4b: store the filed form in the recompute shape and a
+        // full-mode drift payload with NO overrides. Because the filed form IS
+        // the recompute at filing time, every canonical leaf matches now; any
+        // later divergence on any leaf becomes new_drift by definition.
+        const expectedDrift: ExpectedDriftPayload = { mode: "full", entries: [] };
         const [updated] = await db
           .update(ttbPeriodSnapshots)
           .set({
             isFiled: true,
             filedAt,
             filedForm: formResult.formData,
-            expectedDrift: [],
+            expectedDrift,
             updatedAt: new Date(),
           })
           .where(eq(ttbPeriodSnapshots.id, input.snapshotId))

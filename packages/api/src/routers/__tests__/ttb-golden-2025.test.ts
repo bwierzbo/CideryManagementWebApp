@@ -18,8 +18,10 @@ import { appRouter } from "..";
 import {
   FILED_2024,
   FILED_2025,
-  EXPECTED_DRIFT_2024,
+  FILED_2025_FORM,
   EXPECTED_DRIFT_2025,
+  FILED_DRIFT_PAYLOAD_2024,
+  FILED_DRIFT_PAYLOAD_2025,
 } from "lib";
 
 // Admin context — same pattern as ttb-parity.test.ts
@@ -1071,18 +1073,21 @@ describe("TTB Golden 2025 — Reconciliation Summary", () => {
 // re-seeds from a stale copy, or edits the constants without re-running
 // seed-filed-snapshots.ts). It keeps the runtime comparator (C4) honest.
 describe("TTB Filed-Snapshot Source Parity", () => {
+  // Phase 7 C4b: 2025 now seeds the recompute-shaped FILED_2025_FORM and a
+  // full-mode { mode, entries } payload; 2024 keeps the native FILED_2024 form
+  // and an entries-mode payload.
   const SNAPSHOTS = [
     {
       year: 2024,
       id: "fb3964e1-3560-43a1-9ec6-377e9cc1778a",
       filedForm: FILED_2024,
-      expectedDrift: EXPECTED_DRIFT_2024,
+      expectedDrift: FILED_DRIFT_PAYLOAD_2024,
     },
     {
       year: 2025,
       id: "f968b31f-7ee7-43bc-9e06-510cfd3920c0",
-      filedForm: FILED_2025,
-      expectedDrift: EXPECTED_DRIFT_2025,
+      filedForm: FILED_2025_FORM,
+      expectedDrift: FILED_DRIFT_PAYLOAD_2025,
     },
   ] as const;
 
