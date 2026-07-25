@@ -283,6 +283,27 @@ for (const year of YEARS) {
     console.log("totals:", JSON.stringify(recon.totals, null, 2));
     if (yearOut.parityWarnings) console.log("parityWarnings:", JSON.stringify(yearOut.parityWarnings, null, 2));
 
+    // --- Phase 6 C3: checkpoint-drift detection ------------------------------
+    // Attached by getReconciliationSummary when a finalized, non-superseded
+    // checkpoint covers the period. Recomputes per-class endings as-of the
+    // checkpoint date and diffs vs the persisted (locked) endings.
+    const cd = recon.checkpointDrift;
+    yearOut.checkpointDrift = cd ?? null;
+    if (cd) {
+      console.log(
+        `checkpointDrift: checkpointDate=${cd.checkpointDate}, status=${cd.status}, ` +
+        `lines=${cd.lines.length}`,
+      );
+      const drifted = (cd.lines ?? []).filter((l: any) => Math.abs(l.deltaGal) > 0.5);
+      for (const l of drifted) {
+        console.log(
+          `    DRIFT ${l.taxClass}: locked=${l.lockedGal}, recomputed=${l.recomputedGal}, delta=${l.deltaGal}`,
+        );
+      }
+    } else {
+      console.log("checkpointDrift: (none — no finalized checkpoint covers this period)");
+    }
+
     // --- Phase 3 C0: waterfall plug instrumentation --------------------
     if (yearOut.plugInstrumentation) {
       const p = yearOut.plugInstrumentation;
