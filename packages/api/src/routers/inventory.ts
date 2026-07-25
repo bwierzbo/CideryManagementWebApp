@@ -817,6 +817,9 @@ export const inventoryRouter = router({
         inventoryItemId: z.string().uuid(),
         distributionLocation: z.string().min(1),
         salesChannelId: z.string().uuid().optional(),
+        // Phase 7 C6: distributor identity, captured for wholesale distributions
+        // (future LIQ-777 breakdown). Optional and non-breaking.
+        distributorName: z.string().optional(),
         quantityDistributed: z.number().int().positive(),
         pricePerUnit: z.number().positive(),
         distributionDate: z.string().datetime(),
@@ -858,6 +861,7 @@ export const inventoryRouter = router({
             distributionDate: new Date(input.distributionDate),
             distributionLocation: input.distributionLocation,
             salesChannelId: input.salesChannelId,
+            distributorName: input.distributorName,
             quantityDistributed: input.quantityDistributed,
             pricePerUnit: input.pricePerUnit.toString(),
             totalRevenue: totalRevenue.toString(),

@@ -500,6 +500,12 @@ export const inventoryDistributions = pgTable(
      * References sales_channels table for categorization
      */
     salesChannelId: uuid("sales_channel_id").references(() => salesChannels.id),
+    /**
+     * Distributor identity for wholesale (WA distributor) distributions.
+     * Nullable — Phase 7 C6 captures this going forward for a future LIQ-777
+     * (WA distributor breakdown); only surfaced when the channel is wholesale.
+     */
+    distributorName: text("distributor_name"),
     quantityDistributed: integer("quantity_distributed").notNull(),
     pricePerUnit: decimal("price_per_unit", { precision: 10, scale: 2 }).notNull(),
     totalRevenue: decimal("total_revenue", { precision: 10, scale: 2 }).notNull(),

@@ -30,6 +30,7 @@ import { Send, DollarSign, Package, Store } from "lucide-react";
 const distributeInventorySchema = z.object({
   distributionLocation: z.string().min(1, "Location is required"),
   salesChannelId: z.string().uuid().optional(),
+  distributorName: z.string().optional(),
   quantityDistributed: z.number().int().positive("Quantity must be positive"),
   pricePerUnit: z.number().positive("Price must be positive"),
   distributionDate: z.string().min(1, "Date is required"),
@@ -84,6 +85,13 @@ export function DistributeInventoryModal({
   // Watch values for real-time calculations
   const watchQuantity = watch("quantityDistributed");
   const watchPrice = watch("pricePerUnit");
+  const watchSalesChannelId = watch("salesChannelId");
+
+  // Distributor name is captured only for the wholesale (WA distributor) channel
+  // — Phase 7 C6, for a future LIQ-777 breakdown.
+  const isWholesaleChannel =
+    salesChannels?.find((c) => c.id === watchSalesChannelId)?.code ===
+    "wholesale";
 
   // Calculate total revenue
   const totalRevenue = (watchQuantity || 0) * (watchPrice || 0);
@@ -124,6 +132,7 @@ export function DistributeInventoryModal({
       inventoryItemId,
       distributionLocation: data.distributionLocation,
       salesChannelId: data.salesChannelId,
+      distributorName: isWholesaleChannel ? data.distributorName : undefined,
       quantityDistributed: data.quantityDistributed,
       pricePerUnit: data.pricePerUnit,
       distributionDate: distributionDate.toISOString(),
@@ -232,6 +241,22 @@ export function DistributeInventoryModal({
               For TTB reporting and sales analytics
             </p>
           </div>
+
+          {/* Distributor Name — wholesale (WA distributor) only */}
+          {isWholesaleChannel && (
+            <div>
+              <Label htmlFor="distributorName">Distributor Name</Label>
+              <Input
+                id="distributorName"
+                placeholder="e.g., ABC Distributors"
+                {...register("distributorName")}
+                className="mt-1"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Captured for the WA distributor (LIQ-777) breakdown
+              </p>
+            </div>
+          )}
 
           {/* Quantity and Price Row */}
           <div className="grid grid-cols-2 gap-4">

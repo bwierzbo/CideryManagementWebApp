@@ -102,6 +102,10 @@ import {
   determineWaStateFrequency,
   type FilingFrequencyResult,
   type WaStateFrequencyResult,
+  computeLIQ774,
+  taxClassToLIQ774Category,
+  type LIQ774Category,
+  type LIQ774ChannelSales,
 } from "lib";
 import { fetchBatchVolumeEvents } from "../services/batch-volume-events";
 import { recomputeBatchVolume } from "../services/batch-volume-recompute";
@@ -7916,6 +7920,137 @@ export const ttbRouter = router({
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: "Failed to generate TTB form data",
+        });
+      }
+    }),
+
+  /**
+   * WA LIQ-774 "Domestic Winery Summary Tax Report" generator (Phase 7 C6).
+   *
+   * Reuses the golden-tested Form 5120.17 computation for the SAME window (via an
+   * in-process tRPC caller — same pattern as markPeriodFiled /
+   * computeFilingFrequencyDetermination) so box 1 (net gallons) and box 2/9
+   * (removals) share the federal source of truth, and layers on a channel-sales
+   * query for the taxable-sales boxes (13/14).
+   *
+   * Attribution path (channel sales → LIQ-774 box):
+   *   inventory_distributions in the period
+   *     → inventory_items.batchId → buildBatchTaxClassMap → federal tax class
+   *       → taxClassToLIQ774Category (Cider / Non-Fortified / Fortified)
+   *     → sales_channels.code → box:
+   *         tasting_room | online_dtc | events → box 13 (winery retail)
+   *         wholesale                          → box 14 (WA retail licensees)
+   *   gallons = units × package_size_ml/1000 L × wine-gal/L.
+   * Distributions with no batch/tax-class or an unrecognized channel are counted
+   * into `channelAttribution.uncategorizedGal` and excluded from the boxes — they
+   * then surface honestly through the box16≡box9 identity flag (never plugged).
+   */
+  generateLIQ774: createRbacProcedure("read", "report")
+    .input(generateForm512017Input)
+    .query(async ({ input, ctx }) => {
+      try {
+        const { periodType, year, periodNumber } = input;
+        const { startDate, endDate } = getPeriodDateRange(
+          periodType,
+          year,
+          periodNumber,
+        );
+        // distribution_date is a TIMESTAMP; use an exclusive next-day upper bound
+        // so events on the period's final calendar day are not dropped.
+        const endExclusive = new Date(endDate);
+        endExclusive.setDate(endExclusive.getDate() + 1);
+
+        // 1. Federal form for the same window (single source of truth for boxes 1/2/9).
+        // Same in-process caller pattern as markPeriodFiled/computeFilingFrequency,
+        // but via dynamic import (not sync require) so the sibling ./index resolves
+        // under vitest's .ts pipeline — the integration test exercises this path.
+        const { appRouter } = await import("./index");
+        const caller = appRouter.createCaller(ctx);
+        const formResult = await caller.ttb.generateForm512017({
+          periodType,
+          year,
+          periodNumber,
+        });
+
+        // 2. Channel-sales query, attributed to LIQ-774 category + box.
+        const { map: batchTaxClassMap } = await buildBatchTaxClassMap();
+
+        const distributionRows = await db
+          .select({
+            quantity: inventoryDistributions.quantityDistributed,
+            packageSizeML: inventoryItems.packageSizeML,
+            batchId: inventoryItems.batchId,
+            channelCode: salesChannels.code,
+          })
+          .from(inventoryDistributions)
+          .innerJoin(
+            inventoryItems,
+            eq(inventoryDistributions.inventoryItemId, inventoryItems.id),
+          )
+          .leftJoin(
+            salesChannels,
+            eq(inventoryDistributions.salesChannelId, salesChannels.id),
+          )
+          .where(
+            and(
+              gte(inventoryDistributions.distributionDate, startDate),
+              lt(inventoryDistributions.distributionDate, endExclusive),
+            ),
+          );
+
+        const byCategory: LIQ774ChannelSales["byCategory"] = {
+          cider: { retailGal: 0, licenseeGal: 0 },
+          nonFortified: { retailGal: 0, licenseeGal: 0 },
+          fortified: { retailGal: 0, licenseeGal: 0 },
+        };
+        let uncategorizedGal = 0;
+
+        for (const row of distributionRows) {
+          const units = row.quantity ?? 0;
+          const sizeMl = row.packageSizeML ?? 0;
+          if (units <= 0 || sizeMl <= 0) continue;
+          const gallons =
+            ((units * sizeMl) / 1000) * WINE_GALLONS_PER_LITER;
+
+          const taxClass = getTaxClassFromMap(batchTaxClassMap, row.batchId, null);
+          const category: LIQ774Category | null = taxClass
+            ? taxClassToLIQ774Category(taxClass)
+            : null;
+
+          // Channel → box: wholesale is the WA-retail-licensee channel (box 14);
+          // the direct-to-consumer channels roll into winery retail (box 13).
+          const code = row.channelCode;
+          const isLicensee = code === "wholesale";
+          const isRetail =
+            code === "tasting_room" || code === "online_dtc" || code === "events";
+
+          if (!category || (!isLicensee && !isRetail)) {
+            uncategorizedGal += gallons;
+            continue;
+          }
+          if (isLicensee) byCategory[category].licenseeGal += gallons;
+          else byCategory[category].retailGal += gallons;
+        }
+
+        const channelSales: LIQ774ChannelSales = { byCategory };
+
+        // 3. Pure derivation.
+        const liq774 = computeLIQ774(formResult.formData, channelSales);
+
+        return {
+          liq774,
+          periodLabel: formatPeriodLabel(periodType, year, periodNumber),
+          channelAttribution: {
+            distributionsCount: distributionRows.length,
+            uncategorizedGal: roundGallons(uncategorizedGal),
+          },
+        };
+      } catch (error) {
+        if (error instanceof TRPCError) throw error;
+        console.error("Error generating LIQ-774:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to generate LIQ-774 report",
         });
       }
     }),
