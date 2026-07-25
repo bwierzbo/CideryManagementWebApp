@@ -717,9 +717,11 @@ function VarianceBreakdown({
         </Button>
       </div>
       <p className="text-[11px] text-amber-700">
-        Prefer a per-class accept when a single tax class drives the residual; use the aggregate
-        accept only when the driver is genuinely classless (e.g. rounding across classes). A
-        per-class accept nets that class to green.
+        For an over-tolerance class, either <span className="font-medium">Accept with reason</span>{" "}
+        when it&apos;s a genuine basis difference you stand behind (nets the class to green), or{" "}
+        <span className="font-medium">fix it at source</span> — pin the batch volume in the table
+        below (or correct the underlying transfer) when the residual is a data error. Use the
+        aggregate accept only when the driver is genuinely classless (e.g. rounding across classes).
       </p>
     </div>
   );
