@@ -447,6 +447,12 @@ export const ttbReconciliationSnapshots = pgTable(
     // Tax class breakdown (JSON) - optional detailed breakdown
     taxClassBreakdown: text("tax_class_breakdown"), // JSON for detailed per-class data
 
+    // Checkpoint data model (Phase 6 C1, migration 0149)
+    varianceAnalysis: jsonb("variance_analysis"), // Full waterfall (per-class + totals) + components at lock time
+    unexplainedVarianceGal: numeric("unexplained_variance_gal", { precision: 12, scale: 3 }), // Signed aggregate unexplained (net of accepted adjustments)
+    acceptedAdjustmentIds: jsonb("accepted_adjustment_ids"), // Array of waterfall adjustment ids that explained variance in the window
+    amendsId: uuid("amends_id"), // Self-ref: this finalized row supersedes the referenced checkpoint (amend = new row)
+
     // Reconciliation status
     isReconciled: boolean("is_reconciled").notNull().default(false),
     // Using text with CHECK constraint in DB (not enum) to match migration pattern
