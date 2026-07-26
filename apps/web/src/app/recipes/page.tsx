@@ -11,7 +11,7 @@
  * the permission, but the server is the source of truth.
  */
 
-import { useMemo, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
@@ -89,6 +89,18 @@ function statusBadgeClass(status: string): string {
 }
 
 export default function RecipesPage() {
+  // useSearchParams (in the inner component) requires a Suspense boundary for
+  // static prerender — without it `next build` fails on this page and EVERY
+  // Vercel deploy dies (which silently pinned production to a stale build
+  // from 2026-07-20 until this fix).
+  return (
+    <Suspense fallback={null}>
+      <RecipesPageInner />
+    </Suspense>
+  );
+}
+
+function RecipesPageInner() {
   const { data: session } = useSession();
   const user = session?.user as
     | { role?: string; permissionOverrides?: Record<string, boolean> }
