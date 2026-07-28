@@ -694,7 +694,13 @@ function PerTypeMeasurementIntervals() {
       const saved = (savedSchedules as Record<string, any> | undefined)?.[
         row.key
       ] as PerTypeMeasurementSchedule | undefined;
-      init[row.key] = saved || DEFAULT_PER_TYPE_SCHEDULES[row.key] || DEFAULT_PER_TYPE_SCHEDULES["cider_fermenting"];
+      const base =
+        DEFAULT_PER_TYPE_SCHEDULES[row.key] || DEFAULT_PER_TYPE_SCHEDULES["cider_fermenting"];
+      // Merge saved over defaults COLUMN-WISE: schedules saved under an older
+      // shape may lack columns added since (this crashed the System Settings
+      // tab with "Cannot read properties of undefined (reading 'enabled')"
+      // when a stored schedule predated a newer measurement column).
+      init[row.key] = saved ? { ...base, ...saved } : base;
     }
     setLocalSchedules(init);
     setDirty(new Set());
@@ -786,7 +792,10 @@ function PerTypeMeasurementIntervals() {
                     {row.label}
                   </td>
                   {MEASUREMENT_COLS.map((col) => {
-                    const cell = (schedule as any)[col] as MeasurementTypeInterval;
+                    // Belt-and-braces beside the column-wise merge above: never
+                    // crash the whole settings page on a missing cell.
+                    const cell = ((schedule as any)[col] ??
+                      { enabled: false, intervalHours: 24 }) as MeasurementTypeInterval;
                     const isStageBased = row.stageBased?.includes(col);
 
                     if (isStageBased && cell.enabled) {
