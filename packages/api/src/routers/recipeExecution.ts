@@ -18,7 +18,7 @@
 
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import {
   db,
   batches,
@@ -30,10 +30,13 @@ import {
   batchStepTasks,
   batchMergeHistory,
   batchTransfers,
+  bottleRuns,
+  kegFills,
 } from "db";
 import { buildStepSchedule, rescheduleWithActuals } from "lib";
 import { router, createRbacProcedure } from "../trpc";
 import { recomputeBatchVolume } from "../services/batch-volume-recompute";
+import { computeFamilyFulfillment } from "../services/recipe-family-fulfillment";
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
@@ -287,7 +290,15 @@ export const recipeExecutionRouter = router({
         .from(batchRecipeExecutions)
         .where(eq(batchRecipeExecutions.batchId, input.batchId))
         .limit(1);
-      if (!execution) return { execution: null, tasks: [] };
+      if (!execution)
+        return {
+          execution: null,
+          tasks: [],
+          sources: [],
+          ingredients: [],
+          fulfilledBy: {},
+          packagedActuals: null,
+        };
 
       const tasks = await db
         .select()
@@ -342,7 +353,101 @@ export const recipeExecutionRouter = router({
           ),
         );
 
-      return { execution, tasks, sources, ingredients };
+      // ---- Batch-family sync (split executions) -------------------------
+      // A vessel-transfer split clones this execution onto the child batch
+      // (vessel.transfer), so the bottle/keg paths exist on every family
+      // member. Pair this batch's open path steps against completions on the
+      // parent / children / siblings so "bottled on the child" doesn't show
+      // as overdue here, and report actual packaged liters across the family.
+      const [selfBatch] = await db
+        .select({ id: batches.id, parentBatchId: batches.parentBatchId })
+        .from(batches)
+        .where(eq(batches.id, input.batchId))
+        .limit(1);
+      const familyConditions = [eq(batches.parentBatchId, input.batchId)];
+      if (selfBatch?.parentBatchId) {
+        familyConditions.push(eq(batches.id, selfBatch.parentBatchId));
+        familyConditions.push(eq(batches.parentBatchId, selfBatch.parentBatchId));
+      }
+      const familyRows = await db
+        .select({
+          id: batches.id,
+          batchNumber: batches.batchNumber,
+          name: batches.name,
+          customName: batches.customName,
+        })
+        .from(batches)
+        .where(
+          and(
+            or(...familyConditions),
+            ne(batches.id, input.batchId),
+            isNull(batches.deletedAt),
+          ),
+        );
+      const familyIds = familyRows.map((b) => b.id);
+      const familyLabel = new Map(
+        familyRows.map((b) => [b.id, b.customName || b.name || b.batchNumber]),
+      );
+
+      let fulfilledBy: Record<
+        string,
+        { batchId: string; batchLabel: string; completedAt: Date | string | null }
+      > = {};
+      if (familyIds.length) {
+        const familyDone = await db
+          .select({
+            kind: batchStepTasks.kind,
+            label: batchStepTasks.label,
+            packagingPath: batchStepTasks.packagingPath,
+            batchId: batchStepTasks.batchId,
+            completedAt: batchStepTasks.completedAt,
+          })
+          .from(batchStepTasks)
+          .where(
+            and(
+              inArray(batchStepTasks.batchId, familyIds),
+              eq(batchStepTasks.status, "done"),
+              ne(batchStepTasks.packagingPath, "all"),
+            ),
+          );
+        fulfilledBy = Object.fromEntries(
+          Object.entries(computeFamilyFulfillment(tasks, familyDone)).map(
+            ([taskId, f]) => [
+              taskId,
+              { ...f, batchLabel: familyLabel.get(f.batchId) ?? "related batch" },
+            ],
+          ),
+        );
+      }
+
+      // Actual packaged volume across the whole family (self + relatives), so
+      // the header can show real bottled/kegged liters next to the plan.
+      const packagedIds = [input.batchId, ...familyIds];
+      const bottleRows = await db
+        .select({ liters: bottleRuns.volumeTakenLiters })
+        .from(bottleRuns)
+        .where(
+          and(inArray(bottleRuns.batchId, packagedIds), isNull(bottleRuns.voidedAt)),
+        );
+      const kegRows = await db
+        .select({ volume: kegFills.volumeTaken, unit: kegFills.volumeTakenUnit })
+        .from(kegFills)
+        .where(
+          and(
+            inArray(kegFills.batchId, packagedIds),
+            isNull(kegFills.voidedAt),
+            isNull(kegFills.deletedAt),
+          ),
+        );
+      const packagedActuals = {
+        bottledL: bottleRows.reduce((sum, r) => sum + (Number(r.liters) || 0), 0),
+        keggedL: kegRows.reduce((sum, r) => {
+          const v = Number(r.volume) || 0;
+          return sum + (r.unit === "gal" ? v * 3.78541 : v);
+        }, 0),
+      };
+
+      return { execution, tasks, sources, ingredients, fulfilledBy, packagedActuals };
     }),
 
   /** Cross-batch work queue: every open task across all active executions. */
