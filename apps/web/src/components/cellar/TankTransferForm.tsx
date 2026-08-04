@@ -430,6 +430,8 @@ export function TankTransferForm({
                         {hasLiquid && (
                           <span className="text-xs text-orange-600 font-medium">
                             • Contains {vesselCurrentVolume.toFixed(1)} {capacityUnit}
+                            {(vesselLiquidMap?.batchCustomName || vesselLiquidMap?.batchNumber) &&
+                              ` · ${vesselLiquidMap.batchCustomName || vesselLiquidMap.batchNumber}`}
                           </span>
                         )}
                       </span>

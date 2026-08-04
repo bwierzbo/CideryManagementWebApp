@@ -307,7 +307,8 @@ export function CreatePommeauBlendDialog({
                       const abvLabel = abv === 0 ? "Fresh juice" : `${abv.toFixed(1)}% ABV`;
                       return (
                         <SelectItem key={batch.id} value={batch.id}>
-                          {batch.name} ({parseFloat(batch.currentVolume || "0").toFixed(1)}L, {abvLabel})
+                          {batch.customName || batch.name}
+                          {batch.vesselName ? ` · ${batch.vesselName}` : ""} ({parseFloat(batch.currentVolume || "0").toFixed(1)}L, {abvLabel})
                         </SelectItem>
                       );
                     })
@@ -393,7 +394,8 @@ export function CreatePommeauBlendDialog({
                   ) : (
                     brandyBatches.map((batch) => (
                       <SelectItem key={batch.id} value={batch.id}>
-                        {batch.name} ({parseFloat(batch.currentVolume || "0").toFixed(1)}L,{" "}
+                        {batch.customName || batch.name}
+                        {batch.vesselName ? ` · ${batch.vesselName}` : ""} ({parseFloat(batch.currentVolume || "0").toFixed(1)}L,{" "}
                         {batch.actualAbv || "?"}% ABV)
                       </SelectItem>
                     ))

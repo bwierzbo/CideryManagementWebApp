@@ -175,12 +175,12 @@ export function SendToDistilleryDialog({
     });
   };
 
-  // Get batch display name - prefer customName, fall back to name
+  // Get batch display name - prefer customName, fall back to name; always show current vessel
   const getBatchDisplayName = (batchId: string) => {
     const batch = availableBatches.find(b => b.id === batchId);
     if (!batch) return "Loading...";
-    // Prefer customName if it exists, otherwise use name
-    return batch.customName || batch.name;
+    const base = batch.customName || batch.name;
+    return batch.vesselName ? `${base} · ${batch.vesselName}` : base;
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -292,7 +292,8 @@ export function SendToDistilleryDialog({
                           ) : (
                             availableOptions.map((batch) => (
                               <SelectItem key={batch.id} value={batch.id}>
-                                {batch.customName || batch.name} ({parseFloat(batch.currentVolume || "0").toFixed(1)}L)
+                                {batch.customName || batch.name}
+                                {batch.vesselName ? ` · ${batch.vesselName}` : ""} ({parseFloat(batch.currentVolume || "0").toFixed(1)}L)
                               </SelectItem>
                             ))
                           )}

@@ -358,7 +358,7 @@ export function RackingModal({
                             )}
                             {hasBatch && !isCurrentVessel && (
                               <Badge variant="secondary" className="text-xs">
-                                In Use
+                                {vessel.batchCustomName || vessel.batchNumber || "In Use"}
                               </Badge>
                             )}
                             {isEmpty && (

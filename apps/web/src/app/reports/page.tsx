@@ -487,7 +487,8 @@ export default function ReportsPage() {
                     <SelectItem value="all">All Batches</SelectItem>
                     {batchList.map((batch) => (
                       <SelectItem key={batch.id} value={batch.id}>
-                        {batch.name}
+                        {batch.customName || batch.name}
+                        {batch.vesselName ? ` · ${batch.vesselName}` : ""}
                       </SelectItem>
                     ))}
                   </SelectContent>

@@ -42,7 +42,7 @@ import { productionReportsRouter } from "./productionReports";
 import { recipesRouter } from "./recipes";
 import { recipeExecutionRouter } from "./recipeExecution";
 import { planningRouter } from "./planning";
-import { MIN_WORKING_VOLUME_L } from "lib";
+import { MIN_WORKING_VOLUME_L, splitChildCustomName } from "lib";
 import { writeLedgerEntry } from "../lib/volume-ledger";
 import { recomputeBatchVolume } from "../services/batch-volume-recompute";
 import {
@@ -2611,6 +2611,7 @@ export const appRouter = router({
             // Batch information (if exists)
             batchId: batches.id,
             batchName: batches.name,
+            batchCustomName: batches.customName,
             currentVolume: batches.currentVolume,
             currentVolumeUnit: batches.currentVolumeUnit,
             batchStatus: batches.status,
@@ -2647,6 +2648,7 @@ export const appRouter = router({
               ? {
                   id: vessel.batchId,
                   name: vessel.batchName,
+                  customName: vessel.batchCustomName,
                   currentVolume: vessel.currentVolume,
                   currentVolumeUnit: vessel.currentVolumeUnit,
                   status: vessel.batchStatus,
@@ -4024,6 +4026,15 @@ export const appRouter = router({
               const uniqueSuffix = Date.now().toString(36); // Base36 timestamp for compact unique ID
               const transferredBatchNumber = `${sourceBatch[0].batchNumber}-T${uniqueSuffix}`;
               const transferredBatchName = `Batch #${transferredBatchNumber}`;
+              const existingChildren = await tx
+                .select({ id: batches.id })
+                .from(batches)
+                .where(
+                  and(
+                    eq(batches.parentBatchId, sourceBatch[0].id),
+                    isNull(batches.deletedAt),
+                  ),
+                );
 
               const newTransferredBatch = await tx
                 .insert(batches)
@@ -4031,7 +4042,10 @@ export const appRouter = router({
                   vesselId: input.toVesselId,
                   name: transferredBatchName,
                   batchNumber: transferredBatchNumber,
-                  customName: sourceBatch[0].customName, // Inherit parent's custom name
+                  customName: splitChildCustomName(
+                    sourceBatch[0].customName,
+                    existingChildren.length,
+                  ),
                   initialVolumeLiters: input.volumeL.toString(),
                   currentVolume: input.volumeL.toString(),
                   currentVolumeUnit: "L",
@@ -5004,6 +5018,15 @@ export const appRouter = router({
                 const uniqueSuffix = Date.now().toString(36);
                 const transferredBatchNumber = `${sourceBatch[0].batchNumber}-T${uniqueSuffix}`;
                 const transferredBatchName = `Batch #${transferredBatchNumber}`;
+                const existingChildren = await tx
+                  .select({ id: batches.id })
+                  .from(batches)
+                  .where(
+                    and(
+                      eq(batches.parentBatchId, sourceBatch[0].id),
+                      isNull(batches.deletedAt),
+                    ),
+                  );
 
                 const newTransferredBatch = await tx
                   .insert(batches)
@@ -5011,7 +5034,10 @@ export const appRouter = router({
                     vesselId: input.toVesselId,
                     name: transferredBatchName,
                     batchNumber: transferredBatchNumber,
-                    customName: sourceBatch[0].customName,
+                    customName: splitChildCustomName(
+                      sourceBatch[0].customName,
+                      existingChildren.length,
+                    ),
                     initialVolumeLiters: "0",
                     currentVolume: input.volumeL.toString(),
                     currentVolumeUnit: "L",
