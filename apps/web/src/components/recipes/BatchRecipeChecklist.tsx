@@ -38,6 +38,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Check, SkipForward, RotateCcw, Lock } from "lucide-react";
+import { formatDateForInput } from "@/utils/date-format";
 
 // Display status (richer than the raw status) → left-border accent + badge.
 type RowStatus = "done" | "ready" | "overdue" | "blocked" | "skipped" | "pending";
@@ -185,13 +186,19 @@ export function BatchRecipeChecklist({ batchId }: { batchId: string }) {
   const actuals = data.packagedActuals ?? { bottledL: 0, keggedL: 0 };
   const fmtVol = (v: number) => (Math.round(v * 10) / 10).toString();
   // Keg-label details (shown on the "Label Kegs" step). Keg size comes from the
-  // keg Package step's planned container size.
+  // keg Package step's planned container size; the label date defaults to the
+  // most recent keg fill so labeling after the fact still shows the fill date.
   const kegSizeML = tasks.find((t) => t.kind === "package" && t.packagingPath === "keg")
     ?.actionData?.sizeML;
+  const latestKegFillAt = ((runsData?.runs ?? []) as Array<Record<string, any>>)
+    .filter((r) => r.source === "keg_fill")
+    .map((r) => r.packagedAt ?? r.createdAt)
+    .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0];
   const kegLabel = {
     batchName: batchData?.customName || batchData?.name || "",
     abv: (batchData?.actualAbv ?? batchData?.estimatedAbv) ?? null,
     kegSizeL: typeof kegSizeML === "number" ? kegSizeML / 1000 : null,
+    kegFillDate: latestKegFillAt ? formatDateForInput(latestKegFillAt) : null,
   };
   const done = tasks.filter((t) => t.status === "done" || fulfilledBy[t.id]).length;
   const openBySeq = tasks.filter(
