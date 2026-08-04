@@ -26,6 +26,13 @@ export interface FormattedActivity {
   recordId: string;
   operation: string;
   changedAt: Date;
+  /**
+   * When the event physically happened (transfer date, cleaning date, fill
+   * date, …) as opposed to when it was entered. Falls back to changedAt when
+   * the record carries no domain date. The widget displays this; the feed
+   * stays ordered by changedAt so backdated entries still surface on top.
+   */
+  occurredAt: Date;
   userName: string;
   message: string;
   /**
@@ -49,6 +56,42 @@ function num(v: any): number | null {
   if (v === null || v === undefined || v === "") return null;
   const n = typeof v === "number" ? v : Number(v);
   return Number.isFinite(n) ? n : null;
+}
+
+// Domain-date fields, in priority order, that mark when an event physically
+// happened (vs. when it was entered). Both camelCase and snake_case are
+// checked because audit payloads carry either depending on the writer.
+const OCCURRENCE_DATE_KEYS = [
+  ["transferredAt", "transferred_at"],
+  ["cleanedAt", "cleaned_at"],
+  ["filledAt", "filled_at"],
+  ["packagedAt", "packaged_at"],
+  ["rackedAt", "racked_at"],
+  ["measuredAt", "measured_at", "measurementDate", "measurement_date"],
+  ["addedAt", "added_at"],
+  ["startedAt", "started_at"],
+  ["eventDate", "event_date"],
+  ["distributionDate", "distribution_date"],
+  ["sentAt", "sent_at"],
+  ["dateCompleted", "date_completed"],
+] as const;
+
+/**
+ * When the event physically occurred, per the record's own date fields;
+ * falls back to the audit entry time for records with no domain date
+ * (e.g. plain batch updates).
+ */
+function occurredAtFor(row: RawActivityRow): Date {
+  const newData = row.newData as Json;
+  const oldData = row.oldData as Json;
+  for (const keys of OCCURRENCE_DATE_KEYS) {
+    const raw = get(newData, ...keys) ?? get(oldData, ...keys);
+    if (raw) {
+      const d = new Date(raw);
+      if (!Number.isNaN(d.getTime())) return d;
+    }
+  }
+  return row.changedAt;
 }
 
 function fmtSG(v: any): string | null {
@@ -740,6 +783,7 @@ export async function formatRecentActivity(
     recordId: r.recordId,
     operation: r.operation,
     changedAt: r.changedAt,
+    occurredAt: occurredAtFor(r),
     userName: r.userName ?? r.changedByEmail ?? "System",
     message: formatRow(r, lookups),
     linkable: isLinkable(r, lookups),
