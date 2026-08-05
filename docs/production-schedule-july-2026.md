@@ -92,12 +92,31 @@ Pinned starts honored: Jul 2, Jul 28, Aug 3. Sundays off: Jul 5, 12, 19, 26, Aug
 - **110 cases = 1,320 × 750 ml bottles**, plus caps
 - 5 label designs (raspberry blackberry runs twice)
 
-## Nominal recurring template (beyond July)
+## Recurring weekly templates (beyond July)
 
-For steady-state operation: 2 batches/week, mix **Tue** and **Fri**.
-- Tue batch: coarse+sugar Thu → fine Fri (1 d sugar) → brite Fri–Mon (72 h over Sunday) → package Mon
-- Fri batch: not viable under the fixed 2-day maceration (coarse would land Sunday) — use **Sat mix** instead: coarse+sugar Mon → fine Mon or Tue → package Wed/Thu
-- Practical ceiling with this cellar and Sundays off: ~2 batches / 640 L per week. Daily batching is impossible with one mixing tank (2-day fixed maceration); a second maceration vessel — not a second brite — is the upgrade that breaks the ceiling.
+### Normal ops — 1 batch/week (320 L)
+
+| Mon | Tue | Wed | Thu | Fri | Sat | Sun |
+|-----|-----|-----|-----|-----|-----|-----|
+| **Mix** | off | Coarse + sugar → fine same day → brite | Clean 500-1, clean 500-2 | **Package** | Clean brite | off |
+
+Mix Mon → macerate 2 days → Wed: coarse + sugar + immediate fine filter (0-day sugar) → brite 48 h → package Fri. Max 2 events/day, no same-day clean-and-fill anywhere, Tue and Sun fully off. Variant: 1-day sugar rest (fine Thu, package Sat) to split Wednesday's double transfer.
+
+### High rate — 2 batches/week (640 L) — the cellar's hard ceiling
+
+| Mon | Tue | Wed | Thu | Fri | Sat | Sun |
+|-----|-----|-----|-----|-----|-----|-----|
+| **Package B** · clean 500-1 · **Mix A** | Clean brite, clean 500-2 | Coarse + fine A → brite | **Mix B** · clean 500-1, clean 500-2 | **Package A** | Coarse + fine B → brite · clean brite | off |
+
+- Batch A: mix Mon → coarse + fine Wed (0-day sugar) → brite Wed–Fri → package Fri
+- Batch B: mix Thu → coarse + fine Sat (0-day sugar, forced by Sunday) → brite Sat–Mon over Sunday → package Mon
+
+Concessions required at this rate:
+1. **Same-day clean-then-fill twice weekly**: 500-1 (Mon CIP → Mon fill) and brite (Sat CIP → Sat fill) — unavoidable at 2/week.
+2. Three 3-event days (Mon, Thu, Sat), each with a cleaning as the third event; Monday is heaviest (package + mix + CIP).
+3. Batch B's 500-2 clean slides to Tuesday (sits dirty over Sunday/Monday).
+
+**Why 2/week is the ceiling:** each batch occupies the mixing tank ≥3 calendar days (2-day fixed maceration + clean), and the brite likewise (48 h + clean) — three weekly starts would need ~9 days of each vessel's calendar in a 7-day week. Exceeding 2/week requires both a second maceration vessel and a second brite.
 
 ## Open items
 
