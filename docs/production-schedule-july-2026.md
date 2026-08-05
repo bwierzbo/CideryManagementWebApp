@@ -118,7 +118,36 @@ Concessions required at this rate:
 
 **Why 2/week is the ceiling:** each batch occupies the mixing tank ≥3 calendar days (2-day fixed maceration + clean), and the brite likewise (48 h + clean) — three weekly starts would need ~9 days of each vessel's calendar in a 7-day week. Exceeding 2/week requires both a second maceration vessel and a second brite.
 
+## App-state snapshot (2026-08-05, pre-backfill baseline)
+
+Read-only survey of the production DB taken before any July data was entered.
+**Owner will backfill manually through the app** — this doc is the plan-vs-actual
+comparison baseline. Nothing from this plan has been written to the app.
+
+**Recipes** (planned batches will need these):
+- Strawberry Rhubarb - Sundrift Cider (`draft`)
+- Ruby Red - Raspberry Blackberry Cider (`draft`) — used by batches 2 and 6
+- Coastal Hop - Hopped Cider (`active`)
+- Duskrun - Lavender Salal (`active`)
+- **Lavender Black Currant — NO recipe exists yet** (batch 4 needs one created)
+
+**Vessels & contents at snapshot time:**
+- TANK-1000-2: **140.083 L** in residence — matches batch 1's planned 140 L draw exactly
+- TANK-1100-1: **1,030 L** (not 1,100) — plan draws 1,040 L, so it is **10 L short**; lavender salal realistically packages from a **310 L** batch, not 320
+- TANK-1100-2: 1,030 L — plan draws 640 L ✓
+- TANK-500-1 / TANK-500-2: empty ✓ (mixing + sugar tanks)
+- BRITE-3BBL-1: 350 L capacity — fits 320 L batches ✓; currently holds a 5 L
+  Duskrun lavender-salal test batch (2026-053, conditioning)
+- TANK-120-MIX-1 / -2 are 120 L — confirmed too small for these batches
+- No July batches exist in the app; source tanks still at pre-July volumes
+
+**Planning module notes:** planned batches are recipe × volume × period
+("2026-07") × bottle/keg split in liters (cases × 9 L, sixtels × 19.5 L) —
+no calendar dates or vessels. One empty plan ("Annual Plan") exists.
+
 ## Open items
 
-- Backfill vs forward planning — determines how this gets entered into the app
-- Not yet entered into the planning module
+- Owner backfills July production manually via the app; compare results against this doc
+- Lavender black currant recipe must be created before its batch can be entered
+- Lavender salal volume: confirm 310 L (tank-1100-1 shortfall) — if so, packaging
+  drops to 8 sixtels + 16 cases (300 L, 10 L allowance) or 7 + 17 (289.5 L)
