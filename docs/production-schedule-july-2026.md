@@ -133,7 +133,10 @@ comparison baseline. Nothing from this plan has been written to the app.
 
 **Vessels & contents at snapshot time:**
 - TANK-1000-2: **140.083 L** in residence — matches batch 1's planned 140 L draw exactly
-- TANK-1100-1: **1,030 L** (not 1,100) — plan draws 1,040 L, so it is **10 L short**; lavender salal realistically packages from a **310 L** batch, not 320
+- TANK-1100-1: capacity 1,100 L ✓; the batch in residence is *recorded* at
+  **1,030 L**, but the owner states the tank holds ~1,100 L — the record is
+  likely stale (known `currentVolume` drift issue). Plan draws 1,040 L; if the
+  physical volume is right, the 320 L salal draw stands. Verify during backfill.
 - TANK-1100-2: 1,030 L — plan draws 640 L ✓
 - TANK-500-1 / TANK-500-2: empty ✓ (mixing + sugar tanks)
 - BRITE-3BBL-1: 350 L capacity — fits 320 L batches ✓; currently holds a 5 L
@@ -149,5 +152,5 @@ no calendar dates or vessels. One empty plan ("Annual Plan") exists.
 
 - Owner backfills July production manually via the app; compare results against this doc
 - Lavender black currant recipe must be created before its batch can be entered
-- Lavender salal volume: confirm 310 L (tank-1100-1 shortfall) — if so, packaging
-  drops to 8 sixtels + 16 cases (300 L, 10 L allowance) or 7 + 17 (289.5 L)
+- TANK-1100-1 batch record (1,030 L) vs owner-stated ~1,100 L physical volume:
+  reconcile during backfill; salal stays at 320 L unless the record proves right
