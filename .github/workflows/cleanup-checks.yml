@@ -9,6 +9,12 @@ on:
     # Run daily at 6 AM UTC to track trends
     - cron: '0 6 * * *'
 
+# Needed for the PR comment steps (sticky coverage / analysis comments)
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -47,16 +53,14 @@ jobs:
         with:
           fetch-depth: 0  # Full history for trend analysis
 
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'pnpm'
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 8
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -169,7 +173,10 @@ jobs:
 
           # Count circular dependency groups
           if [ -f "analysis/reports/ci/circular-deps.txt" ]; then
-            count=$(grep -c "Circular dependency" analysis/reports/ci/circular-deps.txt || echo "0")
+            # grep -c already prints 0 on no match (while exiting 1); the old
+            # `|| echo "0"` appended a second line and corrupted GITHUB_OUTPUT.
+            count=$(grep -c "Circular dependency" analysis/reports/ci/circular-deps.txt || true)
+            count=${count:-0}
           else
             count=0
           fi
@@ -194,7 +201,7 @@ jobs:
         id: generate-report
         run: |
           echo "Generating comprehensive analysis report..."
-          pnpm analysis:all --output analysis/reports/ci/comprehensive-report.json
+          pnpm analyze:all --output analysis/reports/ci/comprehensive-report.json
 
           # Generate markdown summary
           cat > analysis/reports/ci/summary.md << EOF

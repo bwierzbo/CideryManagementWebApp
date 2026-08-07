@@ -284,7 +284,9 @@ class PerformanceMonitor {
 
       for (const stage of stages) {
         const percentage = Math.round((stage.time / total) * 100);
-        const barLength = Math.round(percentage / 2); // Scale to 50 chars max
+        // Clamp to the 25-char bar: a stage over 50% of total (e.g. when only
+        // one stage ran) would otherwise make the '░' repeat count negative.
+        const barLength = Math.min(25, Math.max(0, Math.round(percentage / 2)));
         const bar = '█'.repeat(barLength) + '░'.repeat(25 - barLength);
         report += `${stage.name.padEnd(10)} │${bar}│ ${percentage}% (${stage.time}s)\n`;
       }
