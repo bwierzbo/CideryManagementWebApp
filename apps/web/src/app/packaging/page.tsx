@@ -46,6 +46,7 @@ import {
   CheckCircle,
   Package2,
   AlertTriangle,
+  Droplets,
 } from "lucide-react";
 import { performanceMonitor } from "@/lib/performance-monitor";
 import { PackagingFiltersSkeleton, PackagingTableRowSkeleton } from "./loading";
@@ -241,8 +242,10 @@ export default function PackagingPage() {
       .filter((item: any) => selectedItems.includes(item.id))
       .map((item: any) => ({
         id: item.id,
+        kegId: item.kegId,
         kegNumber: item.kegNumber,
         status: item.status,
+        kegStatus: item.kegStatus,
         distributedAt: item.distributedAt,
         distributionLocation: item.distributionLocation,
       }));
@@ -251,15 +254,48 @@ export default function PackagingPage() {
   // Determine which bulk actions are available based on selected kegs
   const bulkActionAvailability = useMemo(() => {
     if (selectedKegs.length === 0) {
-      return { canDistribute: false, canReturn: false };
+      return { canDistribute: false, canReturn: false, canClean: false };
     }
     const hasFilledKegs = selectedKegs.some((k) => k.status === "filled");
     const hasDistributedKegs = selectedKegs.some((k) => k.status === "distributed");
+    // "Needs Cleaning" = the physical keg sits in cleaning status
+    const hasDirtyKegs = selectedKegs.some((k) => k.kegStatus === "cleaning" && k.kegId);
     return {
       canDistribute: hasFilledKegs,
       canReturn: hasDistributedKegs,
+      canClean: hasDirtyKegs,
     };
   }, [selectedKegs]);
+
+  const bulkCleanMutation = trpc.packaging.kegs.bulkCleanKegs.useMutation({
+    onSuccess: (res) => {
+      toast({
+        title: "Kegs cleaned",
+        description:
+          res.skipped > 0
+            ? `${res.message} (${res.skipped} skipped — not in cleaning status)`
+            : res.message,
+      });
+      utils.packaging.list.invalidate();
+      utils.packaging.getStats.invalidate();
+      setSelectedItems([]);
+      setShowBulkActions(false);
+    },
+    onError: (e) =>
+      toast({ title: "Cleaning failed", description: e.message, variant: "destructive" }),
+  });
+  const handleBulkClean = useCallback(() => {
+    // Unique physical kegs among the selected fills that need cleaning
+    const kegIds = Array.from(
+      new Set(
+        selectedKegs
+          .filter((k) => k.kegStatus === "cleaning" && k.kegId)
+          .map((k) => k.kegId as string),
+      ),
+    );
+    if (kegIds.length === 0) return;
+    bulkCleanMutation.mutate({ kegIds });
+  }, [selectedKegs, bulkCleanMutation]);
 
   const handleBulkDistribute = useCallback(() => {
     setBulkDistributeOpen(true);
@@ -761,6 +797,21 @@ export default function PackagingPage() {
                         <RotateCcw className="w-3.5 h-3.5 mr-2" />
                         <span className="hidden sm:inline">Return</span>
                         <span className="sm:hidden">Ret</span>
+                      </Button>
+                    )}
+                    {bulkActionAvailability.canClean && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleBulkClean}
+                        disabled={bulkCleanMutation.isPending}
+                        className="border-blue-300 bg-white text-blue-700 hover:bg-blue-50 h-9"
+                      >
+                        <Droplets className="w-3.5 h-3.5 mr-2" />
+                        <span className="hidden sm:inline">
+                          {bulkCleanMutation.isPending ? "Cleaning…" : "Mark Cleaned"}
+                        </span>
+                        <span className="sm:hidden">Clean</span>
                       </Button>
                     )}
                     <Button
