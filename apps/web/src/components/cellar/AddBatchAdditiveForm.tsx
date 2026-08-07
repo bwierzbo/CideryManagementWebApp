@@ -493,14 +493,51 @@ export function AddBatchAdditiveForm({
 
     const parsedAmount = parseFloat(amount);
 
-    // Only compare if units match - otherwise allow (API will validate)
-    if (unit === selectedInventoryItem.unit && parsedAmount > selectedInventoryItem.availableQuantity) {
-      toast({
-        title: "Error",
-        description: `Amount exceeds available quantity (${selectedInventoryItem.availableQuantity.toFixed(2)} ${selectedInventoryItem.unit} available)`,
-        variant: "destructive",
-      });
-      return;
+    // ── Reconcile the entered unit with the inventory lot's unit ─────────
+    // The stock deduction happens in the lot's unit; mass ↔ volume crossings
+    // (e.g. 32000 g of concentrate against a lot tracked in L) use the same
+    // density that drives the volume-contribution auto-fill (fruit ≈ 1 kg/L).
+    let apiAmount = parsedAmount;
+    let apiUnit = unit;
+    const lotUnit = selectedInventoryItem.unit as string | undefined;
+    if (lotUnit && unit !== lotUnit) {
+      const direct = convertAmountBetweenUnits(parsedAmount, unit, lotUnit);
+      if (direct != null) {
+        apiAmount = direct;
+        apiUnit = lotUnit;
+      } else {
+        const density = volumeDefault?.densityKgPerL
+          ? Number(volumeDefault.densityKgPerL)
+          : 1;
+        if (amountAsKg != null && VOL_ML[lotUnit]) {
+          // mass → lot volume unit
+          apiAmount = (amountAsKg / density) * (1000 / VOL_ML[lotUnit]);
+          apiUnit = lotUnit;
+        } else if (VOL_ML[unit] && MASS_G[lotUnit]) {
+          // volume → lot mass unit
+          apiAmount = (parsedAmount * VOL_ML[unit] * density) / MASS_G[lotUnit];
+          apiUnit = lotUnit;
+        } else {
+          toast({
+            title: "Unit mismatch",
+            description: `Can't reconcile ${unit} with the lot's unit (${lotUnit}). Enter the amount in ${lotUnit} (or a compatible unit).`,
+            variant: "destructive",
+          });
+          return;
+        }
+      }
+    }
+
+    // Insufficient stock warns but never blocks — the operator may know
+    // better than the inventory records (partial lots, uncounted stock).
+    const avail = Number(selectedInventoryItem.availableQuantity);
+    if (Number.isFinite(avail) && apiAmount > avail) {
+      const ok = window.confirm(
+        `This will use ${apiAmount.toFixed(2)} ${apiUnit}, but inventory shows only ` +
+          `${avail.toFixed(2)} ${apiUnit} available. The lot's stock will go negative.\n\n` +
+          `Record it anyway?`,
+      );
+      if (!ok) return;
     }
 
     // Use the user's dropdown selection as the authoritative type for classification purposes
@@ -547,8 +584,8 @@ export function AddBatchAdditiveForm({
       batchId,
       additiveType,
       additiveName,
-      amount: parsedAmount,
-      unit,
+      amount: apiAmount,
+      unit: apiUnit,
       addedAt: parseDateTimeFromInput(addedDate),
       notes: notes || undefined,
       // This is the key - pass the purchase item ID to decrement inventory
