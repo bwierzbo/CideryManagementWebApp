@@ -27,6 +27,12 @@ importers:
       '@types/typescript':
         specifier: ^2.0.0
         version: 2.0.0
+      '@typescript-eslint/eslint-plugin':
+        specifier: ^8.43.0
+        version: 8.43.0(@typescript-eslint/parser@8.43.0)(eslint@9.35.0)(typescript@5.9.2)
+      '@typescript-eslint/parser':
+        specifier: ^8.43.0
+        version: 8.43.0(eslint@9.35.0)(typescript@5.9.2)
       '@vitest/coverage-v8':
         specifier: ^1.0.0
         version: 1.6.1(vitest@1.6.1)
@@ -39,6 +45,12 @@ importers:
       depcheck:
         specifier: ^1.4.7
         version: 1.4.7
+      eslint:
+        specifier: ^9.35.0
+        version: 9.35.0
+      eslint-plugin-react-hooks:
+        specifier: ^5.2.0
+        version: 5.2.0(eslint@9.35.0)
       glob:
         specifier: ^11.0.3
         version: 11.0.3
