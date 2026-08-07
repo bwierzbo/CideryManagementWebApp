@@ -41,6 +41,7 @@ interface Task {
   isOptional: boolean;
   status: string;
   notes: string | null;
+  scheduledDate?: string | Date | null;
   actionData: Record<string, unknown> | null;
   actualData: Record<string, unknown> | null;
 }
@@ -186,7 +187,14 @@ export function StepDetailModal({
   const useRealForm =
     !isDone &&
     (task.kind === "measurement" || task.kind === "add_additive" || task.kind === "pitch_yeast");
-  const onRealSuccess = () => complete.mutate({ taskId: task.id });
+  // The real forms report the operation's actual date; passing it as
+  // completedAt lets recomputeSchedule re-anchor the remaining steps to when
+  // the work really happened.
+  const onRealSuccess = (actualAt?: Date) =>
+    complete.mutate({
+      taskId: task.id,
+      ...(actualAt ? { completedAt: actualAt } : {}),
+    });
 
   // Prefill the add-additive form from the recipe ingredient this step references.
   const additivePrefill = (() => {
@@ -207,6 +215,7 @@ export function StepDetailModal({
     return {
       additiveType: ing.additiveType ?? undefined,
       varietyName: ing.additiveName ?? ing.label,
+      additiveVarietyId: ing.additiveVarietyId ?? undefined,
       dosageRate: rate,
       dosageRateUnit: rateUnit,
       amount,
@@ -240,11 +249,13 @@ export function StepDetailModal({
               onCancel={onClose}
               prefillAdditiveType={additivePrefill?.additiveType}
               prefillVarietyName={additivePrefill?.varietyName}
+              prefillAdditiveVarietyId={additivePrefill?.additiveVarietyId}
               prefillDosageRate={additivePrefill?.dosageRate}
               prefillDosageRateUnit={additivePrefill?.dosageRateUnit}
               prefillAmount={additivePrefill?.amount}
               prefillUnit={additivePrefill?.unit}
               prefillBatchVolumeL={plannedTotalL > 0 ? plannedTotalL : null}
+              prefillAddedAt={task.scheduledDate ?? null}
             />
           )
         ) : (

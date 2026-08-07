@@ -54,8 +54,10 @@ interface FilterModalProps {
   vesselName: string;
   batchId: string;
   currentVolumeL: number;
-  /** Called after a filter operation succeeds (e.g. to complete a recipe task). */
-  onSuccess?: () => void;
+  /** Called after a filter operation succeeds (e.g. to complete a recipe
+   *  task). Receives the operation's filteredAt so recipe callers can anchor
+   *  the remaining schedule to the actual date. */
+  onSuccess?: (filteredAt?: Date) => void;
   /** Recipe-planned filter type to prefill. */
   prefillFilterType?: "coarse" | "fine" | "sterile";
 }
@@ -77,6 +79,19 @@ export function FilterModal({
   const [lossPercentage, setLossPercentage] = useState(0);
   const [dateWarning, setDateWarning] = useState<string | null>(null);
   const [laborAssignments, setLaborAssignments] = useState<WorkerAssignment[]>([]);
+  // "same" = cider stays in the current tank; otherwise the id of the empty
+  // vessel the cider is filtered into.
+  const [destinationVesselId, setDestinationVesselId] = useState<string>("same");
+
+  // Empty, available vessels the batch can be filtered into.
+  const { data: vesselList } = trpc.vessel.listWithBatches.useQuery(undefined, {
+    enabled: open,
+  });
+  const destinationOptions = (
+    (Array.isArray(vesselList) ? [] : vesselList?.vessels) ?? []
+  ).filter(
+    (v) => v.id !== vesselId && !v.currentBatch && v.status === "available",
+  );
 
   // Date validation
   const { validateDate } = useBatchDateValidation(batchId);
@@ -146,6 +161,7 @@ export function FilterModal({
         notes: "",
       });
       setLaborAssignments([]);
+      setDestinationVesselId("same");
     }
   }, [open, currentVolumeL, reset, prefillFilterType]);
 
@@ -157,11 +173,12 @@ export function FilterModal({
       });
       utils.vessel.list.invalidate();
       utils.vessel.liquidMap.invalidate();
+      utils.vessel.listWithBatches.invalidate();
       utils.batch.getActivityHistory.invalidate();
       utils.batch.list.invalidate();
       onClose();
       reset();
-      onSuccess?.();
+      onSuccess?.(filteredAt);
     },
     onError: (error) => {
       toast({
@@ -186,6 +203,8 @@ export function FilterModal({
     filterMutation.mutate({
       batchId,
       vesselId,
+      destinationVesselId:
+        destinationVesselId !== "same" ? destinationVesselId : undefined,
       filterType: data.filterType,
       volumeBefore: data.volumeBefore,
       volumeBeforeUnit: data.volumeBeforeUnit,
@@ -269,6 +288,29 @@ export function FilterModal({
             )}
             <p className="text-xs text-gray-500 mt-1">
               Coarse: Removes large particles | Fine: Removes small particles | Sterile: Final filtering
+            </p>
+          </div>
+
+          <div>
+            <Label htmlFor="destinationVessel">Filter Into</Label>
+            <Select
+              value={destinationVesselId}
+              onValueChange={setDestinationVesselId}
+            >
+              <SelectTrigger className="mt-1">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="same">Keep in {vesselName}</SelectItem>
+                {destinationOptions.map((v: any) => (
+                  <SelectItem key={v.id} value={v.id}>
+                    {v.name} ({parseFloat(v.capacity || "0").toFixed(0)} {v.capacityUnit || "L"})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-gray-500 mt-1">
+              Filtering into another tank moves the batch there as part of this operation
             </p>
           </div>
 

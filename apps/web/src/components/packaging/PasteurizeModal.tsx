@@ -79,7 +79,8 @@ interface PasteurizeModalProps {
   bottleRunName: string;
   batchId: string;
   unitsProduced: number;
-  onSuccess: () => void;
+  /** Receives pasteurizedAt for schedule anchoring. */
+  onSuccess: (pasteurizedAt?: Date) => void;
 }
 
 export function PasteurizeModal({
@@ -355,7 +356,7 @@ export function PasteurizeModal({
         description: `Successfully recorded pasteurization for ${bottleRunName} with ${totalPU.toFixed(1)} PU`,
       });
       utils.packaging.list.invalidate();
-      onSuccess();
+      onSuccess(pasteurizedAt ? parseDateTimeFromInput(pasteurizedAt) : undefined);
       onClose();
     },
     onError: (error) => {

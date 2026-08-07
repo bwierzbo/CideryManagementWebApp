@@ -104,7 +104,9 @@ interface CarbonateModalProps {
     isPressureVessel: "yes" | "no";
     maxPressure: number;
   } | null;
-  onSuccess?: () => void;
+  /** Receives the operation's start date so recipe callers can anchor the
+   *  remaining schedule to the actual date. */
+  onSuccess?: (startedAt?: Date) => void;
   /** Recipe-planned values to prefill (method uses recipe terms forced|natural). */
   prefillTargetCo2Volumes?: number;
   prefillMethod?: "forced" | "natural";
@@ -376,7 +378,13 @@ export function CarbonateModal({
       utils.batch.get.invalidate({ batchId: batch.id });
       utils.vessel.liquidMap.invalidate();
       utils.carbonation.listActive.invalidate();
-      onSuccess?.();
+      onSuccess?.(
+        startedAt instanceof Date
+          ? startedAt
+          : startedAt
+            ? parseDateTimeFromInput(startedAt)
+            : undefined,
+      );
       onOpenChange(false);
     },
     onError: (error) => {
@@ -396,7 +404,13 @@ export function CarbonateModal({
       utils.batch.get.invalidate({ batchId: batch.id });
       utils.vessel.liquidMap.invalidate();
       utils.carbonation.list.invalidate();
-      onSuccess?.();
+      onSuccess?.(
+        startedAt instanceof Date
+          ? startedAt
+          : startedAt
+            ? parseDateTimeFromInput(startedAt)
+            : undefined,
+      );
       onOpenChange(false);
     },
     onError: (error) => {

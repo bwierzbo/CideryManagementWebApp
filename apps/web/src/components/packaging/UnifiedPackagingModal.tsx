@@ -20,7 +20,8 @@ interface UnifiedPackagingModalProps {
   currentVolumeL: number;
   initialType?: PackagingType;
   preBottling?: PreBottlingData;
-  onSuccess?: () => void;
+  /** Receives the packaging date (packagedAt / filledAt) from the inner modal. */
+  onSuccess?: (packagedAt?: Date) => void;
 }
 
 /**

@@ -369,7 +369,7 @@ export const recipeExecutionRouter = router({
         familyConditions.push(eq(batches.id, selfBatch.parentBatchId));
         familyConditions.push(eq(batches.parentBatchId, selfBatch.parentBatchId));
       }
-      const familyRows = await db
+      const familyRowsRaw = await db
         .select({
           id: batches.id,
           batchNumber: batches.batchNumber,
@@ -384,6 +384,28 @@ export const recipeExecutionRouter = router({
             isNull(batches.deletedAt),
           ),
         );
+      // Only relatives that run the SAME recipe belong to this execution's
+      // family (split clones copy recipeId + version). Without this filter a
+      // recipe batch drawing from parent batches would count its parents' and
+      // step-siblings' packaging (e.g. every keg its source cider's other
+      // children ever filled) as its own.
+      const relatedExecs = familyRowsRaw.length
+        ? await db
+            .select({ batchId: batchRecipeExecutions.batchId })
+            .from(batchRecipeExecutions)
+            .where(
+              and(
+                inArray(
+                  batchRecipeExecutions.batchId,
+                  familyRowsRaw.map((b) => b.id),
+                ),
+                eq(batchRecipeExecutions.recipeId, execution.recipeId),
+                eq(batchRecipeExecutions.recipeVersion, execution.recipeVersion),
+              ),
+            )
+        : [];
+      const sameRecipeIds = new Set(relatedExecs.map((e) => e.batchId));
+      const familyRows = familyRowsRaw.filter((b) => sameRecipeIds.has(b.id));
       const familyIds = familyRows.map((b) => b.id);
       const familyLabel = new Map(
         familyRows.map((b) => [b.id, b.customName || b.name || b.batchNumber]),
@@ -613,7 +635,15 @@ export const recipeExecutionRouter = router({
             .where(eq(batches.id, src.id));
           // One instant shared by the merge_history and transfer rows for this
           // source, so the activity timeline can pair and de-duplicate them.
-          const blendedAt = new Date();
+          // Back-filled executions (start date in the past) stamp the intended
+          // start date, not the data-entry moment — otherwise date validation
+          // anchors the batch's "earliest valid date" to entry day and blocks
+          // recording the July work that followed.
+          const execStart = exec.startDate ? new Date(exec.startDate) : null;
+          const blendedAt =
+            execStart && !Number.isNaN(execStart.getTime()) && execStart.getTime() < Date.now()
+              ? execStart
+              : new Date();
           await tx.insert(batchMergeHistory).values({
             targetBatchId: task.batchId,
             sourceBatchId: src.id,
@@ -663,12 +693,18 @@ export const recipeExecutionRouter = router({
         if (ogWeight > 0) fill.originalGravity = (ogWeighted / ogWeight).toFixed(4);
         await tx.update(batches).set(fill).where(eq(batches.id, task.batchId));
 
-        // Mark done + reschedule.
+        // Mark done + reschedule. The completion date mirrors the transfer
+        // date (exec start for back-fills) so the schedule re-anchors off the
+        // real event, not the data-entry day.
+        const transferDoneAt =
+          exec.startDate && new Date(exec.startDate).getTime() < Date.now()
+            ? new Date(exec.startDate)
+            : new Date();
         await tx
           .update(batchStepTasks)
           .set({
             status: "done",
-            completedAt: new Date(),
+            completedAt: transferDoneAt,
             actualData: { destinationVesselId: input.destinationVesselId, sources: draws, totalL },
             updatedAt: new Date(),
           })

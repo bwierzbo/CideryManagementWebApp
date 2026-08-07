@@ -530,6 +530,9 @@ const updateMergeSchema = z.object({
 const filterBatchSchema = z.object({
   batchId: z.string().uuid("Invalid batch ID"),
   vesselId: z.string().uuid("Invalid vessel ID"),
+  // When filtering into a different tank (filter inline between vessels),
+  // the batch moves there as part of the operation. Must be an empty vessel.
+  destinationVesselId: z.string().uuid("Invalid destination vessel ID").optional(),
   filterType: z.enum(["coarse", "fine", "sterile"]),
   volumeBefore: z.number().positive("Volume before must be positive"),
   volumeBeforeUnit: z.enum(['L', 'gal']).default('L'),
@@ -5430,16 +5433,87 @@ export const batchRouter = router({
           }
         }
 
-        // Update batch current volume
+        // Filtering into another tank: validate the destination and move the
+        // batch there as part of the operation.
+        const movesVessel =
+          !!input.destinationVesselId &&
+          input.destinationVesselId !== input.vesselId;
+        let destinationVesselName: string | null = null;
+
+        if (movesVessel) {
+          const destVessel = await db
+            .select({ id: vessels.id, name: vessels.name, status: vessels.status })
+            .from(vessels)
+            .where(
+              and(
+                eq(vessels.id, input.destinationVesselId!),
+                isNull(vessels.deletedAt),
+              ),
+            )
+            .limit(1);
+
+          if (!destVessel.length) {
+            throw new TRPCError({
+              code: "NOT_FOUND",
+              message: "Destination vessel not found",
+            });
+          }
+
+          const occupant = await db
+            .select({ id: batches.id })
+            .from(batches)
+            .where(
+              and(
+                eq(batches.vesselId, input.destinationVesselId!),
+                inArray(batches.status, ["fermentation", "aging", "conditioning"]),
+                isNull(batches.deletedAt),
+              ),
+            )
+            .limit(1);
+
+          if (occupant.length) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: `Destination vessel ${destVessel[0].name} already holds a batch — filtering can only move into an empty vessel`,
+            });
+          }
+
+          destinationVesselName = destVessel[0].name;
+        }
+
+        // Update batch current volume (and vessel, when filtering into another tank)
         await db
           .update(batches)
           .set({
             currentVolume: volumeRackedL.toFixed(3),
             currentVolumeLiters: volumeRackedL.toFixed(3),
             currentVolumeUnit: 'L',
+            ...(movesVessel ? { vesselId: input.destinationVesselId! } : {}),
             updatedAt: new Date(),
           })
           .where(eq(batches.id, input.batchId));
+
+        // Record the vessel move as a full transfer so lineage and vessel
+        // history stay traceable.
+        if (movesVessel) {
+          await db.insert(batchTransfers).values({
+            sourceBatchId: input.batchId,
+            sourceVesselId: input.vesselId,
+            destinationBatchId: input.batchId,
+            destinationVesselId: input.destinationVesselId!,
+            volumeTransferred: volumeRackedL.toFixed(3),
+            volumeTransferredUnit: "L",
+            loss: volumeLossL.toFixed(3),
+            lossUnit: "L",
+            totalVolumeProcessed: volumeBeforeL.toFixed(3),
+            totalVolumeProcessedUnit: "L",
+            notes: `Filtered (${input.filterType}) into ${destinationVesselName}${input.notes ? ` | ${input.notes}` : ""}`,
+            transferredBy: ctx.user?.id,
+            transferredAt: input.filteredAt || new Date(),
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          });
+        }
 
         // Write filter loss ledger entry
         const filterLoss = volumeBeforeL - volumeRackedL;
@@ -5461,7 +5535,7 @@ export const batchRouter = router({
           success: true,
           filterOperation: filterOperation[0],
           volumeLoss: volumeLossL,
-          message: `Batch filtered with ${input.filterType} filter. Loss: ${volumeLossL.toFixed(2)}L`,
+          message: `Batch filtered with ${input.filterType} filter${destinationVesselName ? ` into ${destinationVesselName}` : ""}. Loss: ${volumeLossL.toFixed(2)}L`,
         };
       } catch (error) {
         if (error instanceof TRPCError) throw error;
