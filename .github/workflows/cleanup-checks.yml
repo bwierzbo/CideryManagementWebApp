@@ -167,7 +167,10 @@ jobs:
 
           # Count circular dependency groups
           if [ -f "analysis/reports/ci/circular-deps.txt" ]; then
-            count=$(grep -c "Circular dependency" analysis/reports/ci/circular-deps.txt || echo "0")
+            # grep -c already prints 0 on no match (while exiting 1); the old
+            # `|| echo "0"` appended a second line and corrupted GITHUB_OUTPUT.
+            count=$(grep -c "Circular dependency" analysis/reports/ci/circular-deps.txt || true)
+            count=${count:-0}
           else
             count=0
           fi

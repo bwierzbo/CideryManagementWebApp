@@ -65,6 +65,9 @@ jobs:
           echo "NEXTAUTH_SECRET=test-secret" >> $GITHUB_ENV
           echo "NEXTAUTH_URL=http://localhost:3000" >> $GITHUB_ENV
 
+      - name: Set up database schema
+        run: pnpm --filter db run db:push
+
       - name: Run type checking
         run: pnpm typecheck
 
@@ -291,6 +294,9 @@ jobs:
           echo "DATABASE_URL=postgresql://postgres:postgres@localhost:5432/cidery_test" >> $GITHUB_ENV
           echo "NODE_ENV=test" >> $GITHUB_ENV
 
+      - name: Set up database schema
+        run: pnpm --filter db run db:push
+
       - name: Run audit snapshot tests
         run: pnpm test tests/audit/ --reporter=verbose
 
@@ -380,7 +386,12 @@ jobs:
           echo "NODE_ENV=test" >> $GITHUB_ENV
           echo "NEXTAUTH_SECRET=e2e-test-secret" >> $GITHUB_ENV
           echo "NEXTAUTH_URL=http://localhost:3000" >> $GITHUB_ENV
-          echo "CI=true" >> $GITHUB_ENV
+
+      - name: Set up database schema
+        run: pnpm --filter db run db:push
+
+      - name: Set CI flag
+        run: echo "CI=true" >> $GITHUB_ENV
 
       - name: Install Playwright browsers
         run: pnpm exec playwright install --with-deps
