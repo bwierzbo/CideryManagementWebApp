@@ -220,6 +220,9 @@ jobs:
           npx tsx scripts/quality-dashboard.ts generate
 
       - name: Upload coverage reports to Codecov
+        # Non-blocking: no CODECOV_TOKEN secret is configured for this repo.
+        # Set the secret and flip fail_ci_if_error back on to enforce uploads.
+        continue-on-error: true
         uses: codecov/codecov-action@v4
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -229,7 +232,7 @@ jobs:
             ./packages/db/coverage/lcov.info
             ./packages/lib/coverage/lcov.info
             ./packages/worker/coverage/lcov.info
-          fail_ci_if_error: true
+          fail_ci_if_error: false
           flags: unittests
           name: codecov-umbrella
 
