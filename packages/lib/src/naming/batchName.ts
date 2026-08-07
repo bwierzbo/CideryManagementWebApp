@@ -159,3 +159,27 @@ export function generateBatchNameFromComposition(
     primaryVariety,
   });
 }
+
+/**
+ * Display name for a child batch created by splitting a parent
+ * (partial transfer or partial rack into an empty vessel).
+ *
+ * Children get a " - A", " - B", ... suffix so siblings that would otherwise
+ * share the parent's custom name stay distinguishable in batch pickers.
+ * After 26 children the suffix falls back to the child's ordinal number.
+ *
+ * @param parentCustomName - The parent batch's custom (display) name
+ * @param existingChildCount - How many children the parent already has (0 → "A")
+ * @returns Suffixed custom name, or null when the parent has no custom name
+ */
+export function splitChildCustomName(
+  parentCustomName: string | null | undefined,
+  existingChildCount: number,
+): string | null {
+  const base = parentCustomName?.trim();
+  if (!base) return null;
+
+  const n = Math.max(0, Math.floor(existingChildCount));
+  const suffix = n < 26 ? String.fromCharCode(65 + n) : String(n + 1);
+  return `${base} - ${suffix}`;
+}

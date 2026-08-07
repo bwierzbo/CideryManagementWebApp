@@ -98,7 +98,12 @@ export function RecentActivityWidget({ compact, onRefresh }: WidgetProps) {
           // Only link if the record still exists (not soft-deleted) and the
           // table has a sensible destination page.
           const href = item.linkable ? hrefFor(item.tableName, item.recordId) : null;
-          const when = formatDistanceToNow(new Date(item.changedAt), { addSuffix: true });
+          // Show when the event physically happened (occurredAt), not when it
+          // was entered — backdated entries would otherwise all read "today".
+          const when = formatDistanceToNow(
+            new Date(item.occurredAt ?? item.changedAt),
+            { addSuffix: true },
+          );
 
           const row = (
             <div

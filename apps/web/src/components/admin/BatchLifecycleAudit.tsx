@@ -213,7 +213,8 @@ export function BatchLifecycleAudit({
                     {batchList?.batches && batchList.batches.length > 0 ? (
                       batchList.batches.map((batch) => (
                         <SelectItem key={batch.id} value={batch.id}>
-                          {batch.customName || batch.name} ({batch.productType})
+                          {batch.customName || batch.name}
+                          {batch.vesselName ? ` · ${batch.vesselName}` : ""} ({batch.productType})
                         </SelectItem>
                       ))
                     ) : (

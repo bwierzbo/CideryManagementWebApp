@@ -4,6 +4,7 @@ import {
   generateVarietyCode,
   selectPrimaryVariety,
   generateBatchNameFromComposition,
+  splitChildCustomName,
   type BatchComposition,
   type GenerateBatchNameOptions,
   type BatchCompositionInput,
@@ -339,5 +340,39 @@ describe("batchName", () => {
       expect(uniqueResults.size).toBe(1);
       expect(results[0]).toBe("2025-09-19_TK03_GRAV_A");
     });
+  });
+});
+
+describe("splitChildCustomName", () => {
+  it("suffixes the first child with ' - A'", () => {
+    expect(splitChildCustomName("Winter Blend 2", 0)).toBe("Winter Blend 2 - A");
+  });
+
+  it("increments the letter per existing child", () => {
+    expect(splitChildCustomName("Winter Blend 2", 1)).toBe("Winter Blend 2 - B");
+    expect(splitChildCustomName("Summer Community Blend 4", 2)).toBe(
+      "Summer Community Blend 4 - C",
+    );
+    expect(splitChildCustomName("X", 25)).toBe("X - Z");
+  });
+
+  it("falls back to ordinal numbers past 26 children", () => {
+    expect(splitChildCustomName("X", 26)).toBe("X - 27");
+    expect(splitChildCustomName("X", 30)).toBe("X - 31");
+  });
+
+  it("returns null when the parent has no custom name", () => {
+    expect(splitChildCustomName(null, 0)).toBeNull();
+    expect(splitChildCustomName(undefined, 3)).toBeNull();
+    expect(splitChildCustomName("   ", 0)).toBeNull();
+  });
+
+  it("trims the parent name before suffixing", () => {
+    expect(splitChildCustomName("  Duskrun  ", 0)).toBe("Duskrun - A");
+  });
+
+  it("clamps negative/fractional counts to a valid letter", () => {
+    expect(splitChildCustomName("X", -1)).toBe("X - A");
+    expect(splitChildCustomName("X", 1.7)).toBe("X - B");
   });
 });

@@ -35,6 +35,7 @@ import { batchCarbonationOperations } from "db/src/schema/carbonation";
 import { eq, and, isNull, isNotNull, desc, asc, sql, or, like, ilike, inArray, aliasedTable, ne, gte, lte, gt } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { convertToLiters, additiveRateGramsPerL } from "lib/src/units/conversions";
+import { splitChildCustomName } from "lib";
 import { validateBatches, type BatchValidation } from "../validation/batch-validation";
 import { buildReconciliationBatchList } from "../services/reconciliation-batch-list";
 import {
@@ -5761,6 +5762,15 @@ export const batchRouter = router({
             const uniqueSuffix = Date.now().toString(36); // Base36 timestamp for compact unique ID
             const childBatchNumber = `${batch[0].batchNumber}-R${uniqueSuffix}`; // e.g., "25-Rm5abc123"
             const childBatchName = `Batch #${childBatchNumber}`; // e.g., "Batch #25-Rm5abc123"
+            const existingChildren = await tx
+              .select({ id: batches.id })
+              .from(batches)
+              .where(
+                and(
+                  eq(batches.parentBatchId, batch[0].id),
+                  isNull(batches.deletedAt),
+                ),
+              );
 
             // Create child batch in destination vessel with racked volume
             // Note: initialVolume is 0 because the volume comes from a transfer, not as initial production
@@ -5769,7 +5779,10 @@ export const batchRouter = router({
               .values({
                 vesselId: input.destinationVesselId,
                 name: childBatchName,
-                customName: batch[0].customName, // Inherit parent's custom name without suffix
+                customName: splitChildCustomName(
+                  batch[0].customName,
+                  existingChildren.length,
+                ),
                 batchNumber: childBatchNumber,
                 initialVolumeLiters: "0", // Volume comes from transfer, not initial production
                 currentVolume: volumeRackedL.toString(),

@@ -178,10 +178,11 @@ export function CreateFortifiedBlendDialog({
     }
   };
 
-  // Get batch display name
-  const getBatchDisplayName = (batch: { customName: string | null; name: string; currentVolume?: string | null }) => {
+  // Get batch display name - includes current vessel to disambiguate same-named batches
+  const getBatchDisplayName = (batch: { customName: string | null; name: string; currentVolume?: string | null; vesselName?: string | null }) => {
     const vol = parseFloat(batch.currentVolume || "0").toFixed(1);
-    return `${batch.customName || batch.name} (${vol}L)`;
+    const vessel = batch.vesselName ? ` · ${batch.vesselName}` : "";
+    return `${batch.customName || batch.name}${vessel} (${vol}L)`;
   };
 
   const handleSubmit = (e: React.FormEvent) => {

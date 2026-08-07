@@ -27,6 +27,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Check } from "lucide-react";
+import { DateInput } from "@/components/ui/date-input";
+import { formatDateForInput, parseDateInput } from "@/utils/date-format";
 import { AddBatchMeasurementForm } from "@/components/cellar/AddBatchMeasurementForm";
 import { AddBatchAdditiveForm } from "@/components/cellar/AddBatchAdditiveForm";
 
@@ -77,7 +79,12 @@ export function StepDetailModal({
   sources: Source[];
   plannedVolumeL: number;
   ingredients: Ingredient[];
-  kegLabel?: { batchName: string; abv: string | null; kegSizeL: number | null } | null;
+  kegLabel?: {
+    batchName: string;
+    abv: string | null;
+    kegSizeL: number | null;
+    kegFillDate: string | null;
+  } | null;
 }) {
   const utils = trpc.useUtils();
   const ad = (task?.actualData ?? {}) as Record<string, unknown>;
@@ -86,6 +93,10 @@ export function StepDetailModal({
   );
   const [vesselSearch, setVesselSearch] = useState("");
   const [notes, setNotes] = useState(task?.notes ?? "");
+  // Keg-label date edit, keyed by task so switching steps doesn't leak the value.
+  const [labelDateEdit, setLabelDateEdit] = useState<{ taskId: string; value: string } | null>(
+    null,
+  );
 
   // Total to transfer = sum of each source cider's planned draw (set at
   // instantiation); falls back to the batch's planned volume.
@@ -125,9 +136,19 @@ export function StepDetailModal({
   const isDone = task.status === "done" || task.status === "skipped";
   const isKegLabel = task.packagingPath === "keg" && /label/i.test(task.label);
 
+  // Date written on the kegs: what was saved on completion, else the operator's
+  // edit, else the keg fill date, else today.
+  const labelDate =
+    labelDateEdit?.taskId === task.id
+      ? labelDateEdit.value
+      : ((ad.labelDate as string | undefined) ??
+        kegLabel?.kegFillDate ??
+        formatDateForInput(new Date()));
+
   const buildActualData = () => {
     const out: Record<string, unknown> = {};
     if (task.kind === "transfer" && destVesselId) out.destinationVesselId = destVesselId;
+    if (isKegLabel && labelDate) out.labelDate = labelDate;
     return Object.keys(out).length ? out : null;
   };
 
@@ -152,7 +173,7 @@ export function StepDetailModal({
         contentsL,
         spaceL,
         isEmpty: !v.currentBatch || contentsL < 0.1,
-        batchName: v.currentBatch?.name ?? null,
+        batchName: v.currentBatch?.customName || v.currentBatch?.name || null,
         fits: spaceL + 0.001 >= plannedTotalL,
       };
     })
@@ -322,8 +343,21 @@ export function StepDetailModal({
                 <dl className="grid grid-cols-[5rem_1fr] gap-x-2 gap-y-0.5">
                   <dt className="text-muted-foreground">Name</dt>
                   <dd className="font-medium">{kegLabel?.batchName ?? "—"}</dd>
-                  <dt className="text-muted-foreground">Date</dt>
-                  <dd>{new Date().toLocaleDateString()}</dd>
+                  <dt className="text-muted-foreground self-center">Date</dt>
+                  <dd>
+                    {isDone ? (
+                      (parseDateInput(labelDate)?.toLocaleDateString() ?? labelDate)
+                    ) : (
+                      <DateInput
+                        value={labelDate}
+                        onChange={(v) =>
+                          v && setLabelDateEdit({ taskId: task.id, value: v })
+                        }
+                        className="h-8 text-sm"
+                        showClearButton={false}
+                      />
+                    )}
+                  </dd>
                   <dt className="text-muted-foreground">ABV</dt>
                   <dd>{kegLabel?.abv != null ? `${Number(kegLabel.abv).toFixed(1)}%` : "—"}</dd>
                   <dt className="text-muted-foreground">Keg size</dt>

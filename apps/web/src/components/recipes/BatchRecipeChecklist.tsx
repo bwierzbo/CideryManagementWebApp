@@ -38,6 +38,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Check, SkipForward, RotateCcw, Lock } from "lucide-react";
+import { formatDateForInput } from "@/utils/date-format";
 
 // Display status (richer than the raw status) → left-border accent + badge.
 type RowStatus = "done" | "ready" | "overdue" | "blocked" | "skipped" | "pending";
@@ -175,17 +176,34 @@ export function BatchRecipeChecklist({ batchId }: { batchId: string }) {
 
   const { execution } = data;
   const tasks = data.tasks as Task[];
+  // Steps completed on a related batch (a transfer split clones the checklist
+  // onto the child). The server pairs this batch's open bottle/keg-path steps
+  // against family completions; these render as done instead of overdue.
+  const fulfilledBy = (data.fulfilledBy ?? {}) as Record<
+    string,
+    { batchId: string; batchLabel: string; completedAt: string | Date | null }
+  >;
+  const actuals = data.packagedActuals ?? { bottledL: 0, keggedL: 0 };
+  const fmtVol = (v: number) => (Math.round(v * 10) / 10).toString();
   // Keg-label details (shown on the "Label Kegs" step). Keg size comes from the
-  // keg Package step's planned container size.
+  // keg Package step's planned container size; the label date defaults to the
+  // most recent keg fill so labeling after the fact still shows the fill date.
   const kegSizeML = tasks.find((t) => t.kind === "package" && t.packagingPath === "keg")
     ?.actionData?.sizeML;
+  const latestKegFillAt = ((runsData?.runs ?? []) as Array<Record<string, any>>)
+    .filter((r) => r.source === "keg_fill")
+    .map((r) => r.packagedAt ?? r.createdAt)
+    .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0];
   const kegLabel = {
     batchName: batchData?.customName || batchData?.name || "",
     abv: (batchData?.actualAbv ?? batchData?.estimatedAbv) ?? null,
     kegSizeL: typeof kegSizeML === "number" ? kegSizeML / 1000 : null,
+    kegFillDate: latestKegFillAt ? formatDateForInput(latestKegFillAt) : null,
   };
-  const done = tasks.filter((t) => t.status === "done").length;
-  const openBySeq = tasks.filter((t) => t.status === "pending" || t.status === "in_progress");
+  const done = tasks.filter((t) => t.status === "done" || fulfilledBy[t.id]).length;
+  const openBySeq = tasks.filter(
+    (t) => (t.status === "pending" || t.status === "in_progress") && !fulfilledBy[t.id],
+  );
 
   // Sorted by recipe step order. The due-date column still shifts as steps are
   // completed (rescheduleWithActuals), but the rows stay in the recipe's logical
@@ -194,16 +212,18 @@ export function BatchRecipeChecklist({ batchId }: { batchId: string }) {
 
   // The single "do this next" step: earliest non-terminal, non-blocked step.
   const nextReadyId = sorted.find(
-    (t) => t.status !== "done" && t.status !== "skipped" && !blockedReason(t),
+    (t) =>
+      t.status !== "done" && t.status !== "skipped" && !fulfilledBy[t.id] && !blockedReason(t),
   )?.id;
   const isOverdue = (t: Task) => {
     if (t.status === "done" || t.status === "skipped" || !t.scheduledDate) return false;
+    if (fulfilledBy[t.id]) return false;
     const end = new Date(t.scheduledDate);
     end.setHours(23, 59, 59, 999);
     return end.getTime() < Date.now();
   };
   const rowStatus = (t: Task): RowStatus => {
-    if (t.status === "done") return "done";
+    if (t.status === "done" || fulfilledBy[t.id]) return "done";
     if (t.status === "skipped") return "skipped";
     if (blockedReason(t)) return "blocked";
     if (isOverdue(t)) return "overdue";
@@ -255,7 +275,8 @@ export function BatchRecipeChecklist({ batchId }: { batchId: string }) {
     const toReopen: Task[] = [];
     const wantSkipped = (steps: Task[]) =>
       steps.forEach((t) => {
-        if (t.status !== "skipped" && t.status !== "done") toSkip.push(t);
+        // A step fulfilled on a related batch reads as done — don't skip it.
+        if (t.status !== "skipped" && t.status !== "done" && !fulfilledBy[t.id]) toSkip.push(t);
       });
     const wantActive = (steps: Task[]) =>
       steps.forEach((t) => {
@@ -284,8 +305,9 @@ export function BatchRecipeChecklist({ batchId }: { batchId: string }) {
       <CardHeader>
         <CardTitle className="text-base">Recipe checklist</CardTitle>
         <CardDescription>
-          Recipe v{execution.recipeVersion} · started {fmtDate(execution.startDate)} ·{" "}
-          {execution.bottleVolumeL ?? 0} L bottled / {execution.kegVolumeL ?? 0} L kegged ·{" "}
+          Recipe v{execution.recipeVersion} · started {fmtDate(execution.startDate)} · bottled{" "}
+          {fmtVol(actuals.bottledL)} of {Number(execution.bottleVolumeL ?? 0)} L · kegged{" "}
+          {fmtVol(actuals.keggedL)} of {Number(execution.kegVolumeL ?? 0)} L ·{" "}
           {done}/{tasks.length} done · in recipe order
         </CardDescription>
       </CardHeader>
@@ -343,18 +365,33 @@ export function BatchRecipeChecklist({ batchId }: { batchId: string }) {
           </TableHeader>
           <TableBody>
             {sorted.map((t) => {
+              const fulfilled = fulfilledBy[t.id];
               const terminal = t.status === "done" || t.status === "skipped";
               const rs = rowStatus(t);
               return (
                 <TableRow
                   key={t.id}
                   onClick={() => openStep(t)}
-                  className={`cursor-pointer hover:bg-gray-50 ${ROW_ACCENT[rs]} ${terminal ? "opacity-60" : ""}`}
+                  className={`cursor-pointer hover:bg-gray-50 ${ROW_ACCENT[rs]} ${terminal || fulfilled ? "opacity-60" : ""}`}
                 >
                   <TableCell className="text-muted-foreground">{t.sequence + 1}</TableCell>
                   <TableCell>
                     <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className={t.status === "done" ? "line-through" : ""}>{t.label}</span>
+                      <span className={t.status === "done" || fulfilled ? "line-through" : ""}>
+                        {t.label}
+                      </span>
+                      {fulfilled && (
+                        <Link
+                          href={`/batch/${fulfilled.batchId}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="text-[11px] text-green-700 hover:underline"
+                          title={`This step was completed on ${fulfilled.batchLabel}${
+                            fulfilled.completedAt ? ` on ${fmtDate(fulfilled.completedAt)}` : ""
+                          }`}
+                        >
+                          via {fulfilled.batchLabel}
+                        </Link>
+                      )}
                       {blockedReason(t) && (
                         <span className="inline-flex items-center gap-1 text-[11px] text-amber-600" title={blockedReason(t)!}>
                           <Lock className="w-3 h-3" /> {blockedReason(t)}
@@ -386,7 +423,12 @@ export function BatchRecipeChecklist({ batchId }: { batchId: string }) {
                     </Badge>
                   </TableCell>
                   <TableCell className="text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                    {terminal ? (
+                    {fulfilled && !terminal ? (
+                      // Fulfilled on a related batch — nothing to do here. The row
+                      // click still opens the real action modal if the operator
+                      // wants to package this batch's portion separately.
+                      <span className="text-[11px] text-muted-foreground">—</span>
+                    ) : terminal ? (
                       <Button
                         size="sm"
                         variant="ghost"
