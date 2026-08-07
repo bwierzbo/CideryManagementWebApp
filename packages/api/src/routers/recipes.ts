@@ -407,6 +407,7 @@ export const recipesRouter = router({
                 label: i.label,
                 additiveType: i.additiveType ?? null,
                 additiveName: i.additiveName ?? null,
+                additiveVarietyId: i.additiveVarietyId ?? null,
                 rateValue: i.rateValue?.toString() ?? null,
                 rateUnit: i.rateUnit ?? null,
                 sourceProductType: i.sourceProductType ?? null,
