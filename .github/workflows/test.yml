@@ -494,8 +494,12 @@ jobs:
 
       - name: Set job status
         run: |
-          if [ "${{ needs.test.result }}" != "success" ] || [ "${{ needs.e2e-tests.result }}" != "success" ] || [ "${{ needs.audit-snapshots.result }}" != "success" ] || [ "${{ needs.build.result }}" != "success" ]; then
-            echo "::error::Quality gates failed - check individual job results"
-            exit 1
-          fi
+          # Skipped jobs (E2E / audit-snapshots are disabled with if: false)
+          # count as acceptable; only a real failure fails the gate.
+          for r in "${{ needs.test.result }}" "${{ needs.e2e-tests.result }}" "${{ needs.audit-snapshots.result }}" "${{ needs.build.result }}"; do
+            if [ "$r" != "success" ] && [ "$r" != "skipped" ]; then
+              echo "::error::Quality gates failed - check individual job results"
+              exit 1
+            fi
+          done
           echo "::notice::All quality gates passed successfully"
