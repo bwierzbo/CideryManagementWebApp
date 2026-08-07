@@ -369,7 +369,7 @@ export const recipeExecutionRouter = router({
         familyConditions.push(eq(batches.id, selfBatch.parentBatchId));
         familyConditions.push(eq(batches.parentBatchId, selfBatch.parentBatchId));
       }
-      const familyRows = await db
+      const familyRowsRaw = await db
         .select({
           id: batches.id,
           batchNumber: batches.batchNumber,
@@ -384,6 +384,28 @@ export const recipeExecutionRouter = router({
             isNull(batches.deletedAt),
           ),
         );
+      // Only relatives that run the SAME recipe belong to this execution's
+      // family (split clones copy recipeId + version). Without this filter a
+      // recipe batch drawing from parent batches would count its parents' and
+      // step-siblings' packaging (e.g. every keg its source cider's other
+      // children ever filled) as its own.
+      const relatedExecs = familyRowsRaw.length
+        ? await db
+            .select({ batchId: batchRecipeExecutions.batchId })
+            .from(batchRecipeExecutions)
+            .where(
+              and(
+                inArray(
+                  batchRecipeExecutions.batchId,
+                  familyRowsRaw.map((b) => b.id),
+                ),
+                eq(batchRecipeExecutions.recipeId, execution.recipeId),
+                eq(batchRecipeExecutions.recipeVersion, execution.recipeVersion),
+              ),
+            )
+        : [];
+      const sameRecipeIds = new Set(relatedExecs.map((e) => e.batchId));
+      const familyRows = familyRowsRaw.filter((b) => sameRecipeIds.has(b.id));
       const familyIds = familyRows.map((b) => b.id);
       const familyLabel = new Map(
         familyRows.map((b) => [b.id, b.customName || b.name || b.batchNumber]),

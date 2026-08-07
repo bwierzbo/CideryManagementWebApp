@@ -305,10 +305,20 @@ export function BatchRecipeChecklist({ batchId }: { batchId: string }) {
       <CardHeader>
         <CardTitle className="text-base">Recipe checklist</CardTitle>
         <CardDescription>
-          Recipe v{execution.recipeVersion} · started {fmtDate(execution.startDate)} · bottled{" "}
-          {fmtVol(actuals.bottledL)} of {Number(execution.bottleVolumeL ?? 0)} L · kegged{" "}
-          {fmtVol(actuals.keggedL)} of {Number(execution.kegVolumeL ?? 0)} L ·{" "}
-          {done}/{tasks.length} done · in recipe order
+          {/* Packaging progress is shown per planned path only — a path with
+              no plan (0 L) is omitted rather than rendering "kegged X of 0 L". */}
+          Recipe v{execution.recipeVersion} · started {fmtDate(execution.startDate)}
+          {Number(execution.bottleVolumeL ?? 0) > 0 && (
+            <>
+              {" "}· bottled {fmtVol(actuals.bottledL)} of {Number(execution.bottleVolumeL)} L
+            </>
+          )}
+          {Number(execution.kegVolumeL ?? 0) > 0 && (
+            <>
+              {" "}· kegged {fmtVol(actuals.keggedL)} of {Number(execution.kegVolumeL)} L
+            </>
+          )}
+          {" "}· {done}/{tasks.length} done · in recipe order
         </CardDescription>
       </CardHeader>
       <CardContent>
