@@ -659,6 +659,28 @@ export const kegs = pgTable(
   }),
 );
 
+// Keg cleaning log — one row per cleaning event (single or bulk action), so
+// each physical keg carries a when/who/notes cleaning history.
+export const kegCleaningOperations = pgTable(
+  "keg_cleaning_operations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    kegId: uuid("keg_id")
+      .notNull()
+      .references(() => kegs.id),
+    cleanedAt: timestamp("cleaned_at").notNull().defaultNow(),
+    cleanedBy: uuid("cleaned_by"),
+    notes: text("notes"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+    deletedAt: timestamp("deleted_at"),
+  },
+  (table) => ({
+    kegIdx: index("keg_cleaning_ops_keg_idx").on(table.kegId),
+    cleanedAtIdx: index("keg_cleaning_ops_cleaned_at_idx").on(table.cleanedAt),
+  }),
+);
+
 // Keg fills table - Track keg fill operations
 export const kegFills = pgTable(
   "keg_fills",
