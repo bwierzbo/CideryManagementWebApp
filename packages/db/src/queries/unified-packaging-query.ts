@@ -367,10 +367,13 @@ export async function getUnifiedPackagingRuns(
         : null,
     }));
 
-    // Get count (use same conditions as main query)
+    // Get count (use same conditions as main query). The conditions can
+    // reference kegs (Returned tab filters on kegs.status), so the count
+    // query must always carry the kegs join.
     let countQuery = db
       .select({ count: sql<number>`count(*)` })
-      .from(kegFills);
+      .from(kegFills)
+      .leftJoin(kegs, eq(kegFills.kegId, kegs.id));
 
     if (filters.batchSearch) {
       countQuery = countQuery.leftJoin(batches, eq(kegFills.batchId, batches.id));
