@@ -1844,6 +1844,56 @@ export const kegsRouter = router({
     }),
 
   /**
+   * Mass-clean kegs: every selected keg in "cleaning" status becomes
+   * "available". Kegs in other states are counted as skipped rather than
+   * failing the whole batch — the operator selects rows in bulk and some may
+   * already be clean.
+   */
+  bulkCleanKegs: createRbacProcedure("update", "package")
+    .input(
+      z.object({
+        kegIds: z.array(z.string().uuid()).min(1).max(500),
+        cleanedAt: z
+          .date()
+          .or(z.string().transform((val) => new Date(val)))
+          .optional(),
+      }),
+    )
+    .mutation(async ({ input }) => {
+      try {
+        const rows = await db
+          .select({ id: kegs.id, status: kegs.status })
+          .from(kegs)
+          .where(and(inArray(kegs.id, input.kegIds), isNull(kegs.deletedAt)));
+
+        const cleanable = rows
+          .filter((k) => k.status === "cleaning")
+          .map((k) => k.id);
+
+        if (cleanable.length) {
+          await db
+            .update(kegs)
+            .set({ status: "available", updatedAt: new Date() })
+            .where(inArray(kegs.id, cleanable));
+        }
+
+        return {
+          success: true,
+          cleaned: cleanable.length,
+          skipped: input.kegIds.length - cleanable.length,
+          message: `${cleanable.length} keg${cleanable.length === 1 ? "" : "s"} marked clean and available`,
+        };
+      } catch (error) {
+        if (error instanceof TRPCError) throw error;
+        console.error("Error bulk-cleaning kegs:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to clean kegs",
+        });
+      }
+    }),
+
+  /**
    * Get detailed information about a specific keg fill
    * Returns full fill details with batch composition, keg info, and history
    */
