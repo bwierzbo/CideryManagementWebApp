@@ -37,8 +37,25 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Check, SkipForward, RotateCcw, Lock } from "lucide-react";
+import { Check, SkipForward, RotateCcw, Lock, Pencil } from "lucide-react";
 import { formatDateForInput } from "@/utils/date-format";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 // Display status (richer than the raw status) → left-border accent + badge.
 type RowStatus = "done" | "ready" | "overdue" | "blocked" | "skipped" | "pending";
@@ -109,6 +126,40 @@ export function BatchRecipeChecklist({ batchId }: { batchId: string }) {
   const complete = trpc.recipeExecution.completeTask.useMutation({ onSuccess: refresh });
   const skip = trpc.recipeExecution.skipTask.useMutation({ onSuccess: refresh });
   const reopen = trpc.recipeExecution.reopenTask.useMutation({ onSuccess: refresh });
+
+  // Packaging-plan editor (bottle only / keg only / both) for a RUNNING
+  // execution — the instantiate wizard sets the initial split, this changes it.
+  const [planOpen, setPlanOpen] = useState(false);
+  const [planMode, setPlanMode] = useState<"bottle" | "keg" | "both">("bottle");
+  const [planBottleL, setPlanBottleL] = useState("");
+  const [planKegL, setPlanKegL] = useState("");
+  const setPlan = trpc.recipeExecution.setPackagingPlan.useMutation({
+    onSuccess: (res) => {
+      toast({
+        title: "Packaging plan updated",
+        description: res.created.length
+          ? `Added steps: ${res.created.join(", ")}`
+          : undefined,
+      });
+      setPlanOpen(false);
+      refresh();
+    },
+    onError: (e) =>
+      toast({ title: "Couldn't update plan", description: e.message, variant: "destructive" }),
+  });
+  const savePlan = () => {
+    const b = planMode === "keg" ? 0 : Math.max(0, parseFloat(planBottleL) || 0);
+    const k = planMode === "bottle" ? 0 : Math.max(0, parseFloat(planKegL) || 0);
+    if (planMode !== "keg" && b <= 0) {
+      toast({ title: "Enter a bottle volume", variant: "destructive" });
+      return;
+    }
+    if (planMode !== "bottle" && k <= 0) {
+      toast({ title: "Enter a keg volume", variant: "destructive" });
+      return;
+    }
+    setPlan.mutate({ batchId, bottleVolumeL: b, kegVolumeL: k });
+  };
 
   const VESSEL_KINDS = new Set(["filter", "carbonate", "package"]);
   const RUN_KINDS = new Set(["pasteurize", "label"]);
@@ -313,7 +364,25 @@ export function BatchRecipeChecklist({ batchId }: { batchId: string }) {
     <>
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">Recipe checklist</CardTitle>
+        <CardTitle className="text-base flex items-center justify-between">
+          Recipe checklist
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 gap-1 text-xs font-normal text-muted-foreground"
+            onClick={() => {
+              const b = Number(execution.bottleVolumeL ?? 0);
+              const k = Number(execution.kegVolumeL ?? 0);
+              setPlanMode(b > 0 && k > 0 ? "both" : k > 0 ? "keg" : "bottle");
+              const fallback = currentVolumeL > 0 ? String(Math.round(currentVolumeL)) : "";
+              setPlanBottleL(b > 0 ? String(b) : fallback);
+              setPlanKegL(k > 0 ? String(k) : fallback);
+              setPlanOpen(true);
+            }}
+          >
+            <Pencil className="h-3 w-3" /> Packaging plan
+          </Button>
+        </CardTitle>
         <CardDescription>
           {/* Packaging progress is shown per planned path only — a path with
               no plan (0 L) is omitted rather than rendering "kegged X of 0 L". */}
@@ -505,6 +574,68 @@ export function BatchRecipeChecklist({ batchId }: { batchId: string }) {
       ingredients={data.ingredients ?? []}
       kegLabel={kegLabel}
     />
+
+    {/* Packaging plan editor — switch bottle only / keg only / both mid-batch. */}
+    <Dialog open={planOpen} onOpenChange={setPlanOpen}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Packaging plan</DialogTitle>
+          <DialogDescription>
+            Enabling a path adds its recipe steps to this batch; disabling one
+            skips its open steps. Completed steps are never changed.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div>
+            <Label className="text-xs">Package as</Label>
+            <Select value={planMode} onValueChange={(v) => setPlanMode(v as "bottle" | "keg" | "both")}>
+              <SelectTrigger className="mt-1">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="bottle">Bottles only</SelectItem>
+                <SelectItem value="keg">Kegs only</SelectItem>
+                <SelectItem value="both">Both</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {planMode !== "keg" && (
+            <div>
+              <Label className="text-xs">Planned bottle volume (L)</Label>
+              <Input
+                type="number"
+                min="0"
+                step="1"
+                value={planBottleL}
+                onChange={(e) => setPlanBottleL(e.target.value)}
+                className="mt-1"
+              />
+            </div>
+          )}
+          {planMode !== "bottle" && (
+            <div>
+              <Label className="text-xs">Planned keg volume (L)</Label>
+              <Input
+                type="number"
+                min="0"
+                step="1"
+                value={planKegL}
+                onChange={(e) => setPlanKegL(e.target.value)}
+                className="mt-1"
+              />
+            </div>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setPlanOpen(false)}>
+            Cancel
+          </Button>
+          <Button onClick={savePlan} disabled={setPlan.isPending}>
+            {setPlan.isPending ? "Saving…" : "Save plan"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
 
     {/* Real cellar action modals — completing one marks the recipe step done. */}
     {batchData?.vesselId && (

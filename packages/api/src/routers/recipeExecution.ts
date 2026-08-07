@@ -753,6 +753,111 @@ export const recipeExecutionRouter = router({
       });
     }),
 
+  /**
+   * Change a running execution's packaging plan (bottle only / keg only /
+   * both). A volume > 0 enables the path: previously-skipped path steps
+   * reopen, and if the batch has no steps for that path at all they are
+   * snapshotted from the recipe's current steps. A 0 volume disables the
+   * path: its open steps are skipped. Done steps are never touched.
+   */
+  setPackagingPlan: createRbacProcedure("update", "batch")
+    .input(
+      z.object({
+        batchId: z.string().uuid(),
+        bottleVolumeL: z.number().min(0),
+        kegVolumeL: z.number().min(0),
+      }),
+    )
+    .mutation(async ({ input }) => {
+      return await db.transaction(async (tx) => {
+        const [exec] = await tx
+          .select()
+          .from(batchRecipeExecutions)
+          .where(eq(batchRecipeExecutions.batchId, input.batchId))
+          .limit(1);
+        if (!exec) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "No recipe execution for this batch",
+          });
+        }
+
+        await tx
+          .update(batchRecipeExecutions)
+          .set({
+            bottleVolumeL: input.bottleVolumeL.toString(),
+            kegVolumeL: input.kegVolumeL.toString(),
+            updatedAt: new Date(),
+          })
+          .where(eq(batchRecipeExecutions.id, exec.id));
+
+        const existing = await tx
+          .select()
+          .from(batchStepTasks)
+          .where(
+            and(
+              eq(batchStepTasks.executionId, exec.id),
+              ne(batchStepTasks.packagingPath, "all"),
+            ),
+          );
+
+        const created: string[] = [];
+        for (const path of ["bottle", "keg"] as const) {
+          const volume = path === "bottle" ? input.bottleVolumeL : input.kegVolumeL;
+          const pathTasks = existing.filter((t) => t.packagingPath === path);
+          if (volume > 0) {
+            const skipped = pathTasks.filter((t) => t.status === "skipped");
+            if (skipped.length) {
+              await tx
+                .update(batchStepTasks)
+                .set({ status: "pending", completedAt: null, updatedAt: new Date() })
+                .where(inArray(batchStepTasks.id, skipped.map((t) => t.id)));
+            }
+            if (pathTasks.length === 0) {
+              const stepRows = await tx
+                .select()
+                .from(recipeSteps)
+                .where(
+                  and(
+                    eq(recipeSteps.recipeId, exec.recipeId),
+                    eq(recipeSteps.packagingPath, path),
+                  ),
+                )
+                .orderBy(asc(recipeSteps.sequence));
+              for (const rs of stepRows) {
+                await tx.insert(batchStepTasks).values({
+                  executionId: exec.id,
+                  batchId: exec.batchId,
+                  sequence: rs.sequence,
+                  kind: rs.kind,
+                  label: rs.label,
+                  description: rs.description,
+                  packagingPath: rs.packagingPath,
+                  isOptional: rs.isOptional,
+                  triggerKind: rs.triggerKind,
+                  triggerData: rs.triggerData,
+                  actionData: rs.actionData,
+                  status: "pending",
+                });
+                created.push(rs.label);
+              }
+            }
+          } else {
+            const open = pathTasks.filter((t) => t.status === "pending");
+            if (open.length) {
+              await tx
+                .update(batchStepTasks)
+                .set({ status: "skipped", completedAt: new Date(), updatedAt: new Date() })
+                .where(inArray(batchStepTasks.id, open.map((t) => t.id)));
+            }
+          }
+        }
+
+        await recomputeSchedule(tx, exec.id);
+        return { created, tasks: await tasksForExecution(tx, exec.id) };
+      });
+    }),
+
   /** Assign (or unassign) a worker to a task. */
   assignTask: createRbacProcedure("update", "batch")
     .input(z.object({ taskId: z.string().uuid(), workerId: z.string().uuid().nullable() }))
