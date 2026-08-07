@@ -1821,11 +1821,12 @@ export const kegsRouter = router({
           });
         }
 
-        // Update keg status to available
+        // Update keg status to available and send it home to the cellar
         await db
           .update(kegs)
           .set({
             status: "available",
+            currentLocation: "cellar",
             updatedAt: new Date(),
           })
           .where(eq(kegs.id, input.kegId));
@@ -1883,7 +1884,7 @@ export const kegsRouter = router({
         if (cleanable.length) {
           await db
             .update(kegs)
-            .set({ status: "available", updatedAt: new Date() })
+            .set({ status: "available", currentLocation: "cellar", updatedAt: new Date() })
             .where(inArray(kegs.id, cleanable));
 
           // Log one cleaning event per keg (per-keg history)
