@@ -45,11 +45,16 @@ import { cn } from "@/lib/utils";
 
 interface AddBatchAdditiveFormProps {
   batchId: string;
-  onSuccess: () => void;
+  /** Receives the recorded addedAt so recipe callers can anchor the schedule
+   *  to the actual date (completeTask → recomputeSchedule). */
+  onSuccess: (addedAt?: Date) => void;
   onCancel: () => void;
   /** Recipe-planned values to prefill (e.g. Cascade Hops @ 1.5 g/L = 180 g). */
   prefillAdditiveType?: string | null;
   prefillVarietyName?: string | null;
+  /** Inventory variety the recipe ingredient is linked to — preselects the
+   *  first available lot of that variety so the user only verifies. */
+  prefillAdditiveVarietyId?: string | null;
   prefillDosageRate?: number | null;
   prefillDosageRateUnit?: string | null;
   prefillAmount?: number | null;
@@ -57,6 +62,8 @@ interface AddBatchAdditiveFormProps {
   /** Planned batch volume (L) for the g/L translation when the batch has no
    *  measurement yet (e.g. a freshly instantiated recipe batch). */
   prefillBatchVolumeL?: number | null;
+  /** Default the date field to the step's scheduled date instead of now. */
+  prefillAddedAt?: string | Date | null;
 }
 
 // Grouped so absolute amounts and concentrations can be visually separated
@@ -169,6 +176,8 @@ export function AddBatchAdditiveForm({
   onCancel,
   prefillAdditiveType,
   prefillVarietyName,
+  prefillAdditiveVarietyId,
+  prefillAddedAt,
   prefillDosageRate,
   prefillDosageRateUnit,
   prefillAmount,
@@ -186,7 +195,10 @@ export function AddBatchAdditiveForm({
   const [searchQuery, setSearchQuery] = useState("");
   const [open, setOpen] = useState(false);
   const [addedDate, setAddedDate] = useState(() => {
-    return formatDateTimeForInput(new Date());
+    // Default to the recipe step's scheduled date when provided; the operator
+    // adjusts it if the work happened on a different day.
+    const seed = prefillAddedAt ? new Date(prefillAddedAt) : new Date();
+    return formatDateTimeForInput(Number.isNaN(seed.getTime()) ? new Date() : seed);
   });
   const [dateWarning, setDateWarning] = useState<string | null>(null);
   const [dosageRate, setDosageRate] = useState(prefillDosageRate != null ? String(prefillDosageRate) : "");
@@ -263,16 +275,28 @@ export function AddBatchAdditiveForm({
       },
     );
 
-  // Once the type's inventory loads, auto-select the lot matching the recipe
-  // variety — only when there's exactly one, to avoid guessing.
+  // Once the type's inventory loads, auto-select the lot for the recipe
+  // ingredient. The linked variety id is authoritative (first available lot
+  // of that variety); the name match is the fallback for unlinked
+  // ingredients — only when there's exactly one, to avoid guessing.
   React.useEffect(() => {
-    if (!prefillVarietyName || selectedInventoryItem) return;
+    if ((!prefillAdditiveVarietyId && !prefillVarietyName) || selectedInventoryItem) return;
     const items = inventoryData?.items ?? [];
+    if (prefillAdditiveVarietyId) {
+      const byId = items.filter(
+        (i: any) => i.additiveVarietyId === prefillAdditiveVarietyId,
+      );
+      if (byId.length > 0) {
+        setSelectedInventoryItem(byId[0]);
+        return;
+      }
+    }
+    if (!prefillVarietyName) return;
     const matches = items.filter(
       (i: any) => (i.varietyName || i.productName) === prefillVarietyName,
     );
     if (matches.length === 1) setSelectedInventoryItem(matches[0]);
-  }, [inventoryData, prefillVarietyName, selectedInventoryItem]);
+  }, [inventoryData, prefillAdditiveVarietyId, prefillVarietyName, selectedInventoryItem]);
 
   // Detect if the selected inventory item is a sulfite product (KMS)
   const isSulfiteProduct = useMemo(() => {
@@ -431,7 +455,7 @@ export function AddBatchAdditiveForm({
       if (data.reclassifiedAsWine) {
         utils.batch.invalidate();
       }
-      onSuccess();
+      onSuccess(parseDateTimeFromInput(addedDate));
     },
     onError: (error) => {
       toast({
