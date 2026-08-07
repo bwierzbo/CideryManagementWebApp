@@ -72,7 +72,8 @@ interface BottleModalProps {
   showTypeSelector?: boolean; // Show package type selector (bottles vs kegs)
   onTypeChange?: (type: "bottles" | "kegs") => void; // Callback when type changes
   preBottling?: PreBottlingData;
-  onSuccess?: () => void; // Called after a packaging run is created
+  /** Called after a packaging run is created; receives packagedAt for schedule anchoring. */
+  onSuccess?: (packagedAt?: Date) => void;
 }
 
 type InputMode = "volume" | "units";
@@ -127,6 +128,7 @@ export function BottleModal({
     formState: { errors },
     setValue,
     watch,
+    getValues,
     reset,
   } = useForm<BottleFormData>({
     resolver: zodResolver(bottleFormSchema),
@@ -424,7 +426,7 @@ export function BottleModal({
 
       console.log("Packaging run created:", result);
       onClose();
-      onSuccess?.();
+      onSuccess?.(parseDateTimeFromInput(getValues("packagedAt")));
     } catch (error) {
       console.error("Failed to create packaging run:", error);
 

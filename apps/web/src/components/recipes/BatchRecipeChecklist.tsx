@@ -507,7 +507,13 @@ export function BatchRecipeChecklist({ batchId }: { batchId: string }) {
                 ? "sterile"
                 : "fine"
           }
-          onSuccess={() => actionTask && complete.mutate({ taskId: actionTask.id })}
+          onSuccess={(actualAt?: Date) =>
+            actionTask &&
+            complete.mutate({
+              taskId: actionTask.id,
+              ...(actualAt ? { completedAt: actualAt } : {}),
+            })
+          }
         />
         <CarbonateModal
           open={actionTask?.kind === "carbonate"}
@@ -538,7 +544,13 @@ export function BatchRecipeChecklist({ batchId }: { batchId: string }) {
                 ? "forced"
                 : undefined
           }
-          onSuccess={() => actionTask && complete.mutate({ taskId: actionTask.id })}
+          onSuccess={(actualAt?: Date) =>
+            actionTask &&
+            complete.mutate({
+              taskId: actionTask.id,
+              ...(actualAt ? { completedAt: actualAt } : {}),
+            })
+          }
         />
         <UnifiedPackagingModal
           open={actionTask?.kind === "package"}
@@ -548,7 +560,13 @@ export function BatchRecipeChecklist({ batchId }: { batchId: string }) {
           batchId={batchId}
           currentVolumeL={currentVolumeL}
           initialType={actionTask?.packagingPath === "keg" ? "kegs" : "bottles"}
-          onSuccess={() => actionTask && complete.mutate({ taskId: actionTask.id })}
+          onSuccess={(actualAt?: Date) =>
+            actionTask &&
+            complete.mutate({
+              taskId: actionTask.id,
+              ...(actualAt ? { completedAt: actualAt } : {}),
+            })
+          }
         />
       </>
     )}
@@ -563,7 +581,13 @@ export function BatchRecipeChecklist({ batchId }: { batchId: string }) {
           bottleRunName={`${latestRun.batch?.name ?? "Run"} — ${new Date(latestRun.packagedAt ?? latestRun.createdAt).toLocaleDateString()}`}
           batchId={batchId}
           unitsProduced={Number(latestRun.unitsProduced ?? 0)}
-          onSuccess={() => actionTask && complete.mutate({ taskId: actionTask.id })}
+          onSuccess={(actualAt?: Date) =>
+            actionTask &&
+            complete.mutate({
+              taskId: actionTask.id,
+              ...(actualAt ? { completedAt: actualAt } : {}),
+            })
+          }
         />
         <LabelModal
           open={actionTask?.kind === "label"}
@@ -572,7 +596,13 @@ export function BatchRecipeChecklist({ batchId }: { batchId: string }) {
           bottleRunName={`${latestRun.batch?.name ?? "Run"} — ${new Date(latestRun.packagedAt ?? latestRun.createdAt).toLocaleDateString()}`}
           unitsProduced={Number(latestRun.unitsProduced ?? 0)}
           unitsLabeled={Number(latestRun.unitsLabeled ?? 0)}
-          onSuccess={() => actionTask && complete.mutate({ taskId: actionTask.id })}
+          onSuccess={(actualAt?: Date) =>
+            actionTask &&
+            complete.mutate({
+              taskId: actionTask.id,
+              ...(actualAt ? { completedAt: actualAt } : {}),
+            })
+          }
         />
       </>
     )}

@@ -57,7 +57,8 @@ interface LabelModalProps {
   bottleRunName: string;
   unitsProduced: number;
   unitsLabeled?: number; // Current number of labeled units (for partial labeling)
-  onSuccess: () => void;
+  /** Receives labeledAt for schedule anchoring. */
+  onSuccess: (labeledAt?: Date) => void;
 }
 
 export function LabelModal({
@@ -227,7 +228,7 @@ export function LabelModal({
       utils.packaging.list.invalidate();
       utils.packaging.get.invalidate(bottleRunId);
       refetchPackagingItems();
-      onSuccess();
+      onSuccess(labeledAt);
 
       // Close modal after successful labeling
       onClose();

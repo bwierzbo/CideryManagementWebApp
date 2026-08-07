@@ -27,7 +27,8 @@ import { useDateFormat } from "@/hooks/useDateFormat";
 
 interface AddBatchMeasurementFormProps {
   batchId: string;
-  onSuccess: () => void;
+  /** Receives the measurement date for schedule anchoring. */
+  onSuccess: (measuredAt?: Date) => void;
   onCancel: () => void;
 }
 
@@ -181,7 +182,7 @@ export function AddBatchMeasurementForm({
         title: "Success",
         description: "Measurement added successfully",
       });
-      onSuccess();
+      onSuccess(parseDateTimeFromInput(measurementDateTime));
     },
     onError: (error) => {
       toast({

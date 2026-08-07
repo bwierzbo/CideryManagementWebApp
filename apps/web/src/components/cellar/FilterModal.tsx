@@ -54,8 +54,10 @@ interface FilterModalProps {
   vesselName: string;
   batchId: string;
   currentVolumeL: number;
-  /** Called after a filter operation succeeds (e.g. to complete a recipe task). */
-  onSuccess?: () => void;
+  /** Called after a filter operation succeeds (e.g. to complete a recipe
+   *  task). Receives the operation's filteredAt so recipe callers can anchor
+   *  the remaining schedule to the actual date. */
+  onSuccess?: (filteredAt?: Date) => void;
   /** Recipe-planned filter type to prefill. */
   prefillFilterType?: "coarse" | "fine" | "sterile";
 }
@@ -176,7 +178,7 @@ export function FilterModal({
       utils.batch.list.invalidate();
       onClose();
       reset();
-      onSuccess?.();
+      onSuccess?.(filteredAt);
     },
     onError: (error) => {
       toast({

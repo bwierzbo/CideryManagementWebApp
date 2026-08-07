@@ -52,7 +52,8 @@ interface FillKegModalProps {
   showTypeSelector?: boolean; // Show package type selector (bottles vs kegs)
   onTypeChange?: (type: "bottles" | "kegs") => void; // Callback when type changes
   preBottling?: PreBottlingData;
-  onSuccess?: () => void; // Called after kegs are filled
+  /** Called after kegs are filled; receives filledAt for schedule anchoring. */
+  onSuccess?: (filledAt?: Date) => void;
 }
 
 // Memoized keg item component to prevent re-renders
@@ -125,6 +126,7 @@ export function FillKegModal({
     formState: { errors },
     setValue,
     watch,
+    getValues,
     reset,
   } = useForm<FillKegsForm>({
     resolver: zodResolver(fillKegsSchema),
@@ -165,7 +167,7 @@ export function FillKegModal({
       setSelectedKegIds([]);
       setKegVolumes({});
       onClose();
-      onSuccess?.();
+      onSuccess?.(parseDateTimeFromInput(getValues("filledAt")));
     },
     onError: (error) => {
       toast({
