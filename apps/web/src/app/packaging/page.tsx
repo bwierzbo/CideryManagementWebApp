@@ -267,6 +267,9 @@ export default function PackagingPage() {
     };
   }, [selectedKegs]);
 
+  const [bulkCleanOpen, setBulkCleanOpen] = useState(false);
+  const [bulkCleanDate, setBulkCleanDate] = useState("");
+  const [bulkCleanNotes, setBulkCleanNotes] = useState("");
   const bulkCleanMutation = trpc.packaging.kegs.bulkCleanKegs.useMutation({
     onSuccess: (res) => {
       toast({
@@ -278,24 +281,35 @@ export default function PackagingPage() {
       });
       utils.packaging.list.invalidate();
       utils.packaging.getStats.invalidate();
+      setBulkCleanOpen(false);
       setSelectedItems([]);
       setShowBulkActions(false);
     },
     onError: (e) =>
       toast({ title: "Cleaning failed", description: e.message, variant: "destructive" }),
   });
-  const handleBulkClean = useCallback(() => {
-    // Unique physical kegs among the selected fills that need cleaning
-    const kegIds = Array.from(
-      new Set(
-        selectedKegs
-          .filter((k) => k.kegStatus === "cleaning" && k.kegId)
-          .map((k) => k.kegId as string),
+  // Unique physical kegs among the selected fills that need cleaning
+  const dirtyKegIds = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          selectedKegs
+            .filter((k) => k.kegStatus === "cleaning" && k.kegId)
+            .map((k) => k.kegId as string),
+        ),
       ),
-    );
-    if (kegIds.length === 0) return;
-    bulkCleanMutation.mutate({ kegIds });
-  }, [selectedKegs, bulkCleanMutation]);
+    [selectedKegs],
+  );
+  const handleBulkClean = useCallback(() => {
+    if (dirtyKegIds.length === 0) return;
+    // Seed the cleaning date with local "now"; the operator adjusts for
+    // back-filled cleanings.
+    const now = new Date();
+    const local = new Date(now.getTime() - now.getTimezoneOffset() * 60_000);
+    setBulkCleanDate(local.toISOString().slice(0, 16));
+    setBulkCleanNotes("");
+    setBulkCleanOpen(true);
+  }, [dirtyKegIds]);
 
   const handleBulkDistribute = useCallback(() => {
     setBulkDistributeOpen(true);
@@ -872,6 +886,58 @@ export default function PackagingPage() {
       </main>
 
       {/* Bulk Mark Ready Dialog */}
+      <Dialog open={bulkCleanOpen} onOpenChange={setBulkCleanOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Mark Kegs Cleaned</DialogTitle>
+            <DialogDescription>
+              Record a cleaning for {dirtyKegIds.length} keg
+              {dirtyKegIds.length !== 1 ? "s" : ""} — each gets a dated history
+              entry and becomes available.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label>Cleaned Date & Time <span className="text-red-500">*</span></Label>
+              <Input
+                type="datetime-local"
+                value={bulkCleanDate}
+                onChange={(e) => setBulkCleanDate(e.target.value)}
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <Label>Notes (optional)</Label>
+              <Input
+                value={bulkCleanNotes}
+                onChange={(e) => setBulkCleanNotes(e.target.value)}
+                placeholder="e.g. caustic + sanitizer run"
+                className="mt-1"
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setBulkCleanOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                disabled={!bulkCleanDate || bulkCleanMutation.isPending}
+                onClick={() =>
+                  bulkCleanMutation.mutate({
+                    kegIds: dirtyKegIds,
+                    cleanedAt: new Date(bulkCleanDate),
+                    ...(bulkCleanNotes.trim() ? { notes: bulkCleanNotes.trim() } : {}),
+                  })
+                }
+              >
+                {bulkCleanMutation.isPending
+                  ? "Cleaning…"
+                  : `Clean ${dirtyKegIds.length} Keg${dirtyKegIds.length !== 1 ? "s" : ""}`}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={bulkMarkReadyOpen} onOpenChange={setBulkMarkReadyOpen}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
