@@ -287,7 +287,7 @@ export function AddBatchAdditiveForm({
         (i: any) => i.additiveVarietyId === prefillAdditiveVarietyId,
       );
       if (byId.length > 0) {
-        setSelectedInventoryItem(byId[0]);
+        applyItemSelection(byId[0]);
         return;
       }
     }
@@ -295,7 +295,7 @@ export function AddBatchAdditiveForm({
     const matches = items.filter(
       (i: any) => (i.varietyName || i.productName) === prefillVarietyName,
     );
-    if (matches.length === 1) setSelectedInventoryItem(matches[0]);
+    if (matches.length === 1) applyItemSelection(matches[0]);
   }, [inventoryData, prefillAdditiveVarietyId, prefillVarietyName, selectedInventoryItem]);
 
   // Detect if the selected inventory item is a sulfite product (KMS)
@@ -565,12 +565,33 @@ export function AddBatchAdditiveForm({
     addAdditive.mutate(additiveData);
   };
 
+  // Adopting the lot's unit must carry the amount with it (24000 g → 24 kg),
+  // otherwise a recipe-prefilled amount silently changes magnitude when the
+  // inventory item uses a different unit.
+  const MASS_G: Record<string, number> = { g: 1, kg: 1000, oz: 28.3495, lb: 453.592 };
+  const VOL_ML: Record<string, number> = { mL: 1, ml: 1, L: 1000, gal: 3785.41 };
+  const convertAmountBetweenUnits = (value: number, from: string, to: string): number | null => {
+    if (from === to) return value;
+    if (MASS_G[from] && MASS_G[to]) return (value * MASS_G[from]) / MASS_G[to];
+    if (VOL_ML[from] && VOL_ML[to]) return (value * VOL_ML[from]) / VOL_ML[to];
+    return null;
+  };
+
+  const applyItemSelection = (item: (typeof filteredInventory)[number]) => {
+    setSelectedInventoryItem(item);
+    const current = parseFloat(amount);
+    if (unit && item.unit && unit !== item.unit && Number.isFinite(current)) {
+      const converted = convertAmountBetweenUnits(current, unit, item.unit);
+      if (converted != null) setAmount(String(Number(converted.toFixed(4))));
+    }
+    // Auto-set the unit from the inventory item
+    setUnit(item.unit);
+  };
+
   const handleSelectInventoryItem = (itemId: string) => {
     const item = filteredInventory.find((i) => i.id === itemId);
     if (item) {
-      setSelectedInventoryItem(item);
-      // Auto-set the unit from the inventory item
-      setUnit(item.unit);
+      applyItemSelection(item);
       setOpen(false);
     }
   };
