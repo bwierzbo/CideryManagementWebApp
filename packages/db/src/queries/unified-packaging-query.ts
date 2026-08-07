@@ -247,8 +247,12 @@ export async function getUnifiedPackagingRuns(
         // Distributed (out at location)
         kegConditions.push(eq(kegFills.status, "distributed"));
       } else if (filters.status === "completed") {
-        // For kegs, completed means returned
+        // For kegs, "Returned" is the cleaning queue: returned fills whose
+        // physical keg hasn't been cleaned yet. Once cleaned, the keg is back
+        // in circulation and drops off this list — its full fill/cleaning
+        // history stays on the keg's detail view.
         kegConditions.push(eq(kegFills.status, "returned"));
+        kegConditions.push(eq(kegs.status, "cleaning"));
       }
     }
 
