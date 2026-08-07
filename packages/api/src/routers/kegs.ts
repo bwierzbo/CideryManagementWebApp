@@ -21,6 +21,7 @@ import {
   batchTransfers,
   batchCarbonationOperations,
   salesChannels,
+  kegCleaningOperations,
 } from "db";
 import { eq, and, desc, isNull, sql, like, or, inArray } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
@@ -1829,6 +1830,14 @@ export const kegsRouter = router({
           })
           .where(eq(kegs.id, input.kegId));
 
+        // Log the cleaning event (per-keg history)
+        await db.insert(kegCleaningOperations).values({
+          kegId: input.kegId,
+          cleanedAt: input.cleanedAt ?? new Date(),
+          cleanedBy: ctx.user?.id ?? null,
+          notes: input.notes ?? null,
+        });
+
         return {
           success: true,
           message: `Keg ${keg.kegNumber} is now available`,
@@ -1857,9 +1866,10 @@ export const kegsRouter = router({
           .date()
           .or(z.string().transform((val) => new Date(val)))
           .optional(),
+        notes: z.string().optional(),
       }),
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       try {
         const rows = await db
           .select({ id: kegs.id, status: kegs.status })
@@ -1875,6 +1885,17 @@ export const kegsRouter = router({
             .update(kegs)
             .set({ status: "available", updatedAt: new Date() })
             .where(inArray(kegs.id, cleanable));
+
+          // Log one cleaning event per keg (per-keg history)
+          const cleanedAt = input.cleanedAt ?? new Date();
+          await db.insert(kegCleaningOperations).values(
+            cleanable.map((kegId) => ({
+              kegId,
+              cleanedAt,
+              cleanedBy: ctx.user?.id ?? null,
+              notes: input.notes ?? null,
+            })),
+          );
         }
 
         return {
@@ -1891,6 +1912,31 @@ export const kegsRouter = router({
           message: "Failed to clean kegs",
         });
       }
+    }),
+
+  /** Per-keg cleaning history (newest first). */
+  getCleaningHistory: createRbacProcedure("list", "package")
+    .input(z.object({ kegId: z.string().uuid(), limit: z.number().min(1).max(200).default(50) }))
+    .query(async ({ input }) => {
+      const rows = await db
+        .select({
+          id: kegCleaningOperations.id,
+          cleanedAt: kegCleaningOperations.cleanedAt,
+          notes: kegCleaningOperations.notes,
+          cleanedByName: users.name,
+          cleanedByEmail: users.email,
+        })
+        .from(kegCleaningOperations)
+        .leftJoin(users, eq(kegCleaningOperations.cleanedBy, users.id))
+        .where(
+          and(
+            eq(kegCleaningOperations.kegId, input.kegId),
+            isNull(kegCleaningOperations.deletedAt),
+          ),
+        )
+        .orderBy(desc(kegCleaningOperations.cleanedAt))
+        .limit(input.limit);
+      return { items: rows };
     }),
 
   /**

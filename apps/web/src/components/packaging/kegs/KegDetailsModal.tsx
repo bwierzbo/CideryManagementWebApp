@@ -20,7 +20,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { Package, Calendar, MapPin, Loader2, Wine, Edit } from "lucide-react";
+import { Package, Calendar, MapPin, Loader2, Wine, Edit, Droplets } from "lucide-react";
 import { formatDate } from "@/utils/date-format";
 import { trpc } from "@/utils/trpc";
 import { EditKegModal } from "./EditKegModal";
@@ -52,8 +52,14 @@ export function KegDetailsModal({
     { enabled: open && !!kegId },
   );
 
+  const { data: cleaningData } = trpc.packaging.kegs.getCleaningHistory.useQuery(
+    { kegId },
+    { enabled: open && !!kegId },
+  );
+
   const keg = data?.keg;
   const fills = data?.fills || [];
+  const cleanings = cleaningData?.items ?? [];
 
   return (
     <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
@@ -261,6 +267,50 @@ export function KegDetailsModal({
                         </TableBody>
                       </Table>
                     </div>
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+
+            {/* Cleaning History */}
+            <div>
+              <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
+                <Droplets className="w-5 h-5" />
+                Cleaning History ({cleanings.length})
+              </h3>
+              {cleanings.length === 0 ? (
+                <Card>
+                  <CardContent className="py-8 text-center text-gray-500">
+                    No cleanings recorded yet
+                  </CardContent>
+                </Card>
+              ) : (
+                <Card>
+                  <CardContent className="p-0">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Cleaned</TableHead>
+                          <TableHead>By</TableHead>
+                          <TableHead>Notes</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {cleanings.map((c) => (
+                          <TableRow key={c.id}>
+                            <TableCell className="text-sm">
+                              {formatDate(c.cleanedAt)}
+                            </TableCell>
+                            <TableCell className="text-sm">
+                              {c.cleanedByName || c.cleanedByEmail || "—"}
+                            </TableCell>
+                            <TableCell className="text-sm text-gray-600">
+                              {c.notes || "—"}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
                   </CardContent>
                 </Card>
               )}
