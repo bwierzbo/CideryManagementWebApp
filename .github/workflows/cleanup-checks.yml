@@ -195,7 +195,7 @@ jobs:
         id: generate-report
         run: |
           echo "Generating comprehensive analysis report..."
-          pnpm analysis:all --output analysis/reports/ci/comprehensive-report.json
+          pnpm analyze:all --output analysis/reports/ci/comprehensive-report.json
 
           # Generate markdown summary
           cat > analysis/reports/ci/summary.md << EOF
