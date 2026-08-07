@@ -154,8 +154,16 @@ export function StepDetailModal({
   };
 
   const onMarkDone = () => {
+    // Marking an overdue step done means "done per plan" — anchor to the
+    // scheduled date so the remaining schedule doesn't jump to entry day.
+    const sched = task.scheduledDate ? new Date(task.scheduledDate) : null;
+    const backfilledAt =
+      sched && !Number.isNaN(sched.getTime()) && sched.getTime() < Date.now()
+        ? sched
+        : undefined;
     complete.mutate({
       taskId: task.id,
+      ...(backfilledAt ? { completedAt: backfilledAt } : {}),
       actualData: buildActualData(),
       notes: notes.trim() || null,
     });
