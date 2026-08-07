@@ -71,6 +71,7 @@ type Task = {
   packagingPath: string;
   isOptional: boolean;
   scheduledDate: string | Date | null;
+  completedAt?: string | Date | null;
   status: string;
   notes: string | null;
   actionData: Record<string, unknown> | null;
@@ -241,7 +242,16 @@ export function BatchRecipeChecklist({ batchId }: { batchId: string }) {
         (o.packagingPath === "all" || o.packagingPath === t.packagingPath),
     );
     if (earlierOpen && !confirm("Earlier steps aren't done yet. Complete this one anyway?")) return;
-    complete.mutate({ taskId: t.id });
+    // Quick-done on an overdue step means "done per plan" — anchor to the
+    // scheduled date so back-filled work doesn't reschedule everything to the
+    // data-entry day. Current/future steps complete at now as before.
+    const sched = t.scheduledDate ? new Date(t.scheduledDate) : null;
+    const backfilledAt =
+      sched && !Number.isNaN(sched.getTime()) && sched.getTime() < Date.now() ? sched : undefined;
+    complete.mutate({
+      taskId: t.id,
+      ...(backfilledAt ? { completedAt: backfilledAt } : {}),
+    });
   };
   const onSkip = (t: Task) => {
     // Path-specific steps (bottle-only / keg-only) are inherently optional when
@@ -425,7 +435,13 @@ export function BatchRecipeChecklist({ batchId }: { batchId: string }) {
                   <TableCell
                     className={`text-sm ${rs === "overdue" ? "text-red-600 font-medium" : ""}`}
                   >
-                    {fmtDate(t.scheduledDate)}
+                    {/* Done/skipped steps show when they actually happened;
+                        open steps show the (re-anchored) plan date. */}
+                    {fmtDate(
+                      (t.status === "done" || t.status === "skipped") && t.completedAt
+                        ? t.completedAt
+                        : t.scheduledDate,
+                    )}
                   </TableCell>
                   <TableCell>
                     <Badge variant="outline" className={`text-[10px] ${STATUS_DISPLAY[rs].cls}`}>
