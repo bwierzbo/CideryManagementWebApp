@@ -11,7 +11,7 @@
  * the vessel, draw down inventory) get wired in next, kind by kind.
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { trpc } from "@/utils/trpc";
 import { toast } from "@/hooks/use-toast";
 import {
@@ -29,6 +29,8 @@ import { Badge } from "@/components/ui/badge";
 import { Check } from "lucide-react";
 import { DateInput } from "@/components/ui/date-input";
 import { formatDateForInput, parseDateInput } from "@/utils/date-format";
+import { useDateFormat } from "@/hooks/useDateFormat";
+import { WorkerLaborInput, type WorkerAssignment, toApiLaborAssignments } from "@/components/labor/WorkerLaborInput";
 import { AddBatchMeasurementForm } from "@/components/cellar/AddBatchMeasurementForm";
 import { AddBatchAdditiveForm } from "@/components/cellar/AddBatchAdditiveForm";
 
@@ -98,6 +100,24 @@ export function StepDetailModal({
   const [labelDateEdit, setLabelDateEdit] = useState<{ taskId: string; value: string } | null>(
     null,
   );
+  // Completion date + labor for capture-first steps — same conventions as the
+  // cellar forms: date defaults to the step's scheduled date when back-filling
+  // (schedule re-anchors from it), labor rows feed COGS.
+  const { formatDateTimeForInput, parseDateTimeFromInput } = useDateFormat();
+  const [completedAtStr, setCompletedAtStr] = useState("");
+  const [laborAssignments, setLaborAssignments] = useState<WorkerAssignment[]>([]);
+  useEffect(() => {
+    if (!task) return;
+    const sched = task.scheduledDate ? new Date(task.scheduledDate) : null;
+    const seed =
+      sched && !Number.isNaN(sched.getTime()) && sched.getTime() < Date.now()
+        ? sched
+        : new Date();
+    setCompletedAtStr(formatDateTimeForInput(seed));
+    setLaborAssignments([]);
+    setNotes(task.notes ?? "");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [task?.id]);
 
   // Total to transfer = sum of each source cider's planned draw (set at
   // instantiation); falls back to the batch's planned volume.
@@ -154,16 +174,16 @@ export function StepDetailModal({
   };
 
   const onMarkDone = () => {
-    // Marking an overdue step done means "done per plan" — anchor to the
-    // scheduled date so the remaining schedule doesn't jump to entry day.
-    const sched = task.scheduledDate ? new Date(task.scheduledDate) : null;
-    const backfilledAt =
-      sched && !Number.isNaN(sched.getTime()) && sched.getTime() < Date.now()
-        ? sched
-        : undefined;
+    // The visible date field is authoritative (seeded with the scheduled date
+    // for overdue steps, now otherwise) — the schedule re-anchors from it.
+    const at = completedAtStr ? parseDateTimeFromInput(completedAtStr) : undefined;
+    const labor = toApiLaborAssignments(
+      laborAssignments.filter((a) => a.workerId && a.hoursWorked > 0),
+    );
     complete.mutate({
       taskId: task.id,
-      ...(backfilledAt ? { completedAt: backfilledAt } : {}),
+      ...(at ? { completedAt: at } : {}),
+      ...(labor.length ? { laborAssignments: labor } : {}),
       actualData: buildActualData(),
       notes: notes.trim() || null,
     });
@@ -388,6 +408,21 @@ export function StepDetailModal({
               </div>
             )}
 
+            {/* Completion date — same convention as the cellar forms */}
+            {!isDone && task.kind !== "transfer" && (
+              <div>
+                <Label className="text-xs">
+                  Completed Date & Time <span className="text-red-500">*</span>
+                </Label>
+                <Input
+                  type="datetime-local"
+                  value={completedAtStr}
+                  onChange={(e) => setCompletedAtStr(e.target.value)}
+                  className="text-sm mt-1"
+                />
+              </div>
+            )}
+
             {/* Notes — every capture-first kind */}
             <div>
               <Label className="text-xs">Notes</Label>
@@ -399,6 +434,15 @@ export function StepDetailModal({
                 disabled={isDone}
               />
             </div>
+
+            {/* Labor tracking — same component as the cellar forms */}
+            {!isDone && task.kind !== "transfer" && (
+              <WorkerLaborInput
+                value={laborAssignments}
+                onChange={setLaborAssignments}
+                activityLabel="this step"
+              />
+            )}
 
             <div className="flex justify-end gap-2 pt-1">
               <Button variant="outline" size="sm" onClick={onClose}>

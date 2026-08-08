@@ -32,6 +32,8 @@ import {
   batchTransfers,
   bottleRuns,
   kegFills,
+  workers,
+  activityLaborAssignments,
 } from "db";
 import { buildStepSchedule, rescheduleWithActuals } from "lib";
 import { router, createRbacProcedure } from "../trpc";
@@ -515,23 +517,60 @@ export const recipeExecutionRouter = router({
         actualHours: z.number().nonnegative().nullish(),
         notes: z.string().nullish(),
         actualData: z.record(z.string(), z.unknown()).nullish(),
+        laborAssignments: z
+          .array(
+            z.object({
+              workerId: z.string().uuid(),
+              hoursWorked: z.number().positive(),
+            }),
+          )
+          .optional(),
       }),
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       return await db.transaction(async (tx) => {
         const task = await loadTask(tx, input.taskId);
         const completedAt = input.completedAt ?? new Date();
+        const laborSum = input.laborAssignments?.reduce((s, a) => s + a.hoursWorked, 0);
         await tx
           .update(batchStepTasks)
           .set({
             status: "done",
             completedAt,
-            actualHours: input.actualHours != null ? input.actualHours.toString() : task.actualHours,
+            actualHours:
+              input.actualHours != null
+                ? input.actualHours.toString()
+                : laborSum
+                  ? laborSum.toString()
+                  : task.actualHours,
             notes: input.notes ?? task.notes,
             actualData: input.actualData ?? task.actualData,
             updatedAt: new Date(),
           })
           .where(eq(batchStepTasks.id, task.id));
+
+        // Labor tracking for step kinds with no dedicated operation record
+        // (remove fruit, label kegs, ...). Rack steps count as racking labor;
+        // everything else logs as generic recipe_step work, linked to the task.
+        if (input.laborAssignments?.length) {
+          for (const a of input.laborAssignments) {
+            const [w] = await tx
+              .select({ hourlyRate: workers.hourlyRate })
+              .from(workers)
+              .where(eq(workers.id, a.workerId))
+              .limit(1);
+            const rate = parseFloat(w?.hourlyRate?.toString() || "20.00");
+            await tx.insert(activityLaborAssignments).values({
+              activityType: task.kind === "rack" ? "racking" : "recipe_step",
+              batchStepTaskId: task.id,
+              workerId: a.workerId,
+              hoursWorked: a.hoursWorked.toString(),
+              hourlyRateSnapshot: rate.toString(),
+              laborCost: (a.hoursWorked * rate).toString(),
+              createdBy: ctx.user?.id ?? null,
+            });
+          }
+        }
 
         // Auto-promote finished goods: completing the keg path's "Label Kegs"
         // step means those kegs are done — flip this batch's filled kegs to

@@ -118,6 +118,9 @@ export const activityLaborTypeEnum = pgEnum("activity_labor_type", [
   "carbonation",
   "cleaning",
   "destruction",
+  // Generic recipe-step work (linked via batchStepTaskId) for step kinds
+  // without a dedicated operation record (remove fruit, label kegs, ...)
+  "recipe_step",
 ]);
 
 // Fruit variety characteristic enums
@@ -374,6 +377,7 @@ export const activityLaborAssignments = pgTable(
     carbonationOperationId: uuid("carbonation_operation_id"),
     vesselCleaningOperationId: uuid("vessel_cleaning_operation_id"),
     batchVolumeAdjustmentId: uuid("batch_volume_adjustment_id"),
+    batchStepTaskId: uuid("batch_step_task_id"),
     // Worker assignment
     workerId: uuid("worker_id")
       .notNull()
