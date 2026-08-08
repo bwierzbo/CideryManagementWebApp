@@ -192,6 +192,24 @@ export function LabelModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const onSubmit = async (data: LabelForm) => {
+    // Insufficient stock warns and confirms — never blocks. The labels are
+    // physically on the bottles; inventory goes negative until restocked.
+    const shortages = data.labels
+      .map((l) => {
+        const item = packagingItems?.items.find((i) => i.id === l.packagingItemId);
+        return item && l.quantity > item.quantity
+          ? `${item.size || "Label"}: using ${l.quantity}, only ${item.quantity} in stock`
+          : null;
+      })
+      .filter(Boolean);
+    if (shortages.length > 0) {
+      const ok = window.confirm(
+        `Labeling will take inventory negative:\n\n${shortages.join("\n")}\n\n` +
+          `Record it anyway? (Add a label purchase later to bring stock back up.)`,
+      );
+      if (!ok) return;
+    }
+
     setIsSubmitting(true);
     const labeledAt = parseDateTimeFromInput(data.labeledAt);
     const appliedLabelsList: Array<{name: string, quantity: number}> = [];
@@ -473,10 +491,11 @@ export function LabelModal({
                           </div>
                         )}
                         {hasInsufficientStock && (
-                          <div className="flex items-start gap-2 text-sm text-red-600 bg-red-50 border border-red-200 rounded p-2">
+                          <div className="flex items-start gap-2 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded p-2">
                             <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
                             <span>
-                              Insufficient stock! Only {selectedItem?.quantity} available.
+                              Only {selectedItem?.quantity} in stock — labeling will
+                              take the inventory negative until you restock.
                             </span>
                           </div>
                         )}

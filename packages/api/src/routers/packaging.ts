@@ -2299,14 +2299,11 @@ export const packagingRouter = router({
             });
           }
 
-          // Check if enough stock (available = quantity - quantityUsed)
+          // Available = quantity - quantityUsed. Insufficient stock does NOT
+          // block — recording the labels that physically went on the bottles
+          // beats the inventory record; the count goes negative until the
+          // owner restocks. The client warns and confirms before submitting.
           const available = packagingItem.quantity - (packagingItem.quantityUsed || 0);
-          if (available < input.quantity) {
-            throw new TRPCError({
-              code: "BAD_REQUEST",
-              message: `Insufficient labels in stock. Available: ${available}, Requested: ${input.quantity}`,
-            });
-          }
 
           // Increment quantityUsed instead of decrementing quantity
           await tx
