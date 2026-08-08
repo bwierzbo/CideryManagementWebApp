@@ -82,6 +82,8 @@ export function FilterModal({
   // "same" = cider stays in the current tank; otherwise the id of the empty
   // vessel the cider is filtered into.
   const [destinationVesselId, setDestinationVesselId] = useState<string>("same");
+  // Consumable tracking: pads used this run (feeds pad-efficiency analysis)
+  const [padsUsed, setPadsUsed] = useState("");
 
   // Empty, available vessels the batch can be filtered into.
   const { data: vesselList } = trpc.vessel.listWithBatches.useQuery(undefined, {
@@ -162,6 +164,7 @@ export function FilterModal({
       });
       setLaborAssignments([]);
       setDestinationVesselId("same");
+      setPadsUsed("");
     }
   }, [open, currentVolumeL, reset, prefillFilterType]);
 
@@ -205,6 +208,10 @@ export function FilterModal({
       vesselId,
       destinationVesselId:
         destinationVesselId !== "same" ? destinationVesselId : undefined,
+      padsUsed:
+        padsUsed && Number.isInteger(Number(padsUsed)) && Number(padsUsed) > 0
+          ? Number(padsUsed)
+          : undefined,
       filterType: data.filterType,
       volumeBefore: data.volumeBefore,
       volumeBeforeUnit: data.volumeBeforeUnit,
@@ -311,6 +318,23 @@ export function FilterModal({
             </Select>
             <p className="text-xs text-gray-500 mt-1">
               Filtering into another tank moves the batch there as part of this operation
+            </p>
+          </div>
+
+          <div>
+            <Label htmlFor="padsUsed">Filter Pads Used</Label>
+            <Input
+              id="padsUsed"
+              type="number"
+              min="1"
+              step="1"
+              value={padsUsed}
+              onChange={(e) => setPadsUsed(e.target.value)}
+              placeholder="e.g. 4"
+              className="mt-1"
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              How many pads this run consumed — builds the pads-per-liter history for predicting future batches
             </p>
           </div>
 

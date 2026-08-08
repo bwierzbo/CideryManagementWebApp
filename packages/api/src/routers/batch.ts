@@ -534,6 +534,8 @@ const filterBatchSchema = z.object({
   // the batch moves there as part of the operation. Must be an empty vessel.
   destinationVesselId: z.string().uuid("Invalid destination vessel ID").optional(),
   filterType: z.enum(["coarse", "fine", "sterile"]),
+  // Consumable tracking for pad-efficiency analysis
+  padsUsed: z.number().int().positive().optional(),
   volumeBefore: z.number().positive("Volume before must be positive"),
   volumeBeforeUnit: z.enum(['L', 'gal']).default('L'),
   volumeAfter: z.number().positive("Volume after must be positive"),
@@ -5401,6 +5403,7 @@ export const batchRouter = router({
             batchId: input.batchId,
             vesselId: input.vesselId,
             filterType: input.filterType,
+            padsUsed: input.padsUsed ?? null,
             volumeBefore: input.volumeBefore.toString(),
             volumeBeforeUnit: input.volumeBeforeUnit,
             volumeAfter: input.volumeAfter.toString(),
