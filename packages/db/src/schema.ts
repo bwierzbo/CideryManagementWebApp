@@ -1265,6 +1265,9 @@ export const batchFilterOperations = pgTable(
       .notNull()
       .references(() => vessels.id, { onDelete: "cascade" }),
     filterType: filterTypeEnum("filter_type").notNull(),
+    // Consumables: how many filter pads this operation used. Feeds pad
+    // efficiency analysis (pads per liter by filter type / fruit load).
+    padsUsed: integer("pads_used"),
     // Volume tracking
     volumeBefore: decimal("volume_before", {
       precision: 10,
