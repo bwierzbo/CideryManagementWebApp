@@ -520,17 +520,37 @@ export const recipeExecutionRouter = router({
     .mutation(async ({ input }) => {
       return await db.transaction(async (tx) => {
         const task = await loadTask(tx, input.taskId);
+        const completedAt = input.completedAt ?? new Date();
         await tx
           .update(batchStepTasks)
           .set({
             status: "done",
-            completedAt: input.completedAt ?? new Date(),
+            completedAt,
             actualHours: input.actualHours != null ? input.actualHours.toString() : task.actualHours,
             notes: input.notes ?? task.notes,
             actualData: input.actualData ?? task.actualData,
             updatedAt: new Date(),
           })
           .where(eq(batchStepTasks.id, task.id));
+
+        // Auto-promote finished goods: completing the keg path's "Label Kegs"
+        // step means those kegs are done — flip this batch's filled kegs to
+        // ready so the operator never has to Mark Ready manually. (Bottles
+        // get the same treatment inside packaging.addLabel.)
+        if (task.packagingPath === "keg" && /label/i.test(task.label ?? "")) {
+          await tx
+            .update(kegFills)
+            .set({ status: "ready", readyAt: completedAt, updatedAt: new Date() })
+            .where(
+              and(
+                eq(kegFills.batchId, task.batchId),
+                eq(kegFills.status, "filled"),
+                isNull(kegFills.deletedAt),
+                isNull(kegFills.voidedAt),
+              ),
+            );
+        }
+
         await recomputeSchedule(tx, task.executionId);
         return { tasks: await tasksForExecution(tx, task.executionId) };
       });

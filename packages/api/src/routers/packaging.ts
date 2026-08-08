@@ -2359,6 +2359,20 @@ export const packagingRouter = router({
             updateData.labeledAt = input.labeledAt || new Date();
           }
 
+          // Auto-promote to Ready when the last post-fill step completes:
+          // once every produced unit is labeled the run is finished goods —
+          // no manual "Mark Ready" needed. Manual promotion still works for
+          // runs labeled outside this flow.
+          if (
+            newUnitsLabeled >= bottleRun.unitsProduced &&
+            (bottleRun.status === "active" || bottleRun.status === null)
+          ) {
+            updateData.status = "ready";
+            updateData.readyAt =
+              bottleRun.readyAt ?? input.labeledAt ?? new Date();
+            updateData.readyBy = ctx.session.user.id;
+          }
+
           await tx
             .update(bottleRuns)
             .set(updateData)
