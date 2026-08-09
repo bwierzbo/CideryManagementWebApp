@@ -571,6 +571,7 @@ export function BatchRecipeChecklist({ batchId }: { batchId: string }) {
       plannedVolumeL={
         Number(execution.bottleVolumeL ?? 0) + Number(execution.kegVolumeL ?? 0)
       }
+      currentVolumeL={currentVolumeL}
       ingredients={data.ingredients ?? []}
       kegLabel={kegLabel}
     />

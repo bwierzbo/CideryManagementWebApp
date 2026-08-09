@@ -616,13 +616,13 @@ export function AddBatchAdditiveForm({
 
   const applyItemSelection = (item: (typeof filteredInventory)[number]) => {
     setSelectedInventoryItem(item);
-    const current = parseFloat(amount);
-    if (unit && item.unit && unit !== item.unit && Number.isFinite(current)) {
-      const converted = convertAmountBetweenUnits(current, unit, item.unit);
-      if (converted != null) setAmount(String(Number(converted.toFixed(4))));
+    // Keep the operator's / recipe's unit — submit-time reconciliation
+    // converts to the lot's unit for the stock deduction. Only adopt the
+    // lot's unit when nothing is set yet (normalizing "lb" to the
+    // dropdown's "lbs").
+    if (!unit && item.unit) {
+      setUnit(item.unit === "lb" ? "lbs" : item.unit);
     }
-    // Auto-set the unit from the inventory item
-    setUnit(item.unit);
   };
 
   const handleSelectInventoryItem = (itemId: string) => {

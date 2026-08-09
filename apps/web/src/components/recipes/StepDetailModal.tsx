@@ -72,6 +72,7 @@ export function StepDetailModal({
   task,
   sources,
   plannedVolumeL,
+  currentVolumeL,
   ingredients,
   kegLabel,
 }: {
@@ -81,6 +82,8 @@ export function StepDetailModal({
   task: Task | null;
   sources: Source[];
   plannedVolumeL: number;
+  /** The batch's live volume — dosing calcs prefer it over the plan. */
+  currentVolumeL?: number | null;
   ingredients: Ingredient[];
   kegLabel?: {
     batchName: string;
@@ -236,8 +239,11 @@ export function StepDetailModal({
     const rateUnit = ing.rateUnit ?? undefined;
     let amount: number | undefined;
     let unit: string | undefined;
-    if (rate != null && rateUnit?.endsWith("/L") && plannedTotalL > 0) {
-      amount = Number((rate * plannedTotalL).toFixed(2));
+    // Dose against what's actually in the tank (losses/additions shift the
+    // volume); fall back to the plan for batches not yet transferred.
+    const doseVolumeL = currentVolumeL && currentVolumeL > 0 ? currentVolumeL : plannedTotalL;
+    if (rate != null && rateUnit?.endsWith("/L") && doseVolumeL > 0) {
+      amount = Number((rate * doseVolumeL).toFixed(2));
       unit = rateUnit.replace("/L", "");
     }
     return {
