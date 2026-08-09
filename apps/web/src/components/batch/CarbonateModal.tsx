@@ -433,6 +433,15 @@ export function CarbonateModal({
         toast({ title: "Validation Failed", description: validationErrors[0], variant: "destructive" });
         return;
       }
+      // Warn (never block) when force-carbonating in a non-pressure tank.
+      if (vessel?.isPressureVessel !== "yes") {
+        const proceed = window.confirm(
+          `${vessel?.name ?? "This vessel"} is not marked as a pressure-rated tank.\n\n` +
+            "Forced carbonation should happen in a pressure vessel (e.g. the brite tank). " +
+            "Record it here anyway?",
+        );
+        if (!proceed) return;
+      }
       recordMutation.mutate({
         batchId: batch.id,
         vesselId: vessel?.id ?? null,
@@ -513,27 +522,25 @@ export function CarbonateModal({
           {/* Carbonation Method Selector */}
           <div className="space-y-3">
             <Label>Carbonation Method</Label>
-            <div className={`grid ${vessel?.isPressureVessel === "yes" ? "grid-cols-2" : "grid-cols-1"} gap-4`}>
-              {vessel?.isPressureVessel === "yes" && (
-                <Card
-                  className={`cursor-pointer transition-colors ${
-                    carbonationMethod === "forced"
-                      ? "border-primary ring-2 ring-primary"
-                      : "hover:border-primary/50"
-                  }`}
-                  onClick={() => setValue("carbonationMethod", "forced")}
-                >
-                  <CardHeader className="p-4">
-                    <div className="flex items-center gap-2">
-                      <Gauge className="h-5 w-5" />
-                      <CardTitle className="text-base">Forced Carbonation</CardTitle>
-                    </div>
-                    <CardDescription className="text-xs mt-2">
-                      Use CO2 gas and pressure in a vessel. Fast (1-3 days).
-                    </CardDescription>
-                  </CardHeader>
-                </Card>
-              )}
+            <div className="grid grid-cols-2 gap-4">
+              <Card
+                className={`cursor-pointer transition-colors ${
+                  carbonationMethod === "forced"
+                    ? "border-primary ring-2 ring-primary"
+                    : "hover:border-primary/50"
+                }`}
+                onClick={() => setValue("carbonationMethod", "forced")}
+              >
+                <CardHeader className="p-4">
+                  <div className="flex items-center gap-2">
+                    <Gauge className="h-5 w-5" />
+                    <CardTitle className="text-base">Forced Carbonation</CardTitle>
+                  </div>
+                  <CardDescription className="text-xs mt-2">
+                    Use CO2 gas and pressure in a vessel. Fast (1-3 days).
+                  </CardDescription>
+                </CardHeader>
+              </Card>
 
               <Card
                 className={`cursor-pointer transition-colors ${
@@ -554,13 +561,26 @@ export function CarbonateModal({
                 </CardHeader>
               </Card>
             </div>
-            {vessel?.isPressureVessel !== "yes" && (
-              <p className="text-sm text-muted-foreground">
-                {vessel === null
-                  ? "No vessel assigned. Bottle conditioning available."
-                  : "This vessel is not pressure-rated. Only bottle conditioning is available."}
-              </p>
-            )}
+            {vessel?.isPressureVessel !== "yes" &&
+              (carbonationMethod === "forced" ? (
+                <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
+                  <p className="font-medium">
+                    ⚠️ {vessel ? vessel.name : "This batch's vessel"} is not a
+                    pressure-rated tank.
+                  </p>
+                  <p className="mt-1 text-xs">
+                    Forced carbonation needs a pressure vessel (e.g. the brite
+                    tank). Transfer the batch first, or proceed only if you
+                    know this tank is actually rated for pressure.
+                  </p>
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  {vessel === null
+                    ? "No vessel assigned. Bottle conditioning available."
+                    : "This vessel is not pressure-rated — forced carbonation will warn before saving."}
+                </p>
+              ))}
           </div>
 
           {/* Starting Conditions — shared for both methods */}
