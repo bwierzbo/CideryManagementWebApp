@@ -155,6 +155,8 @@ export const packagingItemTypeEnum = pgEnum("packaging_item_type", [
   "Closures",
   "Secondary Packaging",
   "Tertiary Packaging",
+  // Disposable production consumables that hit COGS (filter pads, etc.)
+  "Supplies",
 ]);
 
 // TTB Reconciliation status enum
