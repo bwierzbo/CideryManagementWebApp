@@ -20,6 +20,7 @@ import { toast } from "@/hooks/use-toast";
 import { useDateFormat } from "@/hooks/useDateFormat";
 import { RotateCcw, MapPin, Calendar, Loader2 } from "lucide-react";
 import { formatDate } from "@/utils/date-format";
+import { humanizeMutationError } from "@/utils/mutation-errors";
 
 const returnKegSchema = z.object({
   returnedAt: z.date(),
@@ -89,7 +90,7 @@ export function ReturnKegModal({
     onError: (error) => {
       toast({
         title: "Return Failed",
-        description: error.message,
+        description: humanizeMutationError(error),
         variant: "destructive",
       });
     },

@@ -41,6 +41,7 @@ import {
   type CooldownMethod,
   type EnhancedPasteurizationResult,
 } from "lib";
+import { humanizeMutationError } from "@/utils/mutation-errors";
 
 const pasteurizeSchema = z.object({
   pasteurizedAt: z.string(),
@@ -366,7 +367,7 @@ export function PasteurizeModal({
     onError: (error) => {
       toast({
         title: "Pasteurization Failed",
-        description: error.message,
+        description: humanizeMutationError(error),
         variant: "destructive",
       });
     },

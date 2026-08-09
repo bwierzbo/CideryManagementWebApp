@@ -42,6 +42,7 @@ import {
   estimateResidualCO2,
 } from "lib";
 import { WorkerLaborInput, type WorkerAssignment, toApiLaborAssignments } from "@/components/labor/WorkerLaborInput";
+import { humanizeMutationError } from "@/utils/mutation-errors";
 
 const SUGAR_TYPE_LABELS: Record<string, string> = {
   sucrose: "Sucrose (Table Sugar)",
@@ -393,7 +394,7 @@ export function CarbonateModal({
     },
     onError: (error) => {
       console.error("Carbonation start error:", error.message);
-      toast({ title: "Carbonation Failed", description: error.message, variant: "destructive" });
+      toast({ title: "Carbonation Failed", description: humanizeMutationError(error), variant: "destructive" });
     },
   });
 
@@ -418,7 +419,7 @@ export function CarbonateModal({
       onOpenChange(false);
     },
     onError: (error) => {
-      toast({ title: "Failed to Record Carbonation", description: error.message, variant: "destructive" });
+      toast({ title: "Failed to Record Carbonation", description: humanizeMutationError(error), variant: "destructive" });
     },
   });
 

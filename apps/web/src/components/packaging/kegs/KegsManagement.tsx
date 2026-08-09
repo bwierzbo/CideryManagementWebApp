@@ -57,6 +57,7 @@ import { CleanKegModal } from "./CleanKegModal";
 import { ReturnKegModal } from "./ReturnKegModal";
 import { BottleFromKegModal } from "./BottleFromKegModal";
 import { formatVolume, convertVolume, type VolumeUnit } from "lib";
+import { humanizeMutationError } from "@/utils/mutation-errors";
 
 type KegStatus =
   | "all"
@@ -221,7 +222,7 @@ export function KegsManagement() {
     onError: (error) => {
       toast({
         title: "Error",
-        description: error.message,
+        description: humanizeMutationError(error),
         variant: "destructive",
       });
     },
@@ -238,7 +239,7 @@ export function KegsManagement() {
     onError: (error) => {
       toast({
         title: "Error",
-        description: error.message,
+        description: humanizeMutationError(error),
         variant: "destructive",
       });
     },

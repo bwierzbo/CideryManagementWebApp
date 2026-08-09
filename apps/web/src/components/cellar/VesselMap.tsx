@@ -87,6 +87,7 @@ import { AddBatchMeasurementForm } from "@/components/cellar/AddBatchMeasurement
 import { AddBatchAdditiveForm } from "@/components/cellar/AddBatchAdditiveForm";
 import { TankForm, EditVesselBarrelHistory } from "@/components/cellar/TankForm";
 import { TankTransferForm } from "@/components/cellar/TankTransferForm";
+import { humanizeMutationError } from "@/utils/mutation-errors";
 
 function BatchMeasurementFormWrapper({
   vesselId,
@@ -353,7 +354,7 @@ export function VesselMap() {
     onError: (error) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to delete tank",
+        description: humanizeMutationError(error) || "Failed to delete tank",
         variant: "destructive",
       });
     },
@@ -374,7 +375,7 @@ const updateBatchStatusMutation = trpc.batch.update.useMutation({
     onError: (error) => {
       toast({
         title: "Error",
-        description: error.message,
+        description: humanizeMutationError(error),
         variant: "destructive",
       });
     },

@@ -18,6 +18,7 @@ import {
   type TTBClassificationConfig,
   DEFAULT_TTB_CLASSIFICATION_CONFIG,
 } from "lib/src/calculations/ttb";
+import { humanizeMutationError } from "@/utils/mutation-errors";
 
 function NumberField({
   label,
@@ -75,7 +76,7 @@ export function TTBClassificationSettings() {
     onError: (error) => {
       toast({
         title: "Save Failed",
-        description: error.message,
+        description: humanizeMutationError(error),
         variant: "destructive",
       });
     },

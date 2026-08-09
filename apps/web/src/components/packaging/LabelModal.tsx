@@ -36,6 +36,7 @@ import { DateWarning } from "@/components/ui/DateWarning";
 import { Tag, AlertTriangle, Info, Loader2, ChevronsUpDown, Check, Plus, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { WorkerLaborInput, type WorkerAssignment, toApiLaborAssignments } from "@/components/labor/WorkerLaborInput";
+import { humanizeMutationError } from "@/utils/mutation-errors";
 
 const labelSchema = z.object({
   unitsToLabel: z.number().int().positive("Units to label must be positive"),
@@ -258,7 +259,7 @@ export function LabelModal({
     } catch (error: any) {
       toast({
         title: "Labeling Failed",
-        description: error.message || "Failed to apply labels",
+        description: humanizeMutationError(error) || "Failed to apply labels",
         variant: "destructive",
       });
     } finally {

@@ -35,6 +35,7 @@ import { HarvestDatePicker } from "@/components/ui/harvest-date-picker";
 import { Loader2 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { VolumeInput, VolumeUnit } from "@/components/ui/volume-input";
+import { humanizeMutationError } from "@/utils/mutation-errors";
 
 // Schema for base fruit items
 const baseFruitEditSchema = z.object({
@@ -166,7 +167,7 @@ export function InventoryEditDialog({
     onError: (error) => {
       toast({
         title: "Error",
-        description: error.message,
+        description: humanizeMutationError(error),
         variant: "destructive",
       });
     },
@@ -185,7 +186,7 @@ export function InventoryEditDialog({
     onError: (error) => {
       toast({
         title: "Error",
-        description: error.message,
+        description: humanizeMutationError(error),
         variant: "destructive",
       });
     },
@@ -204,7 +205,7 @@ export function InventoryEditDialog({
     onError: (error) => {
       toast({
         title: "Error",
-        description: error.message,
+        description: humanizeMutationError(error),
         variant: "destructive",
       });
     },
@@ -223,7 +224,7 @@ export function InventoryEditDialog({
     onError: (error) => {
       toast({
         title: "Error",
-        description: error.message,
+        description: humanizeMutationError(error),
         variant: "destructive",
       });
     },

@@ -30,6 +30,7 @@ import { Scale, AlertTriangle, TrendingUp, TrendingDown } from "lucide-react";
 import { VolumeInput, VolumeUnit } from "@/components/ui/volume-input";
 import { convertVolume } from "lib";
 import { useDateFormat } from "@/hooks/useDateFormat";
+import { humanizeMutationError } from "@/utils/mutation-errors";
 
 const ADJUSTMENT_TYPES = [
   { value: "evaporation", label: "Evaporation", description: "Natural evaporation (angel's share)" },
@@ -181,7 +182,7 @@ export function VolumeAdjustmentModal({
     onError: (error) => {
       toast({
         title: "Volume Adjustment Failed",
-        description: error.message,
+        description: humanizeMutationError(error),
         variant: "destructive",
       });
     },

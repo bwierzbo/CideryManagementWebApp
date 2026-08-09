@@ -32,6 +32,7 @@ import {
   toApiLaborAssignments,
 } from "@/components/labor/WorkerLaborInput";
 import { AlertTriangle } from "lucide-react";
+import { humanizeMutationError } from "@/utils/mutation-errors";
 
 const DESTRUCTION_CATEGORIES = [
   { value: "contamination_spoilage", label: "Contamination / spoilage (VA, brett, off-flavor)" },
@@ -130,7 +131,7 @@ export function DestroyBatchModal({
       setSubmitError(error.message);
       toast({
         title: "Destruction failed",
-        description: error.message,
+        description: humanizeMutationError(error),
         variant: "destructive",
       });
     },

@@ -36,6 +36,7 @@ import {
 import { trpc } from "@/utils/trpc";
 import { useToast } from "@/hooks/use-toast";
 import { US_STATES, getRecommendedTtbFrequency } from "lib";
+import { humanizeMutationError } from "@/utils/mutation-errors";
 
 type ReportingFrequency = "monthly" | "quarterly" | "annual";
 
@@ -85,7 +86,7 @@ export function TaxReportingSettings() {
     onError: (error) => {
       toast({
         title: "Error",
-        description: error.message,
+        description: humanizeMutationError(error),
         variant: "destructive",
       });
     },
@@ -464,7 +465,7 @@ function FilingFrequencyDeterminationCard() {
     onError: (error) => {
       toast({
         title: "Error",
-        description: error.message,
+        description: humanizeMutationError(error),
         variant: "destructive",
       });
     },

@@ -51,6 +51,7 @@ import {
 import { trpc } from "@/utils/trpc";
 import { toast } from "@/hooks/use-toast";
 import { formatDate } from "@/utils/date-format";
+import { humanizeMutationError } from "@/utils/mutation-errors";
 
 export function SquareIntegration() {
   const [activeTab, setActiveTab] = useState<"config" | "mapping" | "logs" | "stats">("config");
@@ -105,7 +106,7 @@ function SquareConfiguration() {
     onError: (error) => {
       toast({
         title: "Configuration Failed",
-        description: error.message,
+        description: humanizeMutationError(error),
         variant: "destructive",
       });
     },
@@ -397,7 +398,7 @@ function ProductMapping() {
     onError: (error) => {
       toast({
         title: "Mapping Failed",
-        description: error.message,
+        description: humanizeMutationError(error),
         variant: "destructive",
       });
     },

@@ -81,6 +81,7 @@ import { AssignToVesselDialog } from "./AssignToVesselDialog";
 import { toast } from "@/hooks/use-toast";
 import { VolumeDisplay } from "@/components/ui/volume-input";
 import { useDateFormat } from "@/hooks/useDateFormat";
+import { humanizeMutationError } from "@/utils/mutation-errors";
 
 interface BatchManagementTableProps {
   className?: string;
@@ -162,7 +163,7 @@ export function BatchManagementTable({ className }: BatchManagementTableProps) {
     onError: (error) => {
       toast({
         title: "Error",
-        description: error.message,
+        description: humanizeMutationError(error),
         variant: "destructive",
       });
     },
@@ -182,7 +183,7 @@ export function BatchManagementTable({ className }: BatchManagementTableProps) {
     onError: (error) => {
       toast({
         title: "Error",
-        description: error.message,
+        description: humanizeMutationError(error),
         variant: "destructive",
       });
     },

@@ -56,6 +56,7 @@ import {
   WeightDisplay,
   type WeightUnit,
 } from "@/components/ui/weight-display";
+import { humanizeMutationError } from "@/utils/mutation-errors";
 
 interface PressRun {
   id: string;
@@ -346,7 +347,7 @@ function CompletedRunsSection({
     onError: (error) => {
       toast({
         title: "Update Failed",
-        description: error.message || "Failed to update press run date",
+        description: humanizeMutationError(error) || "Failed to update press run date",
         variant: "destructive",
       });
     },

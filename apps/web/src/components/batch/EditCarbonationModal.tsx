@@ -26,6 +26,7 @@ import { trpc } from "@/utils/trpc";
 import { toast } from "@/hooks/use-toast";
 import { useDateFormat } from "@/hooks/useDateFormat";
 import { Loader2, Save } from "lucide-react";
+import { humanizeMutationError } from "@/utils/mutation-errors";
 
 const editCarbonationSchema = z.object({
   startedAt: z.string().min(1, "Start date is required"),
@@ -143,7 +144,7 @@ export function EditCarbonationModal({
     onError: (error) => {
       toast({
         title: "Update Failed",
-        description: error.message,
+        description: humanizeMutationError(error),
         variant: "destructive",
       });
     },

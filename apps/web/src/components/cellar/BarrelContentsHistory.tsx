@@ -43,6 +43,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useToast } from "@/hooks/use-toast";
 import { formatDate } from "@/utils/date-format";
+import { humanizeMutationError } from "@/utils/mutation-errors";
 
 const contentsHistorySchema = z.object({
   contentsType: z.string().min(1, "Contents type is required"),
@@ -102,7 +103,7 @@ export function BarrelContentsHistory({ vesselId, vesselName }: BarrelContentsHi
     onError: (error) => {
       toast({
         title: "Error",
-        description: error.message,
+        description: humanizeMutationError(error),
         variant: "destructive",
       });
     },
@@ -121,7 +122,7 @@ export function BarrelContentsHistory({ vesselId, vesselName }: BarrelContentsHi
     onError: (error) => {
       toast({
         title: "Error",
-        description: error.message,
+        description: humanizeMutationError(error),
         variant: "destructive",
       });
     },
@@ -138,7 +139,7 @@ export function BarrelContentsHistory({ vesselId, vesselName }: BarrelContentsHi
     onError: (error) => {
       toast({
         title: "Error",
-        description: error.message,
+        description: humanizeMutationError(error),
         variant: "destructive",
       });
     },

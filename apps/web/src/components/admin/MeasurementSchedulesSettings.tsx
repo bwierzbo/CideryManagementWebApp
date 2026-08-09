@@ -50,6 +50,7 @@ import {
   type PerTypeMeasurementSchedule,
   type MeasurementTypeInterval,
 } from "lib";
+import { humanizeMutationError } from "@/utils/mutation-errors";
 
 // Types
 interface CustomProductType {
@@ -194,7 +195,7 @@ export function MeasurementSchedulesSettings() {
     } catch (error: any) {
       toast({
         title: "Error",
-        description: error.message || "Failed to save custom product type.",
+        description: humanizeMutationError(error) || "Failed to save custom product type.",
         variant: "destructive",
       });
     }

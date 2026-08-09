@@ -84,6 +84,7 @@ import {
   WeightDisplay,
   type WeightUnit,
 } from "@/components/ui/weight-display";
+import { humanizeMutationError } from "@/utils/mutation-errors";
 
 export default function BatchDetailsPage() {
   const params = useParams();
@@ -141,7 +142,7 @@ export default function BatchDetailsPage() {
     onError: (error) => {
       toast({
         title: "Error",
-        description: error.message,
+        description: humanizeMutationError(error),
         variant: "destructive",
       });
     },

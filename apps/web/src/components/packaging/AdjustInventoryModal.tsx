@@ -25,6 +25,7 @@ import {
 import { trpc } from "@/utils/trpc";
 import { toast } from "@/hooks/use-toast";
 import { Edit, AlertCircle, Package } from "lucide-react";
+import { humanizeMutationError } from "@/utils/mutation-errors";
 
 const adjustInventorySchema = z.object({
   adjustmentType: z.enum(["breakage", "sample", "transfer", "correction", "void"]),
@@ -106,7 +107,7 @@ export function AdjustInventoryModal({
     onError: (error) => {
       toast({
         title: "Error",
-        description: error.message,
+        description: humanizeMutationError(error),
         variant: "destructive",
       });
     },

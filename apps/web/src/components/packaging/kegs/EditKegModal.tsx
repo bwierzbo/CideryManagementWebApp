@@ -25,6 +25,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/utils/trpc";
 import { toast } from "@/hooks/use-toast";
 import { Edit, Loader2 } from "lucide-react";
+import { humanizeMutationError } from "@/utils/mutation-errors";
 
 const editKegSchema = z.object({
   kegNumber: z.string().min(1, "Keg number is required"),
@@ -130,7 +131,7 @@ export function EditKegModal({
     onError: (error) => {
       toast({
         title: "Error",
-        description: error.message,
+        description: humanizeMutationError(error),
         variant: "destructive",
       });
     },

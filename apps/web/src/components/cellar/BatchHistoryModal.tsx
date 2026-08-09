@@ -65,6 +65,7 @@ import { useToast } from "@/hooks/use-toast";
 import { EditMeasurementDialog } from "@/components/cellar/EditMeasurementDialog";
 import { EditAdditiveDialog } from "@/components/cellar/EditAdditiveDialog";
 import { MeasurementChart } from "@/components/batch/MeasurementChart";
+import { humanizeMutationError } from "@/utils/mutation-errors";
 
 interface BatchHistoryModalProps {
   batchId: string;
@@ -108,7 +109,7 @@ export function BatchHistoryModal({
     onError: (error) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to update batch name",
+        description: humanizeMutationError(error) || "Failed to update batch name",
         variant: "destructive",
       });
     },
@@ -126,7 +127,7 @@ export function BatchHistoryModal({
     onError: (error) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to delete measurement",
+        description: humanizeMutationError(error) || "Failed to delete measurement",
         variant: "destructive",
       });
     },
@@ -144,7 +145,7 @@ export function BatchHistoryModal({
     onError: (error) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to delete additive",
+        description: humanizeMutationError(error) || "Failed to delete additive",
         variant: "destructive",
       });
     },

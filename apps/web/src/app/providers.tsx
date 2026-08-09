@@ -1,10 +1,12 @@
 "use client";
 
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { MutationCache, QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { httpBatchLink } from "@trpc/client";
 import { SessionProvider } from "next-auth/react";
 import { useState } from "react";
 import { trpc } from "../utils/trpc";
+import { toast } from "../hooks/use-toast";
+import { humanizeMutationError } from "../utils/mutation-errors";
 import { ToastProvider } from "../components/ui/toast-provider";
 import { performanceMonitor } from "../lib/performance-monitor";
 import { IdleTimeoutProvider } from "../components/providers/idle-timeout-provider";
@@ -15,6 +17,19 @@ import { SettingsProvider } from "../contexts/SettingsContext";
 // Enhanced QueryClient with performance optimizations
 function createOptimizedQueryClient() {
   return new QueryClient({
+    // Safety net: a failed action must NEVER be silent. Mutations that
+    // define their own onError keep their tailored toast; everything else
+    // gets a readable error here (zod issue arrays are unwrapped).
+    mutationCache: new MutationCache({
+      onError: (error, _variables, _context, mutation) => {
+        if (mutation.options.onError) return;
+        toast({
+          title: "Action failed",
+          description: humanizeMutationError(error),
+          variant: "destructive",
+        });
+      },
+    }),
     defaultOptions: {
       queries: {
         // Increased stale time for better caching

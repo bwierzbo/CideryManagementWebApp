@@ -60,6 +60,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { TransferToTankModal } from "@/components/juice/TransferToTankModal";
+import { humanizeMutationError } from "@/utils/mutation-errors";
 
 // Type for juice inventory item from API
 interface JuiceInventoryItem {
@@ -150,7 +151,7 @@ export function JuiceInventoryTable({
       console.error("Delete failed:", error);
       toast({
         title: "Error",
-        description: error.message || "Failed to delete juice item",
+        description: humanizeMutationError(error) || "Failed to delete juice item",
         variant: "destructive",
       });
     },

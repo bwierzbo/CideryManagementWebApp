@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/select";
 import { Search, Container } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
+import { humanizeMutationError } from "@/utils/mutation-errors";
 
 interface AssignToVesselDialogProps {
   open: boolean;
@@ -61,7 +62,7 @@ export function AssignToVesselDialog({
     onError: (error) => {
       toast({
         title: "Error",
-        description: error.message,
+        description: humanizeMutationError(error),
         variant: "destructive",
       });
     },

@@ -22,6 +22,7 @@ import { calculateAbv } from "lib";
 import { DateWarning } from "@/components/ui/DateWarning";
 import { CheckCircle, Loader2, AlertTriangle, Minus, Tag, Flame, Beaker, Wine, Package, FileText, Sparkles, Calendar } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { humanizeMutationError } from "@/utils/mutation-errors";
 
 const markCompleteSchema = z.object({
   completedAt: z.string()
@@ -180,7 +181,7 @@ export function MarkCompleteModal({
     onError: (error) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to mark packaging run as complete",
+        description: humanizeMutationError(error) || "Failed to mark packaging run as complete",
         variant: "destructive",
       });
     },

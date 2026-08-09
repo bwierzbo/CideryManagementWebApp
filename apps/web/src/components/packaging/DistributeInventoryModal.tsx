@@ -26,6 +26,7 @@ import { trpc } from "@/utils/trpc";
 import { toast } from "@/hooks/use-toast";
 import { useDateFormat } from "@/hooks/useDateFormat";
 import { Send, DollarSign, Package, Store } from "lucide-react";
+import { humanizeMutationError } from "@/utils/mutation-errors";
 
 const distributeInventorySchema = z.object({
   distributionLocation: z.string().min(1, "Location is required"),
@@ -110,7 +111,7 @@ export function DistributeInventoryModal({
     onError: (error) => {
       toast({
         title: "Error",
-        description: error.message,
+        description: humanizeMutationError(error),
         variant: "destructive",
       });
     },

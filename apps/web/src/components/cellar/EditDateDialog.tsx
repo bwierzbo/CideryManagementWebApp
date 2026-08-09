@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
+import { humanizeMutationError } from "@/utils/mutation-errors";
 
 type EventType =
   | "transfer"
@@ -175,7 +176,7 @@ export function EditDateDialog({
     } catch (error: any) {
       toast({
         title: "Error",
-        description: error.message || "Failed to update date",
+        description: humanizeMutationError(error) || "Failed to update date",
         variant: "destructive",
       });
     }

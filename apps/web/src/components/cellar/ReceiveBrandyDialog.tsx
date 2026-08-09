@@ -24,6 +24,7 @@ import { toast } from "@/hooks/use-toast";
 import { Loader2, Wine, Info, Check, Plus, X } from "lucide-react";
 import { useDateFormat } from "@/hooks/useDateFormat";
 import { formatDate } from "@/utils/date-format";
+import { humanizeMutationError } from "@/utils/mutation-errors";
 
 interface ReceiveBrandyDialogProps {
   open: boolean;
@@ -119,7 +120,7 @@ export function ReceiveBrandyDialog({
     onError: (error) => {
       toast({
         title: "Error",
-        description: error.message,
+        description: humanizeMutationError(error),
         variant: "destructive",
       });
     },

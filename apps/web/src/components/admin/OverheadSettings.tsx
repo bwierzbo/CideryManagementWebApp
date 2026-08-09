@@ -40,6 +40,7 @@ import {
 import { trpc } from "@/utils/trpc";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { humanizeMutationError } from "@/utils/mutation-errors";
 
 interface OverheadFormData {
   overheadTrackingEnabled: boolean;
@@ -119,7 +120,7 @@ export function OverheadSettings() {
     onError: (error) => {
       toast({
         title: "Error",
-        description: error.message,
+        description: humanizeMutationError(error),
         variant: "destructive",
       });
     },

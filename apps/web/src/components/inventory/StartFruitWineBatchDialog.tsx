@@ -42,6 +42,7 @@ import {
   type WeightUnit,
 } from "@/components/ui/weight-display";
 import { VolumeInput, VolumeUnit } from "@/components/ui/volume-input";
+import { humanizeMutationError } from "@/utils/mutation-errors";
 
 const fruitWineSchema = z.object({
   vesselId: z.string().min(1, "Please select a vessel"),
@@ -134,7 +135,7 @@ export function StartFruitWineBatchDialog({
     onError: (error) => {
       toast({
         title: "Failed to Create Batch",
-        description: error.message,
+        description: humanizeMutationError(error),
         variant: "destructive",
       });
     },
