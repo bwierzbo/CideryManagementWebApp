@@ -21,6 +21,7 @@ import { toast } from "@/hooks/use-toast";
 import { useBatchDateValidation } from "@/hooks/useBatchDateValidation";
 import { DateWarning } from "@/components/ui/DateWarning";
 import { LastActivityHint } from "@/components/ui/LastActivityHint";
+import { WorkerLaborInput, type WorkerAssignment, toApiLaborAssignments } from "@/components/labor/WorkerLaborInput";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Loader2, Package, AlertTriangle, Calculator } from "lucide-react";
 import { additiveRateGramsPerL } from "lib/src/units/conversions";
@@ -192,6 +193,7 @@ export function AddBatchAdditiveForm({
   const [amount, setAmount] = useState(prefillAmount != null ? String(prefillAmount) : "");
   const [unit, setUnit] = useState(prefillUnit ?? "");
   const [notes, setNotes] = useState("");
+  const [laborAssignments, setLaborAssignments] = useState<WorkerAssignment[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [open, setOpen] = useState(false);
   const [addedDate, setAddedDate] = useState(() => {
@@ -263,12 +265,14 @@ export function AddBatchAdditiveForm({
     return null;
   }, [amount, unit, effectiveBatchVolumeL]);
 
-  // Fetch available additive inventory items, filtered by type
+  // Fetch additive inventory items, filtered by type. Depleted lots stay
+  // listed (marked "0 available") — insufficient stock warns at submit and
+  // the lot goes negative until restocked.
   const { data: inventoryData, isLoading: isLoadingInventory } =
     trpc.additivePurchases.listInventory.useQuery(
       {
         itemType: selectedAdditiveType,
-        onlyAvailable: true,
+        onlyAvailable: false,
       },
       {
         enabled: !!selectedAdditiveType,
@@ -597,6 +601,12 @@ export function AddBatchAdditiveForm({
       ...(includeVolume ? { volumeAddedL: parsedVolumeL } : {}),
       // Fruit additive classification (TTB IC 17-2)
       ...(additiveType === "Fruit/Fruit Product" ? { isApplePearFruit } : {}),
+      // Labor tracking
+      ...(laborAssignments.some((a) => a.workerId && a.hoursWorked > 0) && {
+        laborAssignments: toApiLaborAssignments(
+          laborAssignments.filter((a) => a.workerId && a.hoursWorked > 0),
+        ),
+      }),
     };
 
     addAdditive.mutate(additiveData);
@@ -827,7 +837,9 @@ export function AddBatchAdditiveForm({
                   {!isLoadingInventory && filteredInventory.length > 0 && (
                     <CommandGroup heading="Available Inventory">
                       {filteredInventory.map((item) => {
-                        const isLowStock = item.availableQuantity < item.quantity * 0.2;
+                        const isDepleted = item.availableQuantity <= 0;
+                        const isLowStock =
+                          !isDepleted && item.availableQuantity < item.quantity * 0.2;
                         const expirationDate = formatDate(item.expirationDate);
                         const isExpiringSoon = item.expirationDate &&
                           new Date(item.expirationDate) < new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
@@ -845,10 +857,12 @@ export function AddBatchAdditiveForm({
                                   {item.varietyName || item.productName}
                                 </span>
                                 <Badge
-                                  variant={isLowStock ? "destructive" : "secondary"}
+                                  variant={isDepleted || isLowStock ? "destructive" : "secondary"}
                                   className="ml-2"
                                 >
-                                  {item.availableQuantity.toFixed(2)} {item.unit}
+                                  {isDepleted
+                                    ? `${item.availableQuantity.toFixed(2)} ${item.unit} — will go negative`
+                                    : `${item.availableQuantity.toFixed(2)} ${item.unit}`}
                                 </Badge>
                               </div>
                               <div className="text-xs text-muted-foreground mt-0.5">
@@ -1081,6 +1095,12 @@ export function AddBatchAdditiveForm({
         <DateWarning warning={dateWarning} />
         <LastActivityHint batchId={batchId} date={addedDate} />
       </div>
+
+      <WorkerLaborInput
+        value={laborAssignments}
+        onChange={setLaborAssignments}
+        activityLabel="this addition"
+      />
 
       <div className="space-y-2">
         <Label htmlFor="notes">Notes</Label>
