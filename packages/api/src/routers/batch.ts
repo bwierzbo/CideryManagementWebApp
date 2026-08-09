@@ -5599,7 +5599,7 @@ export const batchRouter = router({
           success: true,
           filterOperation: filterOperation[0],
           volumeLoss: volumeLossL,
-          message: `Batch filtered with ${input.filterType} filter${destinationVesselName ? ` into ${destinationVesselName}` : ""}. Loss: ${volumeLossL.toFixed(2)}L`,
+          message: `Batch filtered with ${input.filterType} filter — ${destinationVesselName ? `moved into ${destinationVesselName}` : "stayed in the current tank"}. Loss: ${volumeLossL.toFixed(2)}L`,
         };
       } catch (error) {
         if (error instanceof TRPCError) throw error;
