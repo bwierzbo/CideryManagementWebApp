@@ -549,7 +549,9 @@ export default function BatchDetailsPage() {
                 ) : (
                   <div className="flex items-center gap-2">
                     <span className="text-gray-600">
-                      Started: {formatDate(batch.startDate)}
+                      {/* startDate is date-only (midnight UTC) — render its UTC
+                          calendar date or Pacific shows the previous day */}
+                      Started: {formatDate(batch.startDate, undefined, "UTC")}
                     </span>
                     <Button
                       variant="ghost"

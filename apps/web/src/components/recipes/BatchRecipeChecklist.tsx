@@ -78,6 +78,11 @@ const STATUS_DISPLAY: Record<RowStatus, { label: string; cls: string; dot: strin
 
 const fmtDate = (d: string | Date | null) =>
   d ? new Date(d).toLocaleDateString() : "—";
+// Date-ONLY values (e.g. execution start dates) are stored at midnight UTC;
+// rendering them in local time shows the previous day ("started 7/6" for a
+// Jul 7 batch). Render by their UTC calendar date instead.
+const fmtDateOnly = (d: string | Date | null) =>
+  d ? new Date(d).toLocaleDateString("en-US", { timeZone: "UTC" }) : "—";
 
 type Task = {
   id: string;
@@ -386,7 +391,7 @@ export function BatchRecipeChecklist({ batchId }: { batchId: string }) {
         <CardDescription>
           {/* Packaging progress is shown per planned path only — a path with
               no plan (0 L) is omitted rather than rendering "kegged X of 0 L". */}
-          Recipe v{execution.recipeVersion} · started {fmtDate(execution.startDate)}
+          Recipe v{execution.recipeVersion} · started {fmtDateOnly(execution.startDate)}
           {Number(execution.bottleVolumeL ?? 0) > 0 && (
             <>
               {" "}· bottled {fmtVol(actuals.bottledL)} of {Number(execution.bottleVolumeL)} L
