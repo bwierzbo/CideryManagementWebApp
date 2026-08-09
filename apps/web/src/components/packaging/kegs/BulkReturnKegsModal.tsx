@@ -20,6 +20,7 @@ import { toast } from "@/hooks/use-toast";
 import { useDateFormat } from "@/hooks/useDateFormat";
 import { RotateCcw, AlertTriangle, Beer, MapPin, Calendar } from "lucide-react";
 import { formatDate } from "@/utils/date-format";
+import { humanizeMutationError } from "@/utils/mutation-errors";
 
 const bulkReturnSchema = z.object({
   returnedAt: z.string().min(1, "Date is required"),
@@ -92,7 +93,7 @@ export function BulkReturnKegsModal({
     onError: (error) => {
       toast({
         title: "Error",
-        description: error.message,
+        description: humanizeMutationError(error),
         variant: "destructive",
       });
     },

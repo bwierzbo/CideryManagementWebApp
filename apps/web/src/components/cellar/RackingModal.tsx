@@ -33,6 +33,7 @@ import { convertVolume } from "lib";
 import { Badge } from "@/components/ui/badge";
 import { useDateFormat } from "@/hooks/useDateFormat";
 import { WorkerLaborInput, type WorkerAssignment, toApiLaborAssignments } from "@/components/labor/WorkerLaborInput";
+import { humanizeMutationError } from "@/utils/mutation-errors";
 
 const rackingSchema = z.object({
   destinationVesselId: z.string().min(1, "Please select a destination vessel"),
@@ -190,7 +191,7 @@ export function RackingModal({
     onError: (error) => {
       toast({
         title: "Racking Failed",
-        description: error.message,
+        description: humanizeMutationError(error),
         variant: "destructive",
       });
     },

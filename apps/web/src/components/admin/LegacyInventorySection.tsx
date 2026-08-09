@@ -57,6 +57,7 @@ import {
 } from "lucide-react";
 import { trpc } from "@/utils/trpc";
 import { useToast } from "@/hooks/use-toast";
+import { humanizeMutationError } from "@/utils/mutation-errors";
 
 const TAX_CLASS_OPTIONS = [
   { value: "hardCider", label: "Hard Cider (<8.5% ABV)", productType: "cider" },
@@ -116,7 +117,7 @@ export function LegacyInventorySection() {
     onError: (error) => {
       toast({
         title: "Error",
-        description: error.message,
+        description: humanizeMutationError(error),
         variant: "destructive",
       });
     },
@@ -133,7 +134,7 @@ export function LegacyInventorySection() {
     onError: (error) => {
       toast({
         title: "Error",
-        description: error.message,
+        description: humanizeMutationError(error),
         variant: "destructive",
       });
     },

@@ -36,6 +36,7 @@ import { LIQ774Preview } from "@/components/reports/LIQ774Preview";
 import { TTBPeriodFinalization } from "@/components/reports/TTBPeriodFinalization";
 import { ReportExportDropdown } from "@/components/reports/ReportExportDropdown";
 import { downloadTTBFormExcel, type TTBFormPDFData } from "@/utils/excel/ttbForm512017";
+import { humanizeMutationError } from "@/utils/mutation-errors";
 
 const currentYear = new Date().getFullYear();
 const years = [currentYear, currentYear - 1, currentYear - 2];
@@ -140,7 +141,7 @@ export default function TTBReportsPage() {
     onError: (error) => {
       toast({
         title: "Error",
-        description: error.message,
+        description: humanizeMutationError(error),
         variant: "destructive",
       });
     },

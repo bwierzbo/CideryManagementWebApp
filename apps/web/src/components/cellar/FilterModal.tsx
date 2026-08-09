@@ -31,6 +31,7 @@ import { Filter, AlertTriangle } from "lucide-react";
 import { VolumeInput, VolumeUnit } from "@/components/ui/volume-input";
 import { convertVolume } from "lib";
 import { useDateFormat } from "@/hooks/useDateFormat";
+import { humanizeMutationError } from "@/utils/mutation-errors";
 import { WorkerLaborInput, type WorkerAssignment, toApiLaborAssignments } from "@/components/labor/WorkerLaborInput";
 
 const filterSchema = z.object({
@@ -194,20 +195,9 @@ export function FilterModal({
       onSuccess?.(filteredAt);
     },
     onError: (error) => {
-      // Zod input errors arrive as a JSON array of issues — surface the
-      // first issue's message instead of the raw blob.
-      let description = error.message;
-      try {
-        const issues = JSON.parse(error.message);
-        if (Array.isArray(issues) && issues[0]?.message) {
-          description = issues[0].message;
-        }
-      } catch {
-        // not JSON — show as-is
-      }
       toast({
         title: "Filter Operation Failed",
-        description,
+        description: humanizeMutationError(error),
         variant: "destructive",
       });
     },

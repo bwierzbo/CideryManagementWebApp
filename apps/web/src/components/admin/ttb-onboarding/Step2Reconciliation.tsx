@@ -57,6 +57,7 @@ import {
   TAX_CLASS_LABELS,
   TaxClassBalances,
 } from "./types";
+import { humanizeMutationError } from "@/utils/mutation-errors";
 
 // Type for batch details from TTB API
 interface BatchDetail {
@@ -114,7 +115,7 @@ export function Step2Reconciliation({
     onError: (error) => {
       toast({
         title: "Update Failed",
-        description: error.message,
+        description: humanizeMutationError(error),
         variant: "destructive",
       });
     },

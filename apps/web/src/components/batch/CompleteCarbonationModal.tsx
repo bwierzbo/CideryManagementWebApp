@@ -39,6 +39,7 @@ import {
   Thermometer,
 } from "lucide-react";
 import { calculateCO2Volumes } from "lib";
+import { humanizeMutationError } from "@/utils/mutation-errors";
 
 const completeCarbonationSchema = z
   .object({
@@ -240,7 +241,7 @@ export function CompleteCarbonationModal({
     onError: (error) => {
       toast({
         title: "Completion Failed",
-        description: error.message,
+        description: humanizeMutationError(error),
         variant: "destructive",
       });
     },

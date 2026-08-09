@@ -25,6 +25,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/utils/trpc";
 import { toast } from "@/hooks/use-toast";
 import { Plus } from "lucide-react";
+import { humanizeMutationError } from "@/utils/mutation-errors";
 
 const addKegSchema = z.object({
   kegNumber: z.string().min(1, "Keg number is required"),
@@ -126,7 +127,7 @@ export function AddKegModal({ open, onClose, onSuccess }: AddKegModalProps) {
     onError: (error) => {
       toast({
         title: "Error",
-        description: error.message,
+        description: humanizeMutationError(error),
         variant: "destructive",
       });
     },
@@ -146,7 +147,7 @@ export function AddKegModal({ open, onClose, onSuccess }: AddKegModalProps) {
     onError: (error) => {
       toast({
         title: "Bulk Create Failed",
-        description: error.message,
+        description: humanizeMutationError(error),
         variant: "destructive",
       });
     },

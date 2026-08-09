@@ -17,6 +17,7 @@ import { Label } from "@/components/ui/label";
 import { trpc } from "@/utils/trpc";
 import { toast } from "@/hooks/use-toast";
 import { DollarSign, TrendingUp } from "lucide-react";
+import { humanizeMutationError } from "@/utils/mutation-errors";
 
 const updatePricingSchema = z.object({
   retailPrice: z
@@ -101,7 +102,7 @@ export function UpdatePricingModal({
     onError: (error) => {
       toast({
         title: "Error",
-        description: error.message,
+        description: humanizeMutationError(error),
         variant: "destructive",
       });
     },

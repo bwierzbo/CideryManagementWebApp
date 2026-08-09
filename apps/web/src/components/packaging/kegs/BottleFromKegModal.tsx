@@ -27,6 +27,7 @@ import { toast } from "@/hooks/use-toast";
 import { useDateFormat } from "@/hooks/useDateFormat";
 import { Wine, AlertTriangle, CheckCircle, Loader2, Plus, X } from "lucide-react";
 import { Card } from "@/components/ui/card";
+import { humanizeMutationError } from "@/utils/mutation-errors";
 
 // Form validation schema
 const packagingMaterialSchema = z.object({
@@ -287,7 +288,7 @@ export function BottleFromKegModal({
     onError: (error) => {
       toast({
         title: "Bottling Failed",
-        description: error.message,
+        description: humanizeMutationError(error),
         variant: "destructive",
       });
     },

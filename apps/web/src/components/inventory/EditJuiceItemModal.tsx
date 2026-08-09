@@ -26,6 +26,7 @@ import { trpc } from "@/utils/trpc";
 import { toast } from "@/hooks/use-toast";
 import { Edit } from "lucide-react";
 import { formatDateForInput } from "@/utils/date-format";
+import { humanizeMutationError } from "@/utils/mutation-errors";
 
 const editJuiceItemSchema = z.object({
   volume: z.number().positive("Volume must be positive").optional(),
@@ -130,7 +131,7 @@ export function EditJuiceItemModal({
     onError: (error) => {
       toast({
         title: "Update Failed",
-        description: error.message,
+        description: humanizeMutationError(error),
         variant: "destructive",
       });
     },

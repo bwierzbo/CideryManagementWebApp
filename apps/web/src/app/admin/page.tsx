@@ -112,6 +112,7 @@ import { LegacyInventorySection } from "@/components/admin/LegacyInventorySectio
 import { TTBClassificationSettings } from "@/components/admin/TTBClassificationSettings";
 import { useSettings } from "@/contexts/SettingsContext";
 import { cn } from "@/lib/utils";
+import { humanizeMutationError } from "@/utils/mutation-errors";
 
 // Form schemas
 const userSchema = z.object({
@@ -936,7 +937,7 @@ function BusinessProfile() {
     onError: (error) => {
       toast({
         title: "Error",
-        description: error.message,
+        description: humanizeMutationError(error),
         variant: "destructive",
       });
     },
@@ -1375,7 +1376,7 @@ function SystemSettings() {
     onError: (error) => {
       toast({
         title: "Error",
-        description: error.message,
+        description: humanizeMutationError(error),
         variant: "destructive",
       });
     },

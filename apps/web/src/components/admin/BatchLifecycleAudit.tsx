@@ -59,6 +59,7 @@ import {
 import { trpc } from "@/utils/trpc";
 import { cn } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
+import { humanizeMutationError } from "@/utils/mutation-errors";
 
 interface BatchLifecycleAuditProps {
   reconciliationSnapshotId?: string;
@@ -172,7 +173,7 @@ export function BatchLifecycleAudit({
       setPhysicalCountDialogOpen(false);
     },
     onError: (error) => {
-      toast({ title: "Error saving count", description: error.message, variant: "destructive" });
+      toast({ title: "Error saving count", description: humanizeMutationError(error), variant: "destructive" });
     },
   });
 

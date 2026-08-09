@@ -27,6 +27,7 @@ import { toast } from "@/hooks/use-toast";
 import { useDateFormat } from "@/hooks/useDateFormat";
 import { ArrowRight, AlertTriangle, Info, Plus, Droplets, Search } from "lucide-react";
 import { VolumeInput, VolumeUnit } from "@/components/ui/volume-input";
+import { humanizeMutationError } from "@/utils/mutation-errors";
 
 const transferSchema = z.object({
   vesselId: z.string().min(1, "Please select a vessel"),
@@ -138,7 +139,7 @@ export function TransferToTankModal({
       console.error("❌ Transfer failed:", error);
       toast({
         title: "Transfer Failed",
-        description: error.message,
+        description: humanizeMutationError(error),
         variant: "destructive",
       });
     },

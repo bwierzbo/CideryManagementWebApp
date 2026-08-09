@@ -43,6 +43,7 @@ import {
 import { trpc } from "@/utils/trpc";
 import { useToast } from "@/hooks/use-toast";
 import type { TTBForm512017Data } from "lib";
+import { humanizeMutationError } from "@/utils/mutation-errors";
 
 interface TTBPeriodFinalizationProps {
   periodType: "monthly" | "quarterly" | "annual";
@@ -102,7 +103,7 @@ export function TTBPeriodFinalization({
     onError: (error) => {
       toast({
         title: "Error",
-        description: error.message,
+        description: humanizeMutationError(error),
         variant: "destructive",
       });
     },
@@ -130,7 +131,7 @@ export function TTBPeriodFinalization({
     onError: (error) => {
       toast({
         title: "Error",
-        description: error.message,
+        description: humanizeMutationError(error),
         variant: "destructive",
       });
     },
@@ -150,7 +151,7 @@ export function TTBPeriodFinalization({
     onError: (error) => {
       toast({
         title: "Error",
-        description: error.message,
+        description: humanizeMutationError(error),
         variant: "destructive",
       });
     },

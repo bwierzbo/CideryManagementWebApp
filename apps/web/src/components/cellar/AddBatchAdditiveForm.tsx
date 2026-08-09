@@ -43,6 +43,7 @@ import {
 } from "@/components/ui/popover";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { humanizeMutationError } from "@/utils/mutation-errors";
 
 interface AddBatchAdditiveFormProps {
   batchId: string;
@@ -464,7 +465,7 @@ export function AddBatchAdditiveForm({
     onError: (error) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to add additive",
+        description: humanizeMutationError(error) || "Failed to add additive",
         variant: "destructive",
       });
     },

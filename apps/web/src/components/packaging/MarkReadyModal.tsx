@@ -18,6 +18,7 @@ import { trpc } from "@/utils/trpc";
 import { toast } from "@/hooks/use-toast";
 import { useDateFormat } from "@/hooks/useDateFormat";
 import { CheckCircle2, Loader2 } from "lucide-react";
+import { humanizeMutationError } from "@/utils/mutation-errors";
 
 const markReadySchema = z.object({
   readyAt: z.string().min(1, "Date is required"),
@@ -80,7 +81,7 @@ export function MarkReadyModal({
     onError: (error) => {
       toast({
         title: "Error",
-        description: error.message,
+        description: humanizeMutationError(error),
         variant: "destructive",
       });
     },
@@ -101,7 +102,7 @@ export function MarkReadyModal({
     onError: (error) => {
       toast({
         title: "Error",
-        description: error.message,
+        description: humanizeMutationError(error),
         variant: "destructive",
       });
     },

@@ -24,6 +24,7 @@ import {
   type WorkerAssignment,
   toApiLaborAssignments,
 } from "@/components/labor/WorkerLaborInput";
+import { humanizeMutationError } from "@/utils/mutation-errors";
 
 const cleanTankSchema = z.object({
   cleanedAt: z.date(),
@@ -93,7 +94,7 @@ export function CleanTankModal({
     onError: (error) => {
       toast({
         title: "Cleaning Failed",
-        description: error.message,
+        description: humanizeMutationError(error),
         variant: "destructive",
       });
     },

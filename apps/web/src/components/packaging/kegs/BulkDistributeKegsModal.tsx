@@ -26,6 +26,7 @@ import { trpc } from "@/utils/trpc";
 import { toast } from "@/hooks/use-toast";
 import { useDateFormat } from "@/hooks/useDateFormat";
 import { Send, Store, AlertTriangle, Beer } from "lucide-react";
+import { humanizeMutationError } from "@/utils/mutation-errors";
 
 const bulkDistributeSchema = z.object({
   distributedAt: z.string().min(1, "Date is required"),
@@ -106,7 +107,7 @@ export function BulkDistributeKegsModal({
     onError: (error) => {
       toast({
         title: "Error",
-        description: error.message,
+        description: humanizeMutationError(error),
         variant: "destructive",
       });
     },

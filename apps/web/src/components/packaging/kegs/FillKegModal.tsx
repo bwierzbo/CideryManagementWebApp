@@ -31,6 +31,7 @@ import { useDateFormat } from "@/hooks/useDateFormat";
 import { WorkerLaborInput, type WorkerAssignment, toApiLaborAssignments } from "@/components/labor/WorkerLaborInput";
 import { Card, CardContent } from "@/components/ui/card";
 import { PackageTypeSelector } from "../UnifiedPackagingModal";
+import { humanizeMutationError } from "@/utils/mutation-errors";
 
 const fillKegsSchema = z.object({
   filledAt: z.string().min(1, "Date/time is required"),
@@ -177,7 +178,7 @@ export function FillKegModal({
     onError: (error) => {
       toast({
         title: "Error",
-        description: error.message,
+        description: humanizeMutationError(error),
         variant: "destructive",
       });
     },

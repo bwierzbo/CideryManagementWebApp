@@ -52,6 +52,7 @@ import { SendToDistilleryDialog } from "@/components/cellar/SendToDistilleryDial
 import { ReceiveBrandyDialog } from "@/components/cellar/ReceiveBrandyDialog";
 import { CreatePommeauBlendDialog } from "@/components/cellar/CreatePommeauBlendDialog";
 import { toast } from "@/hooks/use-toast";
+import { humanizeMutationError } from "@/utils/mutation-errors";
 
 export default function DistillationPage() {
   const [activeTab, setActiveTab] = useState("overview");
@@ -85,7 +86,7 @@ export default function DistillationPage() {
     onError: (error) => {
       toast({
         title: "Error",
-        description: error.message,
+        description: humanizeMutationError(error),
         variant: "destructive",
       });
     },

@@ -23,6 +23,7 @@ import {
 import { toast } from "@/hooks/use-toast";
 import { Loader2, Wine } from "lucide-react";
 import { useDateFormat } from "@/hooks/useDateFormat";
+import { humanizeMutationError } from "@/utils/mutation-errors";
 
 interface CreateFortifiedBlendDialogProps {
   open: boolean;
@@ -128,7 +129,7 @@ export function CreateFortifiedBlendDialog({
     onError: (error) => {
       toast({
         title: "Error",
-        description: error.message,
+        description: humanizeMutationError(error),
         variant: "destructive",
       });
     },

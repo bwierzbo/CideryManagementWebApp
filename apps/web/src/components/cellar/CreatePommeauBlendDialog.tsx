@@ -24,6 +24,7 @@ import { toast } from "@/hooks/use-toast";
 import { Loader2, Beaker, Info, AlertTriangle } from "lucide-react";
 import { useDateFormat } from "@/hooks/useDateFormat";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { humanizeMutationError } from "@/utils/mutation-errors";
 
 interface CreatePommeauBlendDialogProps {
   open: boolean;
@@ -193,7 +194,7 @@ export function CreatePommeauBlendDialog({
     onError: (error) => {
       toast({
         title: "Error",
-        description: error.message,
+        description: humanizeMutationError(error),
         variant: "destructive",
       });
     },

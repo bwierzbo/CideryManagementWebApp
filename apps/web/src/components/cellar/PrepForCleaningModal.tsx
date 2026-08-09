@@ -18,6 +18,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/utils/trpc";
 import { toast } from "@/hooks/use-toast";
 import { Sparkles } from "lucide-react";
+import { humanizeMutationError } from "@/utils/mutation-errors";
 
 const prepSchema = z.object({
   residueL: z.number().nonnegative("Residue can't be negative"),
@@ -78,7 +79,7 @@ export function PrepForCleaningModal({
       setSubmitError(error.message);
       toast({
         title: "Couldn't prep tank",
-        description: error.message,
+        description: humanizeMutationError(error),
         variant: "destructive",
       });
     },

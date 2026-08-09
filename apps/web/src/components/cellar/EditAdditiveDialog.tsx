@@ -17,6 +17,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
 import { useDateFormat } from "@/hooks/useDateFormat";
+import { humanizeMutationError } from "@/utils/mutation-errors";
 
 interface Additive {
   id: string;
@@ -88,7 +89,7 @@ export function EditAdditiveDialog({
     onError: (error) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to update additive",
+        description: humanizeMutationError(error) || "Failed to update additive",
         variant: "destructive",
       });
     },

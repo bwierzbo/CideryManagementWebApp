@@ -26,6 +26,7 @@ import { trpc } from "@/utils/trpc";
 import { toast } from "@/hooks/use-toast";
 import { Edit } from "lucide-react";
 import { formatDateForInput, parseDateInput } from "@/utils/date-format";
+import { humanizeMutationError } from "@/utils/mutation-errors";
 
 const editPackagingItemSchema = z.object({
   quantity: z.number().positive("Quantity must be positive").optional(),
@@ -115,7 +116,7 @@ export function EditPackagingItemModal({
       console.error("Error data:", error.data);
       toast({
         title: "Update Failed",
-        description: error.message,
+        description: humanizeMutationError(error),
         variant: "destructive",
       });
     },

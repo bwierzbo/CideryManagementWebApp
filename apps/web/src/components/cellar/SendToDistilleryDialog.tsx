@@ -23,6 +23,7 @@ import {
 import { toast } from "@/hooks/use-toast";
 import { Loader2, Truck, Plus, Trash2 } from "lucide-react";
 import { useDateFormat } from "@/hooks/useDateFormat";
+import { humanizeMutationError } from "@/utils/mutation-errors";
 
 interface BatchSelection {
   sourceBatchId: string;
@@ -111,7 +112,7 @@ export function SendToDistilleryDialog({
     onError: (error) => {
       toast({
         title: "Error",
-        description: error.message,
+        description: humanizeMutationError(error),
         variant: "destructive",
       });
     },

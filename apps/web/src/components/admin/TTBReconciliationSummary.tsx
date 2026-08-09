@@ -64,6 +64,7 @@ import { downloadReconciliationPDF } from "@/utils/pdf/ttbReconciliation";
 import { formatDate } from "@/utils/date-format";
 import { BatchLifecycleAudit } from "./BatchLifecycleAudit";
 import { CheckpointHistory } from "./CheckpointHistory";
+import { humanizeMutationError } from "@/utils/mutation-errors";
 
 // Type for batch details from TTB API
 interface BatchDetail {
@@ -120,7 +121,7 @@ export function TTBReconciliationSummary() {
     onError: (error) => {
       toast({
         title: "Error Saving Reconciliation",
-        description: error.message,
+        description: humanizeMutationError(error),
         variant: "destructive",
       });
     },

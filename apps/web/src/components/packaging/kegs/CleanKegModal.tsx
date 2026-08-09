@@ -19,6 +19,7 @@ import { trpc } from "@/utils/trpc";
 import { toast } from "@/hooks/use-toast";
 import { useDateFormat } from "@/hooks/useDateFormat";
 import { CheckCircle } from "lucide-react";
+import { humanizeMutationError } from "@/utils/mutation-errors";
 
 const cleanKegSchema = z.object({
   cleanedAt: z.date(),
@@ -86,7 +87,7 @@ export function CleanKegModal({
     onError: (error) => {
       toast({
         title: "Cleaning Failed",
-        description: error.message,
+        description: humanizeMutationError(error),
         variant: "destructive",
       });
     },

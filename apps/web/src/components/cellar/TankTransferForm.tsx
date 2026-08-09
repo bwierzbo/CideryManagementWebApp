@@ -34,6 +34,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { VolumeDisplay } from "@/components/ui/volume-input";
 import { WorkerLaborInput, type WorkerAssignment, toApiLaborAssignments } from "@/components/labor/WorkerLaborInput";
+import { humanizeMutationError } from "@/utils/mutation-errors";
 
 const transferSchema = z.object({
   fromVesselId: z.string().uuid("Select source vessel"),
@@ -254,7 +255,7 @@ export function TankTransferForm({
       setTransferError(error.message);
       toast({
         title: "Transfer failed",
-        description: error.message,
+        description: humanizeMutationError(error),
         variant: "destructive",
       });
       console.error("Transfer failed:", error.message);

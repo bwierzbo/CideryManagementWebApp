@@ -57,6 +57,7 @@ import { trpc } from "@/utils/trpc";
 import { useToast } from "@/hooks/use-toast";
 import { formatDate } from "@/utils/date-format";
 import { CalibrationSessionDialog } from "./CalibrationSessionDialog";
+import { humanizeMutationError } from "@/utils/mutation-errors";
 
 export function CalibrationSettings() {
   const { toast } = useToast();
@@ -92,7 +93,7 @@ export function CalibrationSettings() {
     onError: (error) => {
       toast({
         title: "Error",
-        description: error.message,
+        description: humanizeMutationError(error),
         variant: "destructive",
       });
     },
@@ -109,7 +110,7 @@ export function CalibrationSettings() {
     onError: (error) => {
       toast({
         title: "Error",
-        description: error.message,
+        description: humanizeMutationError(error),
         variant: "destructive",
       });
     },
@@ -126,7 +127,7 @@ export function CalibrationSettings() {
     onError: (error) => {
       toast({
         title: "Error",
-        description: error.message,
+        description: humanizeMutationError(error),
         variant: "destructive",
       });
     },
@@ -144,7 +145,7 @@ export function CalibrationSettings() {
     onError: (error) => {
       toast({
         title: "Error",
-        description: error.message,
+        description: humanizeMutationError(error),
         variant: "destructive",
       });
     },

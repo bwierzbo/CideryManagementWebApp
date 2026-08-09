@@ -32,6 +32,7 @@ import {
 } from "lucide-react";
 import { trpc } from "@/utils/trpc";
 import { useToast } from "@/hooks/use-toast";
+import { humanizeMutationError } from "@/utils/mutation-errors";
 
 interface CalibrationSessionDialogProps {
   calibrationId: string;
@@ -77,7 +78,7 @@ export function CalibrationSessionDialog({
       refetch();
     },
     onError: (error) => {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      toast({ title: "Error", description: humanizeMutationError(error), variant: "destructive" });
     },
   });
 
@@ -87,7 +88,7 @@ export function CalibrationSessionDialog({
       refetch();
     },
     onError: (error) => {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      toast({ title: "Error", description: humanizeMutationError(error), variant: "destructive" });
     },
   });
 
@@ -101,7 +102,7 @@ export function CalibrationSessionDialog({
       onCalibrationUpdated();
     },
     onError: (error) => {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      toast({ title: "Error", description: humanizeMutationError(error), variant: "destructive" });
     },
   });
 
