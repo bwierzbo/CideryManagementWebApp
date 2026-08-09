@@ -194,9 +194,20 @@ export function FilterModal({
       onSuccess?.(filteredAt);
     },
     onError: (error) => {
+      // Zod input errors arrive as a JSON array of issues — surface the
+      // first issue's message instead of the raw blob.
+      let description = error.message;
+      try {
+        const issues = JSON.parse(error.message);
+        if (Array.isArray(issues) && issues[0]?.message) {
+          description = issues[0].message;
+        }
+      } catch {
+        // not JSON — show as-is
+      }
       toast({
         title: "Filter Operation Failed",
-        description: error.message,
+        description,
         variant: "destructive",
       });
     },

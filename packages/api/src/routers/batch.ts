@@ -555,8 +555,8 @@ const filterBatchSchema = z.object({
     workerId: z.string().uuid(),
     hoursWorked: z.number().positive(),
   })).optional(),
-}).refine((data) => data.volumeAfter < data.volumeBefore, {
-  message: "Volume after filtering must be less than volume before",
+}).refine((data) => data.volumeAfter <= data.volumeBefore, {
+  message: "Volume after filtering cannot exceed volume before",
   path: ["volumeAfter"],
 });
 
