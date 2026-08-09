@@ -59,6 +59,8 @@ interface LabelModalProps {
   unitsLabeled?: number; // Current number of labeled units (for partial labeling)
   /** Receives labeledAt for schedule anchoring. */
   onSuccess: (labeledAt?: Date) => void;
+  /** Seed the date field (e.g. a recipe step's scheduled date when back-filling). */
+  prefillLabeledAt?: string | Date | null;
 }
 
 export function LabelModal({
@@ -69,9 +71,10 @@ export function LabelModal({
   unitsProduced,
   unitsLabeled: initialUnitsLabeled = 0,
   onSuccess,
+  prefillLabeledAt,
 }: LabelModalProps) {
   const utils = trpc.useUtils();
-  const { formatDateTimeForInput, parseDateTimeFromInput } = useDateFormat();
+  const { formatDateTimeForInput, parseDateTimeFromInput, seedDateTimeForInput } = useDateFormat();
   const [comboboxOpen, setComboboxOpen] = useState<{[key: number]: boolean}>({});
   const [appliedLabels, setAppliedLabels] = useState<Array<{name: string, quantity: number}>>([]);
   const [dateWarning, setDateWarning] = useState<string | null>(null);
@@ -106,7 +109,7 @@ export function LabelModal({
     defaultValues: {
       unitsToLabel: remainingUnits,
       labels: [{ packagingItemId: "", quantity: remainingUnits }],
-      labeledAt: formatDateTimeForInput(new Date()),
+      labeledAt: seedDateTimeForInput(prefillLabeledAt),
       laborHours: undefined,
     },
   });
@@ -150,14 +153,15 @@ export function LabelModal({
       reset({
         unitsToLabel: remainingUnits,
         labels: [{ packagingItemId: "", quantity: remainingUnits }],
-        labeledAt: formatDateTimeForInput(new Date()),
+        labeledAt: seedDateTimeForInput(prefillLabeledAt),
         laborHours: undefined,
       });
       setAppliedLabels([]);
       setComboboxOpen({});
       setLaborAssignments([]);
     }
-  }, [open, reset, remainingUnits]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, reset, remainingUnits, prefillLabeledAt]);
 
   // Pre-select the label that matches this run's recipe/product name (e.g.
   // "Duskrun - Lavender Salal" → the Duskrun label), so the operator just

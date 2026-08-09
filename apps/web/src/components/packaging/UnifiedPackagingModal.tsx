@@ -22,6 +22,8 @@ interface UnifiedPackagingModalProps {
   preBottling?: PreBottlingData;
   /** Receives the packaging date (packagedAt / filledAt) from the inner modal. */
   onSuccess?: (packagedAt?: Date) => void;
+  /** Seed the date field (e.g. a recipe step's scheduled date when back-filling). */
+  prefillPackagedAt?: string | Date | null;
 }
 
 /**
@@ -40,6 +42,7 @@ export function UnifiedPackagingModal({
   initialType = "bottles",
   preBottling,
   onSuccess,
+  prefillPackagedAt,
 }: UnifiedPackagingModalProps) {
   const [packagingType, setPackagingType] = useState<PackagingType>(initialType);
 
@@ -64,6 +67,7 @@ export function UnifiedPackagingModal({
         onTypeChange={setPackagingType}
         preBottling={preBottling}
         onSuccess={onSuccess}
+        prefillFilledAt={prefillPackagedAt}
       />
     );
   }
@@ -80,6 +84,7 @@ export function UnifiedPackagingModal({
       onTypeChange={setPackagingType}
       preBottling={preBottling}
       onSuccess={onSuccess}
+      prefillPackagedAt={prefillPackagedAt}
     />
   );
 }

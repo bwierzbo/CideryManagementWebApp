@@ -30,6 +30,8 @@ interface AddBatchMeasurementFormProps {
   /** Receives the measurement date for schedule anchoring. */
   onSuccess: (measuredAt?: Date) => void;
   onCancel: () => void;
+  /** Seed the date field (e.g. a recipe step's scheduled date when back-filling). */
+  prefillMeasuredAt?: string | Date | null;
 }
 
 type MeasurementMethod = "hydrometer" | "refractometer" | "calculated";
@@ -38,12 +40,14 @@ export function AddBatchMeasurementForm({
   batchId,
   onSuccess,
   onCancel,
+  prefillMeasuredAt,
 }: AddBatchMeasurementFormProps) {
   const { formatDateTimeForInput, parseDateTimeFromInput } = useDateFormat();
 
-  const localISOTime = formatDateTimeForInput(new Date());
-
-  const [measurementDateTime, setMeasurementDateTime] = useState(localISOTime);
+  const [measurementDateTime, setMeasurementDateTime] = useState(() => {
+    const seed = prefillMeasuredAt ? new Date(prefillMeasuredAt) : new Date();
+    return formatDateTimeForInput(Number.isNaN(seed.getTime()) ? new Date() : seed);
+  });
   const [dateWarning, setDateWarning] = useState<string | null>(null);
   const [measurementMethod, setMeasurementMethod] = useState<MeasurementMethod>("hydrometer");
 

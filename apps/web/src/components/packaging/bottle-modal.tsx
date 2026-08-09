@@ -74,6 +74,8 @@ interface BottleModalProps {
   preBottling?: PreBottlingData;
   /** Called after a packaging run is created; receives packagedAt for schedule anchoring. */
   onSuccess?: (packagedAt?: Date) => void;
+  /** Seed the date field (e.g. a recipe step's scheduled date when back-filling). */
+  prefillPackagedAt?: string | Date | null;
 }
 
 type InputMode = "volume" | "units";
@@ -90,8 +92,9 @@ export function BottleModal({
   onTypeChange,
   preBottling,
   onSuccess,
+  prefillPackagedAt,
 }: BottleModalProps) {
-  const { formatDateTimeForInput, parseDateTimeFromInput } = useDateFormat();
+  const { formatDateTimeForInput, parseDateTimeFromInput, seedDateTimeForInput } = useDateFormat();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedMaterials, setSelectedMaterials] = useState<SelectedMaterial[]>([]);
   const [currentMaterialId, setCurrentMaterialId] = useState<string>("");
@@ -136,7 +139,7 @@ export function BottleModal({
       volumeTakenL: undefined,
       packageSizeMl: undefined,
       unitsProduced: undefined,
-      packagedAt: formatDateTimeForInput(new Date()),
+      packagedAt: seedDateTimeForInput(prefillPackagedAt),
       notes: "",
       materials: [],
       laborHours: undefined,
@@ -343,7 +346,7 @@ export function BottleModal({
   useEffect(() => {
     if (open) {
       reset({
-        packagedAt: formatDateTimeForInput(new Date()),
+        packagedAt: seedDateTimeForInput(prefillPackagedAt),
         notes: "",
         materials: [],
         // packageSizeMl will be set automatically when primary packaging is selected
@@ -360,7 +363,8 @@ export function BottleModal({
       setLossReason("sediment");
       setLossNotes("");
     }
-  }, [open, reset]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, reset, prefillPackagedAt]);
 
   const handleFormSubmit = async (data: BottleFormData) => {
     if (lossL < -0.001) {
