@@ -78,6 +78,9 @@ export const packagingItemTypeSchema = z.enum(
     "Closures",
     "Secondary Packaging",
     "Tertiary Packaging",
+    // Disposable production consumables that hit COGS (filter pads, etc.) —
+    // purchased and priced like packaging, distinct from product packaging.
+    "Supplies",
   ],
   {
     message: "Invalid packaging item type",
