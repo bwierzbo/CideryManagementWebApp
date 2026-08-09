@@ -43,6 +43,20 @@ import { computeFamilyFulfillment } from "../services/recipe-family-fulfillment"
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 /**
+ * Recipe start dates are date-only. new Date("YYYY-MM-DD") lands on midnight
+ * UTC, which displays as 5 PM the previous day in Pacific and drags every
+ * schedule anchor and back-fill stamp a calendar day early. Pin date-only
+ * starts to noon Pacific (19:00 UTC — same convention as migration 0159 and
+ * the keg-cleaning back-fills) before using them as instants.
+ */
+function startDateNoon(start: Date | string | null | undefined): Date | null {
+  if (!start) return null;
+  const d = start instanceof Date ? start : new Date(start);
+  if (Number.isNaN(d.getTime())) return null;
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 19));
+}
+
+/**
  * Recompute pending task due-dates from actual progress (done/skipped anchors).
  * Done tasks keep their own dates; everything else is re-derived.
  */
@@ -66,7 +80,7 @@ async function recomputeSchedule(tx: Tx, executionId: string) {
       status: t.status,
       completedAt: t.completedAt,
     })),
-    exec.startDate,
+    startDateNoon(exec.startDate) ?? exec.startDate,
   );
   for (let i = 0; i < tasks.length; i++) {
     if (tasks[i].status === "done") continue;
@@ -168,7 +182,7 @@ export const recipeExecutionRouter = router({
           triggerData: (s.triggerData ?? {}) as Record<string, unknown>,
           packagingPath: s.packagingPath ?? "all",
         })),
-        input.startDate,
+        startDateNoon(input.startDate) ?? input.startDate,
       );
 
       return await db.transaction(async (tx) => {
@@ -698,7 +712,7 @@ export const recipeExecutionRouter = router({
           // start date, not the data-entry moment — otherwise date validation
           // anchors the batch's "earliest valid date" to entry day and blocks
           // recording the July work that followed.
-          const execStart = exec.startDate ? new Date(exec.startDate) : null;
+          const execStart = startDateNoon(exec.startDate);
           const blendedAt =
             execStart && !Number.isNaN(execStart.getTime()) && execStart.getTime() < Date.now()
               ? execStart
@@ -755,10 +769,9 @@ export const recipeExecutionRouter = router({
         // Mark done + reschedule. The completion date mirrors the transfer
         // date (exec start for back-fills) so the schedule re-anchors off the
         // real event, not the data-entry day.
+        const startNoon = startDateNoon(exec.startDate);
         const transferDoneAt =
-          exec.startDate && new Date(exec.startDate).getTime() < Date.now()
-            ? new Date(exec.startDate)
-            : new Date();
+          startNoon && startNoon.getTime() < Date.now() ? startNoon : new Date();
         await tx
           .update(batchStepTasks)
           .set({
