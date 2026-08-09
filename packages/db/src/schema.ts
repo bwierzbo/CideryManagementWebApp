@@ -1054,7 +1054,7 @@ export const pressRuns = pgTable(
     status: pressRunStatusEnum("status").notNull().default("draft"),
 
     // Timing fields for session management
-    dateCompleted: date("date_completed"), // Date when press run was completed
+    dateCompleted: timestamp("date_completed"), // When the press run was completed (full datetime)
 
     // Aggregate measurements (calculated from loads)
     // Using existing decimal precision patterns: precision 10, scale 3 for weights/volumes

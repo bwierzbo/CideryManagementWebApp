@@ -6696,8 +6696,8 @@ export const ttbRouter = router({
             and(
               isNull(pressRuns.deletedAt),
               eq(pressRuns.status, "completed"),
-              gte(pressRuns.dateCompleted, startDate.toISOString().split("T")[0]),
-              lte(pressRuns.dateCompleted, endDate.toISOString().split("T")[0])
+              sql`${pressRuns.dateCompleted}::date >= ${startDate.toISOString().split("T")[0]}::date`,
+              sql`${pressRuns.dateCompleted}::date <= ${endDate.toISOString().split("T")[0]}::date`
             )
           );
 

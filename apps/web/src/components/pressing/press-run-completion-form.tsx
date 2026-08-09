@@ -59,7 +59,7 @@ import {
 } from "lucide-react";
 import { gallonsToLiters, litersToGallons, formatUnitConversion } from "lib";
 import { trpc } from "@/utils/trpc";
-import { formatDate, formatDateForInput } from "@/utils/date-format";
+import { useDateFormat } from "@/hooks/useDateFormat";
 import { WorkerLaborInput, type WorkerAssignment, toApiLaborAssignments } from "@/components/labor/WorkerLaborInput";
 
 // Assignment schema for vessel assignments
@@ -77,7 +77,7 @@ const assignmentSchema = z.object({
 const pressRunCompletionSchema = z.object({
   completionDate: z
     .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/, "Please enter a valid date"),
+    .regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/, "Please enter a valid date and time"),
   totalJuiceVolume: z
     .number()
     .min(1, "Total juice volume must be at least 1L")
@@ -140,10 +140,12 @@ export function PressRunCompletionForm({
   const availableVessels =
     vesselsData?.vessels?.filter((vessel) => vessel.isAvailable) || [];
 
-  // Use press run creation date as default, fall back to today if not available
+  const { formatDateTimeForInput, parseDateTimeFromInput, formatDateTime } = useDateFormat();
+
+  // Use press run creation date as default, fall back to now if not available
   const defaultCompletionDate = pressRun?.createdAt
-    ? formatDateForInput(new Date(pressRun.createdAt))
-    : formatDateForInput(new Date());
+    ? formatDateTimeForInput(new Date(pressRun.createdAt))
+    : formatDateTimeForInput(new Date());
 
   const form = useForm<PressRunCompletionForm>({
     resolver: zodResolver(pressRunCompletionSchema),
@@ -192,10 +194,8 @@ export function PressRunCompletionForm({
     })) || [];
 
   const onSubmit = (data: PressRunCompletionForm) => {
-    // Parse the date string (YYYY-MM-DD) and create a Date object in local timezone
-    // to avoid timezone conversion issues
-    const [year, month, day] = data.completionDate.split("-").map(Number);
-    const completionDate = new Date(year, month - 1, day); // month is 0-indexed
+    // Interpret the datetime-local value in the org timezone → UTC instant
+    const completionDate = parseDateTimeFromInput(data.completionDate);
 
     const submissionPayload = {
       pressRunId,
@@ -295,13 +295,13 @@ export function PressRunCompletionForm({
                 name="completionDate"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Completion Date</FormLabel>
+                    <FormLabel>Completion Date & Time</FormLabel>
                     <FormControl>
-                      <Input type="date" {...field} />
+                      <Input type="datetime-local" {...field} />
                     </FormControl>
                     <FormDescription>
                       Press run will be named as:{" "}
-                      {field.value ? `${field.value}-01` : "YYYY-MM-DD-01"}
+                      {field.value ? `${field.value.slice(0, 10)}-01` : "YYYY-MM-DD-01"}
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
@@ -932,11 +932,13 @@ export function PressRunCompletionForm({
                 <div className="bg-gray-50 p-3 rounded-md space-y-2 text-sm">
                   <p>
                     <strong>Press Run Name:</strong>{" "}
-                    {watchedValues.completionDate}-01
+                    {watchedValues.completionDate?.slice(0, 10)}-01
                   </p>
                   <p>
                     <strong>Completion Date:</strong>{" "}
-                    {formatDate(new Date(watchedValues.completionDate))}
+                    {watchedValues.completionDate
+                      ? formatDateTime(parseDateTimeFromInput(watchedValues.completionDate))
+                      : "—"}
                   </p>
                   <p>
                     <strong>Total Juice Volume:</strong>{" "}
