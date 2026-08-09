@@ -91,6 +91,20 @@ export function useDateFormat() {
     parseDateTimeFromInput: (value: string) => baseParseDateTimeFromInput(value, timezone),
 
     /**
+     * Seed a datetime-local input: use the prefill date when provided and
+     * valid (e.g. a recipe step's scheduled date when back-filling), else now.
+     * @param prefill - Optional date to seed from
+     * @returns Date string in YYYY-MM-DDTHH:mm format in the current timezone
+     */
+    seedDateTimeForInput: (prefill?: string | Date | null) => {
+      const d = prefill ? new Date(prefill) : new Date();
+      return baseFormatDateTimeForInput(
+        Number.isNaN(d.getTime()) ? new Date() : d,
+        timezone,
+      );
+    },
+
+    /**
      * Get the current date/time in the configured timezone
      * @returns Current date in the current timezone
      */

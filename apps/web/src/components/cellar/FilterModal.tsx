@@ -60,6 +60,8 @@ interface FilterModalProps {
   onSuccess?: (filteredAt?: Date) => void;
   /** Recipe-planned filter type to prefill. */
   prefillFilterType?: "coarse" | "fine" | "sterile";
+  /** Seed the date field (e.g. a recipe step's scheduled date when back-filling). */
+  prefillFilteredAt?: string | Date | null;
 }
 
 export function FilterModal({
@@ -71,6 +73,7 @@ export function FilterModal({
   currentVolumeL,
   onSuccess,
   prefillFilterType,
+  prefillFilteredAt,
 }: FilterModalProps) {
   const utils = trpc.useUtils();
   const { formatDateTimeForInput, parseDateTimeFromInput } = useDateFormat();
@@ -84,6 +87,12 @@ export function FilterModal({
   const [destinationVesselId, setDestinationVesselId] = useState<string>("same");
   // Consumable tracking: pads used this run (feeds pad-efficiency analysis)
   const [padsUsed, setPadsUsed] = useState("");
+
+  // Seed the date from the recipe step's scheduled date when back-filling.
+  const seedFilteredAt = () => {
+    const d = prefillFilteredAt ? new Date(prefillFilteredAt) : new Date();
+    return Number.isNaN(d.getTime()) ? new Date() : d;
+  };
 
   // Empty, available vessels the batch can be filtered into.
   const { data: vesselList } = trpc.vessel.listWithBatches.useQuery(undefined, {
@@ -112,7 +121,7 @@ export function FilterModal({
       volumeBeforeUnit: "L",
       volumeAfterUnit: "L",
       volumeBefore: currentVolumeL,
-      filteredAt: new Date(),
+      filteredAt: seedFilteredAt(),
       notes: "",
     },
   });
@@ -159,14 +168,15 @@ export function FilterModal({
         volumeAfter: currentVolumeL,
         volumeBeforeUnit: "L",
         volumeAfterUnit: "L",
-        filteredAt: new Date(),
+        filteredAt: seedFilteredAt(),
         notes: "",
       });
       setLaborAssignments([]);
       setDestinationVesselId("same");
       setPadsUsed("");
     }
-  }, [open, currentVolumeL, reset, prefillFilterType]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, currentVolumeL, reset, prefillFilterType, prefillFilteredAt]);
 
   const filterMutation = trpc.batch.filter.useMutation({
     onSuccess: (data) => {

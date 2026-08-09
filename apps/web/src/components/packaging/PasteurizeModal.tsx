@@ -81,6 +81,8 @@ interface PasteurizeModalProps {
   unitsProduced: number;
   /** Receives pasteurizedAt for schedule anchoring. */
   onSuccess: (pasteurizedAt?: Date) => void;
+  /** Seed the date field (e.g. a recipe step's scheduled date when back-filling). */
+  prefillPasteurizedAt?: string | Date | null;
 }
 
 export function PasteurizeModal({
@@ -91,9 +93,10 @@ export function PasteurizeModal({
   batchId,
   unitsProduced,
   onSuccess,
+  prefillPasteurizedAt,
 }: PasteurizeModalProps) {
   const utils = trpc.useUtils();
-  const { formatDateTimeForInput, parseDateTimeFromInput } = useDateFormat();
+  const { formatDateTimeForInput, parseDateTimeFromInput, seedDateTimeForInput } = useDateFormat();
 
   // State for custom starting temperature input
   const [useCustomStartTemp, setUseCustomStartTemp] = useState(false);
@@ -127,7 +130,7 @@ export function PasteurizeModal({
   } = useForm<PasteurizeForm>({
     resolver: zodResolver(pasteurizeSchema),
     defaultValues: {
-      pasteurizedAt: formatDateTimeForInput(new Date()),
+      pasteurizedAt: seedDateTimeForInput(prefillPasteurizedAt),
       bottleTypeId: "750ml_glass",
       startingTempC: 20, // Room temperature default
       temperatureCelsius: 65, // Hot-start bath temperature
@@ -233,7 +236,7 @@ export function PasteurizeModal({
   useEffect(() => {
     if (open) {
       reset({
-        pasteurizedAt: formatDateTimeForInput(new Date()),
+        pasteurizedAt: seedDateTimeForInput(prefillPasteurizedAt),
         bottleTypeId: "750ml_glass",
         startingTempC: 20,
         temperatureCelsius: 65,
@@ -246,7 +249,8 @@ export function PasteurizeModal({
       setHasSetRecommendedTime(false);
       setLaborAssignments([]);
     }
-  }, [open, reset]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, reset, prefillPasteurizedAt]);
 
   // Set timeMinutes to recommended value once it's calculated (only once per modal open)
   useEffect(() => {

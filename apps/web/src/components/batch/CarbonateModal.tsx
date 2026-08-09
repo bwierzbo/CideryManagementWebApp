@@ -110,6 +110,8 @@ interface CarbonateModalProps {
   /** Recipe-planned values to prefill (method uses recipe terms forced|natural). */
   prefillTargetCo2Volumes?: number;
   prefillMethod?: "forced" | "natural";
+  /** Seed the date field (e.g. a recipe step's scheduled date when back-filling). */
+  prefillStartedAt?: string | Date | null;
 }
 
 export function CarbonateModal({
@@ -120,9 +122,10 @@ export function CarbonateModal({
   onSuccess,
   prefillTargetCo2Volumes,
   prefillMethod,
+  prefillStartedAt,
 }: CarbonateModalProps) {
   const utils = trpc.useUtils();
-  const { formatDateTimeForInput, parseDateTimeFromInput } = useDateFormat();
+  const { formatDateTimeForInput, parseDateTimeFromInput, seedDateTimeForInput } = useDateFormat();
   const [carbonationMethod, setCarbonationMethod] = React.useState<"forced" | "bottle_conditioning">("forced");
   const [lastEditedField, setLastEditedField] = React.useState<"co2" | "sugar">("co2");
   const [dateWarning, setDateWarning] = React.useState<string | null>(null);
@@ -219,7 +222,7 @@ export function CarbonateModal({
     resolver: zodResolver(carbonationSchema) as any,
     defaultValues: {
       carbonationMethod: "forced",
-      startedAt: formatDateTimeForInput(new Date()),
+      startedAt: seedDateTimeForInput(prefillStartedAt),
       startingVolume: batch.currentVolume,
       startingVolumeUnit: (batch.currentVolumeUnit as "L" | "gal") || "L",
       startingTemperature: 10,
@@ -271,7 +274,7 @@ export function CarbonateModal({
         recipeMethod ?? (vessel?.isPressureVessel === "yes" ? "forced" : "bottle_conditioning");
       reset({
         carbonationMethod: defaultMethod,
-        startedAt: formatDateTimeForInput(new Date()) as any,
+        startedAt: seedDateTimeForInput(prefillStartedAt) as any,
         startingVolume: batch.currentVolume,
         startingVolumeUnit: (batch.currentVolumeUnit as "L" | "gal") || "L",
         startingTemperature: 10,
@@ -289,7 +292,8 @@ export function CarbonateModal({
       setDateWarning(null);
       setLaborAssignments([]);
     }
-  }, [open, reset, batch.currentVolume, batch.currentVolumeUnit, vessel?.isPressureVessel, prefillMethod, prefillTargetCo2Volumes]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, reset, batch.currentVolume, batch.currentVolumeUnit, vessel?.isPressureVessel, prefillMethod, prefillTargetCo2Volumes, prefillStartedAt]);
 
   // Convert volume to liters for calculations
   const volumeInLiters = useMemo(() => {

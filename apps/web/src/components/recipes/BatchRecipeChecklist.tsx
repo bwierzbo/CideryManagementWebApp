@@ -660,6 +660,7 @@ export function BatchRecipeChecklist({ batchId }: { batchId: string }) {
                 ? "sterile"
                 : "fine"
           }
+          prefillFilteredAt={actionTask?.scheduledDate ?? null}
           onSuccess={(actualAt?: Date) =>
             actionTask &&
             complete.mutate({
@@ -697,6 +698,7 @@ export function BatchRecipeChecklist({ batchId }: { batchId: string }) {
                 ? "forced"
                 : undefined
           }
+          prefillStartedAt={actionTask?.scheduledDate ?? null}
           onSuccess={(actualAt?: Date) =>
             actionTask &&
             complete.mutate({
@@ -713,6 +715,7 @@ export function BatchRecipeChecklist({ batchId }: { batchId: string }) {
           batchId={batchId}
           currentVolumeL={currentVolumeL}
           initialType={actionTask?.packagingPath === "keg" ? "kegs" : "bottles"}
+          prefillPackagedAt={actionTask?.scheduledDate ?? null}
           onSuccess={(actualAt?: Date) =>
             actionTask &&
             complete.mutate({
@@ -734,6 +737,7 @@ export function BatchRecipeChecklist({ batchId }: { batchId: string }) {
           bottleRunName={`${latestRun.batch?.name ?? "Run"} — ${new Date(latestRun.packagedAt ?? latestRun.createdAt).toLocaleDateString()}`}
           batchId={batchId}
           unitsProduced={Number(latestRun.unitsProduced ?? 0)}
+          prefillPasteurizedAt={actionTask?.scheduledDate ?? null}
           onSuccess={(actualAt?: Date) =>
             actionTask &&
             complete.mutate({
@@ -749,6 +753,7 @@ export function BatchRecipeChecklist({ batchId }: { batchId: string }) {
           bottleRunName={`${latestRun.batch?.name ?? "Run"} — ${new Date(latestRun.packagedAt ?? latestRun.createdAt).toLocaleDateString()}`}
           unitsProduced={Number(latestRun.unitsProduced ?? 0)}
           unitsLabeled={Number(latestRun.unitsLabeled ?? 0)}
+          prefillLabeledAt={actionTask?.scheduledDate ?? null}
           onSuccess={(actualAt?: Date) =>
             actionTask &&
             complete.mutate({

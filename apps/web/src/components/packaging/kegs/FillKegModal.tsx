@@ -54,6 +54,8 @@ interface FillKegModalProps {
   preBottling?: PreBottlingData;
   /** Called after kegs are filled; receives filledAt for schedule anchoring. */
   onSuccess?: (filledAt?: Date) => void;
+  /** Seed the date field (e.g. a recipe step's scheduled date when back-filling). */
+  prefillFilledAt?: string | Date | null;
 }
 
 // Memoized keg item component to prevent re-renders
@@ -115,8 +117,9 @@ export function FillKegModal({
   onTypeChange,
   preBottling,
   onSuccess,
+  prefillFilledAt,
 }: FillKegModalProps) {
-  const { formatDateTimeForInput, parseDateTimeFromInput } = useDateFormat();
+  const { formatDateTimeForInput, parseDateTimeFromInput, seedDateTimeForInput } = useDateFormat();
   const [selectedKegIds, setSelectedKegIds] = useState<string[]>([]);
   const [kegVolumes, setKegVolumes] = useState<Record<string, number>>({});
 
@@ -131,7 +134,7 @@ export function FillKegModal({
   } = useForm<FillKegsForm>({
     resolver: zodResolver(fillKegsSchema),
     defaultValues: {
-      filledAt: formatDateTimeForInput(new Date()),
+      filledAt: seedDateTimeForInput(prefillFilledAt),
       volumeTakenUnit: "L",
       lossUnit: "L",
       carbonationMethod: "none",
@@ -183,8 +186,12 @@ export function FillKegModal({
     if (!open) {
       setSelectedKegIds([]);
       setKegVolumes({});
+    } else {
+      // Re-seed the date on open (the form mounts once; defaults go stale).
+      setValue("filledAt", seedDateTimeForInput(prefillFilledAt));
     }
-  }, [open]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, prefillFilledAt]);
 
   // Memoized toggle handler with stable reference using useCallback
   const handleKegToggle = React.useCallback((kegId: string) => {
