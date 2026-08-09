@@ -216,10 +216,9 @@ export function BottleModal({
       return;
     }
 
-    const seededQty = Math.min(
-      unitsProduced && unitsProduced > 0 ? unitsProduced : 1,
-      selectedItem.quantity,
-    );
+    // Seed to the run's unit count even past available stock — insufficient
+    // stock warns at submit and inventory goes negative until restocked.
+    const seededQty = unitsProduced && unitsProduced > 0 ? unitsProduced : 1;
 
     const newMaterial: SelectedMaterial = {
       packagingPurchaseItemId: currentMaterialId,
@@ -260,17 +259,16 @@ export function BottleModal({
   // Sync already-added materials when unitsProduced changes. Without this, a
   // user who adds bottles/caps BEFORE typing the unit count gets quantityUsed=1
   // (the default staging value) frozen in selectedMaterials, which then prorates
-  // COGS against 1 bottle instead of e.g. 132. Cap at availableQuantity so a
-  // user-entered count larger than stock doesn't silently inflate.
+  // COGS against 1 bottle instead of e.g. 132. Deliberately NOT capped at
+  // available stock: shortages warn at submit and inventory goes negative.
   useEffect(() => {
     if (!unitsProduced || unitsProduced <= 0) return;
     setSelectedMaterials(prev => {
       let changed = false;
       const next = prev.map(m => {
-        const target = Math.min(unitsProduced, m.availableQuantity);
-        if (m.quantityUsed === target) return m;
+        if (m.quantityUsed === unitsProduced) return m;
         changed = true;
-        return { ...m, quantityUsed: target };
+        return { ...m, quantityUsed: unitsProduced };
       });
       return changed ? next : prev;
     });
@@ -380,6 +378,20 @@ export function BottleModal({
         variant: "destructive",
       });
       return;
+    }
+
+    // Insufficient stock warns but never blocks — inventory goes negative
+    // until restocked (same policy as labels and additives).
+    const shortages = selectedMaterials.filter(
+      (m) => m.quantityUsed > m.availableQuantity,
+    );
+    if (shortages.length > 0) {
+      const proceed = window.confirm(
+        `Insufficient stock for ${shortages
+          .map((m) => `${m.itemName} (need ${m.quantityUsed}, have ${m.availableQuantity})`)
+          .join(", ")}.\n\nPackage anyway? Inventory will go negative until restocked.`,
+      );
+      if (!proceed) return;
     }
 
     // Filter out any invalid labor assignments (safety check)
@@ -585,6 +597,12 @@ export function BottleModal({
                             ? `Using ${material.quantityUsed} of ${material.availableQuantity} available`
                             : `count set below · ${material.availableQuantity} available`}
                         </p>
+                        {material.quantityUsed > material.availableQuantity && (
+                          <p className="text-xs text-amber-600">
+                            Short {material.quantityUsed - material.availableQuantity} —
+                            inventory will go negative until restocked
+                          </p>
+                        )}
                       </div>
                       <Button
                         type="button"

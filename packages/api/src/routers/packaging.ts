@@ -713,13 +713,14 @@ export const packagingRouter = router({
                 createdBy: ctx.session.user.id,
               });
 
-              // Increment quantityUsed on packaging inventory
+              // Increment quantityUsed on packaging inventory. No stock floor:
+              // insufficient stock warns but never blocks, and available goes
+              // negative until restocked (same policy as labels/additives).
               await tx.execute(sql`
                 UPDATE packaging_purchase_items
                 SET quantity_used = quantity_used + ${material.quantityUsed},
                     updated_at = NOW()
                 WHERE id = ${material.packagingPurchaseItemId}
-                AND (quantity - quantity_used) >= ${material.quantityUsed}
               `);
             }
           }
