@@ -22,6 +22,7 @@ import { toast } from "@/hooks/use-toast";
 import { useBatchDateValidation } from "@/hooks/useBatchDateValidation";
 import { DateWarning } from "@/components/ui/DateWarning";
 import { LastActivityHint } from "@/components/ui/LastActivityHint";
+import { WorkerLaborInput, type WorkerAssignment, toApiLaborAssignments } from "@/components/labor/WorkerLaborInput";
 import { Loader2, Info } from "lucide-react";
 import { useDateFormat } from "@/hooks/useDateFormat";
 
@@ -72,6 +73,7 @@ export function AddBatchMeasurementForm({
   const [tempUnit, setTempUnit] = useState<"C" | "F">("C");
   const [notes, setNotes] = useState("");
   const [sensoryNotes, setSensoryNotes] = useState("");
+  const [laborAssignments, setLaborAssignments] = useState<WorkerAssignment[]>([]);
   const [volume, setVolume] = useState("");
 
   // Fetch batch details to get product type
@@ -236,6 +238,10 @@ export function AddBatchMeasurementForm({
     if (notes) measurementData.notes = notes;
     if (sensoryNotes) measurementData.sensoryNotes = sensoryNotes;
     if (volume) measurementData.volume = parseFloat(volume);
+    const validLabor = laborAssignments.filter((a) => a.workerId && a.hoursWorked > 0);
+    if (validLabor.length > 0) {
+      measurementData.laborAssignments = toApiLaborAssignments(validLabor);
+    }
 
     addMeasurement.mutate(measurementData);
   };
@@ -604,6 +610,12 @@ export function AddBatchMeasurementForm({
           </p>
         </div>
       )}
+
+      <WorkerLaborInput
+        value={laborAssignments}
+        onChange={setLaborAssignments}
+        activityLabel="this measurement"
+      />
 
       <div className="space-y-2">
         <Label htmlFor="notes">Notes</Label>

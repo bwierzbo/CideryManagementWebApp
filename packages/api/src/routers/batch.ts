@@ -447,6 +447,10 @@ const addMeasurementSchema = z.object({
   notes: z.string().optional(),
   sensoryNotes: z.string().optional(),
   takenBy: z.string().optional(),
+  laborAssignments: z.array(z.object({
+    workerId: z.string().uuid(),
+    hoursWorked: z.number().positive(),
+  })).optional(),
 });
 
 const addAdditiveSchema = z.object({
@@ -471,6 +475,10 @@ const addAdditiveSchema = z.object({
   notes: z.string().optional(),
   addedBy: z.string().optional(),
   addedAt: z.date().or(z.string().transform((val) => new Date(val))).optional(),
+  laborAssignments: z.array(z.object({
+    workerId: z.string().uuid(),
+    hoursWorked: z.number().positive(),
+  })).optional(),
 });
 
 const updateMeasurementSchema = z.object({
@@ -1943,6 +1951,27 @@ export const batchRouter = router({
           })
           .returning();
 
+        // Save labor assignments if provided
+        if (input.laborAssignments && input.laborAssignments.length > 0) {
+          for (const assignment of input.laborAssignments) {
+            const [worker] = await db
+              .select({ hourlyRate: workers.hourlyRate })
+              .from(workers)
+              .where(eq(workers.id, assignment.workerId))
+              .limit(1);
+            const hourlyRate = parseFloat(worker?.hourlyRate?.toString() || "20.00");
+            const laborCost = assignment.hoursWorked * hourlyRate;
+            await db.insert(activityLaborAssignments).values({
+              activityType: "measurement",
+              batchMeasurementId: newMeasurement[0].id,
+              workerId: assignment.workerId,
+              hoursWorked: assignment.hoursWorked.toString(),
+              hourlyRateSnapshot: hourlyRate.toString(),
+              laborCost: laborCost.toString(),
+            });
+          }
+        }
+
         // Auto-set Original Gravity only if batch doesn't have one
         // Don't overwrite existing OG from pressing - that's the true OG for ABV calculation
         let ogAutoSet = false;
@@ -2198,6 +2227,27 @@ export const batchRouter = router({
             addedAt: input.addedAt || new Date(),
           })
           .returning();
+
+        // Save labor assignments if provided
+        if (input.laborAssignments && input.laborAssignments.length > 0) {
+          for (const assignment of input.laborAssignments) {
+            const [worker] = await db
+              .select({ hourlyRate: workers.hourlyRate })
+              .from(workers)
+              .where(eq(workers.id, assignment.workerId))
+              .limit(1);
+            const hourlyRate = parseFloat(worker?.hourlyRate?.toString() || "20.00");
+            const laborCost = assignment.hoursWorked * hourlyRate;
+            await db.insert(activityLaborAssignments).values({
+              activityType: "additive",
+              batchAdditiveId: newAdditive[0].id,
+              workerId: assignment.workerId,
+              hoursWorked: assignment.hoursWorked.toString(),
+              hourlyRateSnapshot: hourlyRate.toString(),
+              laborCost: laborCost.toString(),
+            });
+          }
+        }
 
         // If the additive contributed material liquid volume (honey, brandy
         // for fortification, fruit purée, etc.), bump the batch volume and

@@ -28,6 +28,7 @@ import { PreBottlingBanner, type PreBottlingData } from "../PreBottlingBanner";
 import { trpc } from "@/utils/trpc";
 import { toast } from "@/hooks/use-toast";
 import { useDateFormat } from "@/hooks/useDateFormat";
+import { WorkerLaborInput, type WorkerAssignment, toApiLaborAssignments } from "@/components/labor/WorkerLaborInput";
 import { Card, CardContent } from "@/components/ui/card";
 import { PackageTypeSelector } from "../UnifiedPackagingModal";
 
@@ -121,6 +122,7 @@ export function FillKegModal({
 }: FillKegModalProps) {
   const { formatDateTimeForInput, parseDateTimeFromInput, seedDateTimeForInput } = useDateFormat();
   const [selectedKegIds, setSelectedKegIds] = useState<string[]>([]);
+  const [laborAssignments, setLaborAssignments] = useState<WorkerAssignment[]>([]);
   const [kegVolumes, setKegVolumes] = useState<Record<string, number>>({});
 
   const {
@@ -186,6 +188,7 @@ export function FillKegModal({
     if (!open) {
       setSelectedKegIds([]);
       setKegVolumes({});
+      setLaborAssignments([]);
     } else {
       // Re-seed the date on open (the form mounts once; defaults go stale).
       setValue("filledAt", seedDateTimeForInput(prefillFilledAt));
@@ -271,6 +274,11 @@ export function FillKegModal({
       lossUnit: data.lossUnit,
       carbonationMethod: data.carbonationMethod,
       productionNotes: data.productionNotes,
+      ...(laborAssignments.some((a) => a.workerId && a.hoursWorked > 0) && {
+        laborAssignments: toApiLaborAssignments(
+          laborAssignments.filter((a) => a.workerId && a.hoursWorked > 0),
+        ),
+      }),
     });
   };
 
@@ -443,6 +451,12 @@ export function FillKegModal({
                 </p>
               )}
             </div>
+
+            <WorkerLaborInput
+              value={laborAssignments}
+              onChange={setLaborAssignments}
+              activityLabel="this keg fill"
+            />
 
             {/* Production Notes */}
             <div>

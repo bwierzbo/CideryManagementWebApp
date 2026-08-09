@@ -22,6 +22,8 @@ import {
   batchCarbonationOperations,
   salesChannels,
   kegCleaningOperations,
+  workers,
+  activityLaborAssignments,
 } from "db";
 import { eq, and, desc, isNull, sql, like, or, inArray } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
@@ -215,6 +217,10 @@ const fillKegsSchema = z.object({
   sourceCarbonationOperationId: z.string().uuid().optional(),
   productionNotes: z.string().optional(),
   materials: z.array(kegMaterialSchema).optional(),
+  laborAssignments: z.array(z.object({
+    workerId: z.string().uuid(),
+    hoursWorked: z.number().positive(),
+  })).optional(),
 });
 
 const distributeKegFillSchema = z.object({
@@ -1228,6 +1234,29 @@ export const kegsRouter = router({
                 WHERE id = ${material.packagingPurchaseItemId}
               `);
             }
+          }
+        }
+
+        // Save labor assignments if provided. The whole multi-keg run is one
+        // work session, so labor attaches to the first fill record only —
+        // attaching to every keg would multiply the cost.
+        if (input.laborAssignments && input.laborAssignments.length > 0 && fillRecords.length > 0) {
+          for (const assignment of input.laborAssignments) {
+            const [worker] = await tx
+              .select({ hourlyRate: workers.hourlyRate })
+              .from(workers)
+              .where(eq(workers.id, assignment.workerId))
+              .limit(1);
+            const hourlyRate = parseFloat(worker?.hourlyRate?.toString() || "20.00");
+            const laborCost = assignment.hoursWorked * hourlyRate;
+            await tx.insert(activityLaborAssignments).values({
+              activityType: "keg_fill",
+              kegFillId: fillRecords[0].id,
+              workerId: assignment.workerId,
+              hoursWorked: assignment.hoursWorked.toString(),
+              hourlyRateSnapshot: hourlyRate.toString(),
+              laborCost: laborCost.toString(),
+            });
           }
         }
 
