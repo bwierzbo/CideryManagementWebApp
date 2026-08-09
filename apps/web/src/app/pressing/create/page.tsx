@@ -54,7 +54,8 @@ import {
   CheckCircle2,
 } from "lucide-react";
 import { trpc } from "@/utils/trpc";
-import { formatDate, formatDateForInput } from "@/utils/date-format";
+import { formatDate } from "@/utils/date-format";
+import { useDateFormat } from "@/hooks/useDateFormat";
 import { gallonsToLiters, litersToGallons } from "lib";
 import {
   WeightDisplay,
@@ -87,13 +88,14 @@ interface VesselAssignment {
 
 export default function BuildPressRunPage() {
   const router = useRouter();
+  const { formatDateTimeForInput, parseDateTimeFromInput } = useDateFormat();
 
   // State
   const [vendorFilter, setVendorFilter] = useState("");
   const [expandedVendors, setExpandedVendors] = useState<Set<string>>(new Set());
   const [selections, setSelections] = useState<Map<string, InventorySelection>>(new Map());
   const [vendorWeightUnits, setVendorWeightUnits] = useState<Map<string, WeightUnit>>(new Map());
-  const [completionDate, setCompletionDate] = useState(formatDateForInput(new Date()));
+  const [completionDate, setCompletionDate] = useState(() => formatDateTimeForInput(new Date()));
   const [totalJuiceVolumeL, setTotalJuiceVolumeL] = useState<number>(0);
   const [juiceVolumeUnit, setJuiceVolumeUnit] = useState<"L" | "gal">("L");
   const [assignments, setAssignments] = useState<VesselAssignment[]>([
@@ -301,7 +303,7 @@ export default function BuildPressRunPage() {
         fruitVarietyId: s.fruitVarietyId,
         quantityKg: s.useQuantityKg,
       })),
-      completionDate: new Date(completionDate),
+      completionDate: parseDateTimeFromInput(completionDate),
       totalJuiceVolumeL,
       assignments: assignments
         .filter((a) => a.toVesselId && a.volumeL > 0)
@@ -563,9 +565,9 @@ export default function BuildPressRunPage() {
           {/* Completion Date */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label>Completion Date</Label>
+              <Label>Completion Date & Time</Label>
               <Input
-                type="date"
+                type="datetime-local"
                 value={completionDate}
                 onChange={(e) => setCompletionDate(e.target.value)}
               />

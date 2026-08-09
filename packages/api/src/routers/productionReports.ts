@@ -37,8 +37,8 @@ export const productionReportsRouter = router({
         .from(pressRuns)
         .where(
           and(
-            gte(pressRuns.dateCompleted, input.startDate.toISOString().split("T")[0]),
-            lte(pressRuns.dateCompleted, input.endDate.toISOString().split("T")[0]),
+            sql`${pressRuns.dateCompleted}::date >= ${input.startDate.toISOString().split("T")[0]}::date`,
+            sql`${pressRuns.dateCompleted}::date <= ${input.endDate.toISOString().split("T")[0]}::date`,
             isNull(pressRuns.deletedAt),
             eq(pressRuns.status, "completed")
           )
@@ -59,8 +59,8 @@ export const productionReportsRouter = router({
         .innerJoin(baseFruitVarieties, eq(pressRunLoads.fruitVarietyId, baseFruitVarieties.id))
         .where(
           and(
-            gte(pressRuns.dateCompleted, input.startDate.toISOString().split("T")[0]),
-            lte(pressRuns.dateCompleted, input.endDate.toISOString().split("T")[0]),
+            sql`${pressRuns.dateCompleted}::date >= ${input.startDate.toISOString().split("T")[0]}::date`,
+            sql`${pressRuns.dateCompleted}::date <= ${input.endDate.toISOString().split("T")[0]}::date`,
             isNull(pressRuns.deletedAt),
             isNull(pressRunLoads.deletedAt),
             eq(pressRuns.status, "completed")

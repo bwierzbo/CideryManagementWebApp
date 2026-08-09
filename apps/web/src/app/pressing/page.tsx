@@ -51,6 +51,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { formatDate } from "@/utils/date-format";
+import { useDateFormat } from "@/hooks/useDateFormat";
 import {
   WeightDisplay,
   type WeightUnit,
@@ -264,6 +265,7 @@ function CompletedRunsSection({
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { formatDateTimeForInput, parseDateTimeFromInput } = useDateFormat();
   const [searchTerm, setSearchTerm] = useState("");
   const [weightDisplayUnit, setWeightDisplayUnit] = useState<WeightUnit>("lb");
   const [editDateModalOpen, setEditDateModalOpen] = useState(false);
@@ -353,25 +355,27 @@ function CompletedRunsSection({
   const handleEditDate = (pressRun: {
     id: string;
     pressRunName: string | null;
-    dateCompleted: string | null;
+    dateCompleted: string | Date | null;
   }) => {
     setEditingPressRun({
       id: pressRun.id,
       name: pressRun.pressRunName || "Press Run",
-      currentDate: pressRun.dateCompleted || "",
+      currentDate: pressRun.dateCompleted ? String(pressRun.dateCompleted) : "",
     });
-    setNewDate(pressRun.dateCompleted || "");
+    setNewDate(
+      pressRun.dateCompleted
+        ? formatDateTimeForInput(new Date(pressRun.dateCompleted))
+        : formatDateTimeForInput(new Date()),
+    );
     setEditDateModalOpen(true);
   };
 
   const handleSaveDate = () => {
     if (!editingPressRun || !newDate) return;
 
-    // Parse date at noon UTC to avoid timezone issues
-    const dateCompleted = new Date(`${newDate}T12:00:00.000Z`);
     updateDateMutation.mutate({
       id: editingPressRun.id,
-      dateCompleted: dateCompleted,
+      dateCompleted: parseDateTimeFromInput(newDate),
     });
   };
 
@@ -711,10 +715,10 @@ function CompletedRunsSection({
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="completion-date">Completion Date</Label>
+              <Label htmlFor="completion-date">Completion Date & Time</Label>
               <Input
                 id="completion-date"
-                type="date"
+                type="datetime-local"
                 value={newDate}
                 onChange={(e) => setNewDate(e.target.value)}
                 className="w-full"

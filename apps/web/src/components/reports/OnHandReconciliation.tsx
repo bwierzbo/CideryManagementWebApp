@@ -146,7 +146,11 @@ export function OnHandReconciliation() {
                         </TableCell>
                         <TableCell>{r.fermentationStart ?? "—"}</TableCell>
                         <TableCell>{r.startDate ?? "—"}</TableCell>
-                        <TableCell>{r.pressedDate ?? "—"}</TableCell>
+                        <TableCell>
+                          {r.pressedDate
+                            ? new Date(r.pressedDate).toLocaleDateString()
+                            : "—"}
+                        </TableCell>
                         <TableCell className="text-muted-foreground">
                           {r.parentName ?? "—"}
                         </TableCell>

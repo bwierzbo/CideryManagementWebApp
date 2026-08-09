@@ -16,6 +16,7 @@ import {
   batchMergeHistory,
   batchTransfers,
   batchRackingOperations,
+  systemSettings,
 } from "db";
 import { eq, and, desc, asc, sql, isNull, inArray } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
@@ -26,6 +27,27 @@ import {
 } from "lib";
 import { generateBatchNameFromComposition, type BatchComposition } from "lib";
 import { recomputeBatchVolume } from "../services/batch-volume-recompute";
+
+/**
+ * Press runs are named by the org-local calendar date of completion
+ * (YYYY-MM-DD-##). Completion is a full datetime, so derive the date part in
+ * the configured org timezone — an evening pressing must not roll the name
+ * over to the next UTC day.
+ */
+async function orgLocalDateStr(completionDate: Date): Promise<string> {
+  let timeZone = "America/Los_Angeles";
+  try {
+    const setting = await db
+      .select()
+      .from(systemSettings)
+      .where(eq(systemSettings.key, "timezone"))
+      .limit(1);
+    if (setting[0]?.value) timeZone = setting[0].value as string;
+  } catch {
+    // fall through to the default timezone
+  }
+  return completionDate.toLocaleDateString("en-CA", { timeZone });
+}
 
 // Input validation schemas
 const createPressRunSchema = z.object({
@@ -342,7 +364,7 @@ export const pressRunRouter = router({
           }
 
           // 3. Generate press run name
-          const completionDateStr = input.completionDate.toISOString().split("T")[0];
+          const completionDateStr = await orgLocalDateStr(input.completionDate);
           const existingRuns = await tx
             .select({ pressRunName: pressRuns.pressRunName })
             .from(pressRuns)
@@ -398,7 +420,7 @@ export const pressRunRouter = router({
             .values({
               pressRunName,
               status: "completed",
-              dateCompleted: completionDateStr,
+              dateCompleted: input.completionDate,
               totalAppleWeightKg: totalAppleWeightKg.toString(),
               totalJuiceVolume: input.totalJuiceVolumeL.toString(),
               totalJuiceVolumeUnit: "L",
@@ -1107,9 +1129,7 @@ export const pressRunRouter = router({
           }
 
           // Generate press run name based on completion date (YYYY-MM-DD-##)
-          const completionDateStr = input.completionDate
-            .toISOString()
-            .split("T")[0];
+          const completionDateStr = await orgLocalDateStr(input.completionDate);
 
           // Find existing press runs on the same date to determine sequence number
           const existingRuns = await tx
@@ -1149,7 +1169,7 @@ export const pressRunRouter = router({
               pressRunName,
               vesselId: input.vesselId,
               status: "completed",
-              dateCompleted: input.completionDate.toISOString().split("T")[0],
+              dateCompleted: input.completionDate,
               totalJuiceVolume: input.totalJuiceVolumeL.toString(),
               totalJuiceVolumeUnit: "L",
               extractionRate: extractionRate.toString(),
@@ -1317,7 +1337,7 @@ export const pressRunRouter = router({
               vesselId: input.vesselId,
               totalJuiceVolumeL: input.totalJuiceVolumeL,
               extractionRate: extractionRate,
-              dateCompleted: input.completionDate.toISOString().split("T")[0],
+              dateCompleted: input.completionDate,
             },
             ctx.session?.user?.id,
             "Press run completed and juice assigned to vessel",
@@ -1417,7 +1437,7 @@ export const pressRunRouter = router({
           if (pressRun[0].status === "in_progress") {
 
             // Generate press run name based on user-selected completion date (YYYY-MM-DD-##)
-            const completionDateStr = input.completionDate.toISOString().split("T")[0];
+            const completionDateStr = await orgLocalDateStr(input.completionDate);
 
             // Find existing press runs on the same date to determine sequence number
             const existingRuns = await tx
@@ -1464,7 +1484,7 @@ export const pressRunRouter = router({
               .set({
                 pressRunName,
                 status: "completed",
-                dateCompleted: input.completionDate.toISOString().split("T")[0], // Use user-selected completion date
+                dateCompleted: input.completionDate, // Use user-selected completion datetime
                 totalJuiceVolume: totalJuiceVolume.toString(),
                 totalJuiceVolumeUnit: "L",
                 extractionRate: extractionRate.toString(),
@@ -2827,14 +2847,16 @@ export const pressRunRouter = router({
         // Allow updating metadata fields (notes, pressingMethod, weatherConditions, dateCompleted)
         // even on completed press runs
 
-        // Convert dateCompleted to ISO date string if provided
         const updatePayload: Record<string, unknown> = { ...updateData };
         if (updateData.dateCompleted) {
-          updatePayload.dateCompleted = updateData.dateCompleted.toISOString().split("T")[0];
+          updatePayload.dateCompleted = updateData.dateCompleted;
 
-          // If date is changing and press run is completed, regenerate pressRunName
-          const newDateStr = updateData.dateCompleted.toISOString().split("T")[0];
-          const oldDateStr = existingPressRun[0].dateCompleted;
+          // If the local calendar date is changing and the press run is
+          // completed, regenerate pressRunName (names use the org-local date)
+          const newDateStr = await orgLocalDateStr(updateData.dateCompleted);
+          const oldDateStr = existingPressRun[0].dateCompleted
+            ? await orgLocalDateStr(new Date(existingPressRun[0].dateCompleted))
+            : null;
 
           if (existingPressRun[0].status === "completed" && newDateStr !== oldDateStr) {
             // Find existing press runs on the new date (excluding this press run)
