@@ -952,10 +952,21 @@ export const batchRouter = router({
           LIMIT 1
         `);
         const lastRow = ((lastActivityResult as any).rows ?? [])[0] as
-          | { event_date: Date; label: string }
+          | { event_date: Date | string; label: string }
           | undefined;
+        // Raw execute() can hand back naive timestamp strings. These columns
+        // store UTC wall time (all inputs go local → UTC), so pin the value
+        // to UTC explicitly — otherwise the browser parses the naive string
+        // in ITS timezone and the hint shows/compares a shifted time
+        // ("Jul 10 4:28 AM" for a Jul 9 9:28 PM PDT filter).
+        const toUtcInstant = (v: Date | string): Date =>
+          v instanceof Date
+            ? v
+            : new Date(
+                v.replace(" ", "T") + (/[Zz]|[+-]\d{2}/.test(v.slice(10)) ? "" : "Z"),
+              );
         const lastActivity = lastRow
-          ? { date: lastRow.event_date, label: lastRow.label }
+          ? { date: toUtcInstant(lastRow.event_date), label: lastRow.label }
           : null;
 
         // Base response
