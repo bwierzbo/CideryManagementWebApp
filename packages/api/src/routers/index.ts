@@ -6347,14 +6347,18 @@ export const appRouter = router({
           .where(
             and(
               eq(bottleRuns.vesselId, input.vesselId),
-              isNull(bottleRuns.deletedAt),
+              isNull(bottleRuns.voidedAt),
             ),
           );
         const [keg] = await db
           .select({ at: sql<string | null>`MAX(${kegFills.filledAt})` })
           .from(kegFills)
           .where(
-            and(eq(kegFills.vesselId, input.vesselId), isNull(kegFills.deletedAt)),
+            and(
+              eq(kegFills.vesselId, input.vesselId),
+              isNull(kegFills.deletedAt),
+              isNull(kegFills.voidedAt),
+            ),
           );
 
         const candidates = [toUtc(xfer?.at ?? null), toUtc(bottle?.at ?? null), toUtc(keg?.at ?? null)]
