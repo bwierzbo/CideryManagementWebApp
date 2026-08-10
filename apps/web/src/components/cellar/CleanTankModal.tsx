@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -47,7 +47,25 @@ export function CleanTankModal({
   vesselName,
 }: CleanTankModalProps) {
   const utils = trpc.useUtils();
-  const { formatDateTimeForInput, parseDateTimeFromInput } = useDateFormat();
+  const { formatDateTimeForInput, parseDateTimeFromInput, formatDateTime } = useDateFormat();
+
+  // Owner rule: a tank gets cleaned ~2 h after the event that emptied it.
+  // Seed the date from that event when it's in the past; fall back to now.
+  const { data: lastEmptied } = trpc.vessel.lastEmptiedAt.useQuery(
+    { vesselId },
+    { enabled: open },
+  );
+  const dateTouchedRef = useRef(false);
+  const seedCleanedAt = (lastEmptiedAt?: string | Date | null) => {
+    if (lastEmptiedAt) {
+      const d = new Date(lastEmptiedAt);
+      if (!Number.isNaN(d.getTime())) {
+        const seeded = new Date(d.getTime() + 2 * 60 * 60 * 1000);
+        if (seeded.getTime() < Date.now()) return seeded;
+      }
+    }
+    return new Date();
+  };
 
   const {
     register,
@@ -72,13 +90,24 @@ export function CleanTankModal({
   // Reset when modal opens
   useEffect(() => {
     if (open) {
+      dateTouchedRef.current = false;
       reset({
-        cleanedAt: new Date(),
+        cleanedAt: seedCleanedAt(lastEmptied?.lastEmptiedAt),
         notes: "",
       });
       setLaborAssignments([]);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, reset]);
+
+  // The last-emptied query resolves after open — apply the seed once it
+  // arrives, unless the user already edited the date.
+  useEffect(() => {
+    if (open && !dateTouchedRef.current && lastEmptied?.lastEmptiedAt) {
+      setValue("cleanedAt", seedCleanedAt(lastEmptied.lastEmptiedAt));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, lastEmptied]);
 
   const cleanTankMutation = trpc.vessel.cleanTank.useMutation({
     onSuccess: (data) => {
@@ -132,11 +161,18 @@ export function CleanTankModal({
               value={cleanedAt ? formatDateTimeForInput(cleanedAt) : ''}
               onChange={(e) => {
                 if (e.target.value) {
+                  dateTouchedRef.current = true;
                   setValue("cleanedAt", parseDateTimeFromInput(e.target.value));
                 }
               }}
               className="w-full mt-1"
             />
+            {lastEmptied?.lastEmptiedAt && (
+              <p className="text-xs text-muted-foreground mt-1">
+                Tank last emptied {formatDateTime(lastEmptied.lastEmptiedAt)} —
+                defaulted to 2 h after
+              </p>
+            )}
             {errors.cleanedAt && (
               <p className="text-sm text-red-600 mt-1">
                 {errors.cleanedAt.message}

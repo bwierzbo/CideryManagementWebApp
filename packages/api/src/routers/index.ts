@@ -62,6 +62,8 @@ import {
   batchCompositions,
   batchMeasurements,
   batchTransfers,
+  bottleRuns,
+  kegFills,
   vessels,
   vesselCleaningOperations,
   baseFruitVarieties,
@@ -6311,6 +6313,56 @@ export const appRouter = router({
             message: "Failed to prep vessel for cleaning",
           });
         }
+      }),
+
+    // When this tank was last vacated — the latest transfer-out, bottle run,
+    // or keg fill from it. Anchors the cleaning form's default date (owner
+    // rule: cleans happen ~2 h after the event that emptied the tank).
+    lastEmptiedAt: createRbacProcedure("read", "vessel")
+      .input(z.object({ vesselId: z.string().uuid("Invalid vessel ID") }))
+      .query(async ({ input }) => {
+        // Naive timestamp columns come back as strings without a zone marker;
+        // pin them to UTC (they store UTC wall time) before comparing.
+        const toUtc = (v: Date | string | null): Date | null => {
+          if (!v) return null;
+          if (v instanceof Date) return v;
+          const d = new Date(
+            v.replace(" ", "T") + (/[Zz]|[+-]\d{2}/.test(v.slice(10)) ? "" : "Z"),
+          );
+          return Number.isNaN(d.getTime()) ? null : d;
+        };
+
+        const [xfer] = await db
+          .select({ at: sql<string | null>`MAX(${batchTransfers.transferredAt})` })
+          .from(batchTransfers)
+          .where(
+            and(
+              eq(batchTransfers.sourceVesselId, input.vesselId),
+              isNull(batchTransfers.deletedAt),
+            ),
+          );
+        const [bottle] = await db
+          .select({ at: sql<string | null>`MAX(${bottleRuns.packagedAt})` })
+          .from(bottleRuns)
+          .where(
+            and(
+              eq(bottleRuns.vesselId, input.vesselId),
+              isNull(bottleRuns.deletedAt),
+            ),
+          );
+        const [keg] = await db
+          .select({ at: sql<string | null>`MAX(${kegFills.filledAt})` })
+          .from(kegFills)
+          .where(
+            and(eq(kegFills.vesselId, input.vesselId), isNull(kegFills.deletedAt)),
+          );
+
+        const candidates = [toUtc(xfer?.at ?? null), toUtc(bottle?.at ?? null), toUtc(keg?.at ?? null)]
+          .filter((d): d is Date => d !== null);
+        const lastEmptiedAt = candidates.length
+          ? new Date(Math.max(...candidates.map((d) => d.getTime())))
+          : null;
+        return { lastEmptiedAt };
       }),
 
     // Clean tank - mark as available after cleaning and record cleaning details.
