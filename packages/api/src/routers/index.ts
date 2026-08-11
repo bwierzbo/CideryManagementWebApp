@@ -3449,6 +3449,38 @@ export const appRouter = router({
             )
             .orderBy(desc(batchRackingOperations.rackedAt));
 
+          // Packaging (bottle runs / keg fills) also empties a vessel — the
+          // owner expects the placard to show the event that necessitated
+          // cleaning, not a stale earlier cleaning.
+          const lastBottleRunsOut = await db
+            .select({
+              vesselId: bottleRuns.vesselId,
+              packagedAt: bottleRuns.packagedAt,
+            })
+            .from(bottleRuns)
+            .where(
+              and(
+                inArray(bottleRuns.vesselId, vesselIdsWithoutBatches),
+                isNull(bottleRuns.voidedAt),
+              ),
+            )
+            .orderBy(desc(bottleRuns.packagedAt));
+
+          const lastKegFillsOut = await db
+            .select({
+              vesselId: kegFills.vesselId,
+              filledAt: kegFills.filledAt,
+            })
+            .from(kegFills)
+            .where(
+              and(
+                inArray(kegFills.vesselId, vesselIdsWithoutBatches),
+                isNull(kegFills.voidedAt),
+                isNull(kegFills.deletedAt),
+              ),
+            )
+            .orderBy(desc(kegFills.filledAt));
+
           // Build map with most recent activity per vessel
           for (const cleaning of lastCleanings) {
             if (!lastActivityMap.has(cleaning.vesselId)) {
@@ -3476,6 +3508,28 @@ export const appRouter = router({
               lastActivityMap.set(racking.vesselId, {
                 type: "transferred",
                 date: racking.rackedAt,
+              });
+            }
+          }
+
+          // Packaging out of the vessel → "emptied"
+          for (const run of lastBottleRunsOut) {
+            if (!run.vesselId) continue;
+            const existing = lastActivityMap.get(run.vesselId);
+            if (!existing || run.packagedAt > existing.date) {
+              lastActivityMap.set(run.vesselId, {
+                type: "emptied",
+                date: run.packagedAt,
+              });
+            }
+          }
+          for (const fill of lastKegFillsOut) {
+            if (!fill.vesselId) continue;
+            const existing = lastActivityMap.get(fill.vesselId);
+            if (!existing || fill.filledAt > existing.date) {
+              lastActivityMap.set(fill.vesselId, {
+                type: "emptied",
+                date: fill.filledAt,
               });
             }
           }

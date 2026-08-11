@@ -1178,18 +1178,34 @@ const updateBatchStatusMutation = trpc.batch.update.useMutation({
                         })()}
                       </div>
                     ) : (
-                      <p className="text-xs text-gray-400 italic">
+                      <p
+                        className={
+                          vessel.status === "cleaning"
+                            ? "text-xs text-amber-600 italic"
+                            : "text-xs text-gray-400 italic"
+                        }
+                      >
                         {(() => {
                           const lastActivity = (liquidMapVessel as any)?.lastActivity;
+                          const needsCleaning = vessel.status === "cleaning";
                           if (lastActivity) {
                             const activityDate = formatDate(lastActivity.date);
-                            if (lastActivity.type === "cleaned") {
-                              return `Cleaned ${activityDate}`;
-                            } else if (lastActivity.type === "transferred") {
-                              return `Batch transferred ${activityDate}`;
+                            const eventText =
+                              lastActivity.type === "cleaned"
+                                ? `Cleaned ${activityDate}`
+                                : lastActivity.type === "emptied"
+                                  ? `Emptied ${activityDate}`
+                                  : `Batch transferred ${activityDate}`;
+                            // A needs-cleaning tank leads with the event that
+                            // necessitated the clean, never a stale cleaning.
+                            if (needsCleaning) {
+                              return lastActivity.type === "cleaned"
+                                ? `Needs cleaning (last cleaned ${activityDate})`
+                                : `${eventText} — needs cleaning`;
                             }
+                            return eventText;
                           }
-                          return "No active batch";
+                          return needsCleaning ? "Needs cleaning" : "No active batch";
                         })()}
                       </p>
                     )}
