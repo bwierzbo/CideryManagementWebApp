@@ -41,7 +41,7 @@ import {
   calculateCO2FromSugar,
   estimateResidualCO2,
 } from "lib";
-import { WorkerLaborInput, type WorkerAssignment, toApiLaborAssignments } from "@/components/labor/WorkerLaborInput";
+import { WorkerLaborInput, type WorkerAssignment, toApiLaborAssignments, laborDurationHours } from "@/components/labor/WorkerLaborInput";
 import { humanizeMutationError } from "@/utils/mutation-errors";
 
 const SUGAR_TYPE_LABELS: Record<string, string> = {
@@ -107,7 +107,7 @@ interface CarbonateModalProps {
   } | null;
   /** Receives the operation's start date so recipe callers can anchor the
    *  remaining schedule to the actual date. */
-  onSuccess?: (startedAt?: Date) => void;
+  onSuccess?: (startedAt?: Date, laborHours?: number) => void;
   /** Recipe-planned values to prefill (method uses recipe terms forced|natural). */
   prefillTargetCo2Volumes?: number;
   prefillMethod?: "forced" | "natural";
@@ -389,6 +389,7 @@ export function CarbonateModal({
           : startedAt
             ? parseDateTimeFromInput(startedAt)
             : undefined,
+        laborDurationHours(laborAssignments),
       );
       onOpenChange(false);
     },
@@ -415,6 +416,7 @@ export function CarbonateModal({
           : startedAt
             ? parseDateTimeFromInput(startedAt)
             : undefined,
+        laborDurationHours(laborAssignments),
       );
       onOpenChange(false);
     },

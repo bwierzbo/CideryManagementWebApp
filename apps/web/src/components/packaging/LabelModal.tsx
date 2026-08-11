@@ -35,7 +35,7 @@ import { useBatchDateValidation } from "@/hooks/useBatchDateValidation";
 import { DateWarning } from "@/components/ui/DateWarning";
 import { Tag, AlertTriangle, Info, Loader2, ChevronsUpDown, Check, Plus, X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { WorkerLaborInput, type WorkerAssignment, toApiLaborAssignments } from "@/components/labor/WorkerLaborInput";
+import { WorkerLaborInput, type WorkerAssignment, toApiLaborAssignments, laborDurationHours } from "@/components/labor/WorkerLaborInput";
 import { humanizeMutationError } from "@/utils/mutation-errors";
 
 const labelSchema = z.object({
@@ -59,7 +59,7 @@ interface LabelModalProps {
   unitsProduced: number;
   unitsLabeled?: number; // Current number of labeled units (for partial labeling)
   /** Receives labeledAt for schedule anchoring. */
-  onSuccess: (labeledAt?: Date) => void;
+  onSuccess: (labeledAt?: Date, laborHours?: number) => void;
   /** Seed the date field (e.g. a recipe step's scheduled date when back-filling). */
   prefillLabeledAt?: string | Date | null;
 }
@@ -251,7 +251,14 @@ export function LabelModal({
       utils.packaging.list.invalidate();
       utils.packaging.get.invalidate(bottleRunId);
       refetchPackagingItems();
-      onSuccess(labeledAt);
+      onSuccess(
+        labeledAt
+          ? typeof labeledAt === "string"
+            ? parseDateTimeFromInput(labeledAt)
+            : labeledAt
+          : undefined,
+        laborDurationHours(laborAssignments),
+      );
 
       // Close modal after successful labeling
       onClose();

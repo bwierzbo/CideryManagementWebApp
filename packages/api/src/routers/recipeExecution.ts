@@ -79,6 +79,11 @@ async function recomputeSchedule(tx: Tx, executionId: string) {
       packagingPath: t.packagingPath ?? "all",
       status: t.status,
       completedAt: t.completedAt,
+      laborHours: (() => {
+        const ad = t.actualData as Record<string, unknown> | null;
+        if (ad && typeof ad.laborHours === "number") return ad.laborHours;
+        return t.actualHours ? parseFloat(String(t.actualHours)) : null;
+      })(),
     })),
     startDateNoon(exec.startDate) ?? exec.startDate,
   );
@@ -529,6 +534,9 @@ export const recipeExecutionRouter = router({
         taskId: z.string().uuid(),
         completedAt: z.coerce.date().optional(),
         actualHours: z.number().nonnegative().nullish(),
+        /** Wall-clock duration of the work (max hours across parallel
+         *  workers) — anchors followers to the END of this task's work. */
+        laborDurationHours: z.number().nonnegative().nullish(),
         notes: z.string().nullish(),
         actualData: z.record(z.string(), z.unknown()).nullish(),
         laborAssignments: z
@@ -546,6 +554,13 @@ export const recipeExecutionRouter = router({
         const task = await loadTask(tx, input.taskId);
         const completedAt = input.completedAt ?? new Date();
         const laborSum = input.laborAssignments?.reduce((s, a) => s + a.hoursWorked, 0);
+        // Duration for schedule anchoring: explicit from real forms, else the
+        // longest single assignment (parallel workers), stored in actualData.
+        const laborDurationH =
+          input.laborDurationHours ??
+          (input.laborAssignments?.length
+            ? Math.max(...input.laborAssignments.map((a) => a.hoursWorked))
+            : null);
         await tx
           .update(batchStepTasks)
           .set({
@@ -558,7 +573,10 @@ export const recipeExecutionRouter = router({
                   ? laborSum.toString()
                   : task.actualHours,
             notes: input.notes ?? task.notes,
-            actualData: input.actualData ?? task.actualData,
+            actualData: {
+              ...((input.actualData ?? task.actualData ?? {}) as Record<string, unknown>),
+              ...(laborDurationH != null ? { laborHours: laborDurationH } : {}),
+            },
             updatedAt: new Date(),
           })
           .where(eq(batchStepTasks.id, task.id));

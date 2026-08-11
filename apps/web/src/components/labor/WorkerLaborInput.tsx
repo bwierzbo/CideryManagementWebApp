@@ -267,3 +267,17 @@ export function toApiLaborAssignments(
     hoursWorked: a.hoursWorked,
   }));
 }
+
+/**
+ * Wall-clock duration of the work session: the max hours across workers
+ * (workers are assumed to work in parallel). Used to anchor the recipe
+ * schedule — the next step starts after this task's work ended.
+ */
+export function laborDurationHours(
+  assignments: WorkerAssignment[]
+): number | undefined {
+  const hours = assignments
+    .filter((a) => a.workerId && a.hoursWorked > 0)
+    .map((a) => a.hoursWorked);
+  return hours.length ? Math.max(...hours) : undefined;
+}

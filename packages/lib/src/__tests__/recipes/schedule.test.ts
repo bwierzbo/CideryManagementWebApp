@@ -120,6 +120,39 @@ describe("rescheduleWithActuals", () => {
     expect(iso(dates[2])).toBe("2026-06-01T00:00:00.000Z");
   });
 
+  it("anchors followers to the END of a done step's labor (completedAt + laborHours)", () => {
+    // Owner rule: work started at 12 pm took 1 h → an immediate next step
+    // lands at 1 pm; an N-day wait counts from 1 pm too.
+    const dates = rescheduleWithActuals(
+      [
+        {
+          triggerKind: "date_offset_from_start",
+          triggerData: { days: 0 },
+          packagingPath: "all",
+          status: "done",
+          completedAt: new Date("2026-06-01T19:00:00Z"), // noon PDT
+          laborHours: 1,
+        },
+        { triggerKind: "after_previous", triggerData: {}, packagingPath: "all" },
+        { triggerKind: "date_offset_from_previous", triggerData: { days: 2 }, packagingPath: "all" },
+      ],
+      START,
+    );
+    expect(iso(dates[1])).toBe("2026-06-01T20:00:00.000Z"); // 1 pm — right after the work
+    expect(iso(dates[2])).toBe("2026-06-03T20:00:00.000Z"); // 2 days after the work ended
+  });
+
+  it("ignores zero/absent laborHours (anchor stays at completedAt)", () => {
+    const dates = rescheduleWithActuals(
+      [
+        { ...STEPS[0], status: "done", completedAt: new Date("2026-06-01T00:00:00Z"), laborHours: 0 },
+        { triggerKind: "after_previous", triggerData: {}, packagingPath: "all" },
+      ],
+      START,
+    );
+    expect(iso(dates[1])).toBe("2026-06-01T00:00:00.000Z");
+  });
+
   it("keeps date_offset_from_start anchored to batch start, not actuals", () => {
     const dates = rescheduleWithActuals(
       [

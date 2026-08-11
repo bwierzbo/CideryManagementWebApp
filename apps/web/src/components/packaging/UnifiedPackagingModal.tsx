@@ -21,7 +21,7 @@ interface UnifiedPackagingModalProps {
   initialType?: PackagingType;
   preBottling?: PreBottlingData;
   /** Receives the packaging date (packagedAt / filledAt) from the inner modal. */
-  onSuccess?: (packagedAt?: Date) => void;
+  onSuccess?: (packagedAt?: Date, laborHours?: number) => void;
   /** Seed the date field (e.g. a recipe step's scheduled date when back-filling). */
   prefillPackagedAt?: string | Date | null;
 }
