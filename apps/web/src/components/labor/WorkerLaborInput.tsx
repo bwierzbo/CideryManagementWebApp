@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -28,6 +28,13 @@ interface WorkerLaborInputProps {
   value: WorkerAssignment[];
   onChange: (assignments: WorkerAssignment[]) => void;
   activityLabel?: string;
+  /**
+   * Activity key from the labor-defaults settings (e.g. "filtering",
+   * "additive"). When set, an empty labor list seeds itself with the default
+   * worker at that activity's expected hours — the user just confirms or
+   * adjusts. Removing the seeded row keeps it removed.
+   */
+  activityType?: string;
   className?: string;
   disabled?: boolean;
 }
@@ -36,6 +43,7 @@ export function WorkerLaborInput({
   value,
   onChange,
   activityLabel = "this activity",
+  activityType,
   className,
   disabled = false,
 }: WorkerLaborInputProps) {
@@ -44,6 +52,34 @@ export function WorkerLaborInput({
 
   const { data: workersData, isLoading } = trpc.workers.list.useQuery();
   const workers = workersData?.workers || [];
+
+  const { data: laborDefaults } = trpc.settings.getLaborDefaults.useQuery(undefined, {
+    enabled: !!activityType,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // Seed the default worker + expected hours whenever the list is empty —
+  // unless the user deliberately cleared it this session.
+  const userClearedRef = useRef(false);
+  useEffect(() => {
+    if (!activityType || disabled || userClearedRef.current) return;
+    if (value.length > 0) return;
+    if (!laborDefaults?.defaultWorkerId || workers.length === 0) return;
+    const worker = workers.find((w) => w.id === laborDefaults.defaultWorkerId);
+    const hours = laborDefaults.hoursByActivity?.[activityType];
+    if (!worker || !hours || hours <= 0) return;
+    const hourlyRate = parseFloat(worker.hourlyRate ?? "20.00");
+    onChange([
+      {
+        workerId: worker.id,
+        workerName: worker.name,
+        hoursWorked: hours,
+        hourlyRate,
+        laborCost: hours * hourlyRate,
+      },
+    ]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activityType, disabled, value.length, laborDefaults, workers.length]);
 
   // Filter out workers that are already assigned
   const availableWorkers = workers.filter(
@@ -74,6 +110,7 @@ export function WorkerLaborInput({
   };
 
   const handleRemoveWorker = (workerId: string) => {
+    userClearedRef.current = true; // don't re-seed a deliberately cleared list
     onChange(value.filter((v) => v.workerId !== workerId));
   };
 

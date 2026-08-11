@@ -580,6 +580,7 @@ export function TankTransferForm({
 
       {/* Labor Tracking */}
       <WorkerLaborInput
+              activityType="racking"
         value={laborAssignments}
         onChange={setLaborAssignments}
         activityLabel="this transfer"
