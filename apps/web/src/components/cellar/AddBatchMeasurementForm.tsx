@@ -22,14 +22,14 @@ import { toast } from "@/hooks/use-toast";
 import { useBatchDateValidation } from "@/hooks/useBatchDateValidation";
 import { DateWarning } from "@/components/ui/DateWarning";
 import { LastActivityHint } from "@/components/ui/LastActivityHint";
-import { WorkerLaborInput, type WorkerAssignment, toApiLaborAssignments } from "@/components/labor/WorkerLaborInput";
+import { WorkerLaborInput, type WorkerAssignment, toApiLaborAssignments, laborDurationHours } from "@/components/labor/WorkerLaborInput";
 import { Loader2, Info } from "lucide-react";
 import { useDateFormat } from "@/hooks/useDateFormat";
 
 interface AddBatchMeasurementFormProps {
   batchId: string;
   /** Receives the measurement date for schedule anchoring. */
-  onSuccess: (measuredAt?: Date) => void;
+  onSuccess: (measuredAt?: Date, laborHours?: number) => void;
   onCancel: () => void;
   /** Seed the date field (e.g. a recipe step's scheduled date when back-filling). */
   prefillMeasuredAt?: string | Date | null;
@@ -188,7 +188,7 @@ export function AddBatchMeasurementForm({
         title: "Success",
         description: "Measurement added successfully",
       });
-      onSuccess(parseDateTimeFromInput(measurementDateTime));
+      onSuccess(parseDateTimeFromInput(measurementDateTime), laborDurationHours(laborAssignments));
     },
     onError: (error) => {
       toast({

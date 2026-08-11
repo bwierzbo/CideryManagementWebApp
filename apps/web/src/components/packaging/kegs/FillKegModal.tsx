@@ -28,7 +28,7 @@ import { PreBottlingBanner, type PreBottlingData } from "../PreBottlingBanner";
 import { trpc } from "@/utils/trpc";
 import { toast } from "@/hooks/use-toast";
 import { useDateFormat } from "@/hooks/useDateFormat";
-import { WorkerLaborInput, type WorkerAssignment, toApiLaborAssignments } from "@/components/labor/WorkerLaborInput";
+import { WorkerLaborInput, type WorkerAssignment, toApiLaborAssignments, laborDurationHours } from "@/components/labor/WorkerLaborInput";
 import { Card, CardContent } from "@/components/ui/card";
 import { PackageTypeSelector } from "../UnifiedPackagingModal";
 import { humanizeMutationError } from "@/utils/mutation-errors";
@@ -55,7 +55,7 @@ interface FillKegModalProps {
   onTypeChange?: (type: "bottles" | "kegs") => void; // Callback when type changes
   preBottling?: PreBottlingData;
   /** Called after kegs are filled; receives filledAt for schedule anchoring. */
-  onSuccess?: (filledAt?: Date) => void;
+  onSuccess?: (filledAt?: Date, laborHours?: number) => void;
   /** Seed the date field (e.g. a recipe step's scheduled date when back-filling). */
   prefillFilledAt?: string | Date | null;
 }
@@ -173,7 +173,7 @@ export function FillKegModal({
       setSelectedKegIds([]);
       setKegVolumes({});
       onClose();
-      onSuccess?.(parseDateTimeFromInput(getValues("filledAt")));
+      onSuccess?.(parseDateTimeFromInput(getValues("filledAt")), laborDurationHours(laborAssignments));
     },
     onError: (error) => {
       toast({

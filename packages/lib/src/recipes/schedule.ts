@@ -53,6 +53,14 @@ export interface RuntimeStep extends ScheduleStep {
   status?: string;
   /** Real completion time for a done step — anchors everything after it. */
   completedAt?: Date | null;
+  /**
+   * Hours of labor the done step took (max across parallel workers). The
+   * step's effective END time — completedAt + laborHours — is what anchors
+   * followers, so an immediate next step lands after the work finished
+   * (12 pm start + 1 h labor → next step 1 pm), and N-day waits count from
+   * the end of the work, not its start.
+   */
+  laborHours?: number | null;
 }
 
 /**
@@ -85,7 +93,9 @@ export function rescheduleWithActuals(
       const s = steps[i];
       let eff: Date | null;
       if (s.status === "done" && s.completedAt) {
-        eff = s.completedAt;
+        const laborH =
+          typeof s.laborHours === "number" && s.laborHours > 0 ? s.laborHours : 0;
+        eff = new Date(s.completedAt.getTime() + laborH * MS_PER_HOUR);
       } else if (s.status === "skipped") {
         eff = prev; // pass-through — a skipped step doesn't delay the rest
       } else {

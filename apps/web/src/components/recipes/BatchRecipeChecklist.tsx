@@ -661,11 +661,12 @@ export function BatchRecipeChecklist({ batchId }: { batchId: string }) {
                 : "fine"
           }
           prefillFilteredAt={actionTask?.scheduledDate ?? null}
-          onSuccess={(actualAt?: Date) =>
+          onSuccess={(actualAt?: Date, laborHours?: number) =>
             actionTask &&
             complete.mutate({
               taskId: actionTask.id,
               ...(actualAt ? { completedAt: actualAt } : {}),
+              ...(laborHours ? { laborDurationHours: laborHours } : {}),
             })
           }
         />
@@ -699,11 +700,12 @@ export function BatchRecipeChecklist({ batchId }: { batchId: string }) {
                 : undefined
           }
           prefillStartedAt={actionTask?.scheduledDate ?? null}
-          onSuccess={(actualAt?: Date) =>
+          onSuccess={(actualAt?: Date, laborHours?: number) =>
             actionTask &&
             complete.mutate({
               taskId: actionTask.id,
               ...(actualAt ? { completedAt: actualAt } : {}),
+              ...(laborHours ? { laborDurationHours: laborHours } : {}),
             })
           }
         />
@@ -716,11 +718,12 @@ export function BatchRecipeChecklist({ batchId }: { batchId: string }) {
           currentVolumeL={currentVolumeL}
           initialType={actionTask?.packagingPath === "keg" ? "kegs" : "bottles"}
           prefillPackagedAt={actionTask?.scheduledDate ?? null}
-          onSuccess={(actualAt?: Date) =>
+          onSuccess={(actualAt?: Date, laborHours?: number) =>
             actionTask &&
             complete.mutate({
               taskId: actionTask.id,
               ...(actualAt ? { completedAt: actualAt } : {}),
+              ...(laborHours ? { laborDurationHours: laborHours } : {}),
             })
           }
         />
@@ -738,11 +741,12 @@ export function BatchRecipeChecklist({ batchId }: { batchId: string }) {
           batchId={batchId}
           unitsProduced={Number(latestRun.unitsProduced ?? 0)}
           prefillPasteurizedAt={actionTask?.scheduledDate ?? null}
-          onSuccess={(actualAt?: Date) =>
+          onSuccess={(actualAt?: Date, laborHours?: number) =>
             actionTask &&
             complete.mutate({
               taskId: actionTask.id,
               ...(actualAt ? { completedAt: actualAt } : {}),
+              ...(laborHours ? { laborDurationHours: laborHours } : {}),
             })
           }
         />
@@ -754,11 +758,12 @@ export function BatchRecipeChecklist({ batchId }: { batchId: string }) {
           unitsProduced={Number(latestRun.unitsProduced ?? 0)}
           unitsLabeled={Number(latestRun.unitsLabeled ?? 0)}
           prefillLabeledAt={actionTask?.scheduledDate ?? null}
-          onSuccess={(actualAt?: Date) =>
+          onSuccess={(actualAt?: Date, laborHours?: number) =>
             actionTask &&
             complete.mutate({
               taskId: actionTask.id,
               ...(actualAt ? { completedAt: actualAt } : {}),
+              ...(laborHours ? { laborDurationHours: laborHours } : {}),
             })
           }
         />

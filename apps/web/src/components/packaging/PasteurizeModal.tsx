@@ -29,7 +29,7 @@ import { useDateFormat } from "@/hooks/useDateFormat";
 import { useBatchDateValidation } from "@/hooks/useBatchDateValidation";
 import { DateWarning } from "@/components/ui/DateWarning";
 import { Flame, Info, Loader2, Thermometer, Droplet, AlertTriangle, Snowflake, Wind, Waves } from "lucide-react";
-import { WorkerLaborInput, type WorkerAssignment, toApiLaborAssignments } from "@/components/labor/WorkerLaborInput";
+import { WorkerLaborInput, type WorkerAssignment, toApiLaborAssignments, laborDurationHours } from "@/components/labor/WorkerLaborInput";
 import {
   calculatePU,
   calculateEnhancedPasteurization,
@@ -81,7 +81,7 @@ interface PasteurizeModalProps {
   batchId: string;
   unitsProduced: number;
   /** Receives pasteurizedAt for schedule anchoring. */
-  onSuccess: (pasteurizedAt?: Date) => void;
+  onSuccess: (pasteurizedAt?: Date, laborHours?: number) => void;
   /** Seed the date field (e.g. a recipe step's scheduled date when back-filling). */
   prefillPasteurizedAt?: string | Date | null;
 }
@@ -361,7 +361,7 @@ export function PasteurizeModal({
         description: `Successfully recorded pasteurization for ${bottleRunName} with ${totalPU.toFixed(1)} PU`,
       });
       utils.packaging.list.invalidate();
-      onSuccess(pasteurizedAt ? parseDateTimeFromInput(pasteurizedAt) : undefined);
+      onSuccess(pasteurizedAt ? parseDateTimeFromInput(pasteurizedAt) : undefined, laborDurationHours(laborAssignments));
       onClose();
     },
     onError: (error) => {

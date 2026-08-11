@@ -30,7 +30,7 @@ import { useDateFormat } from "@/hooks/useDateFormat";
 import { Card } from "@/components/ui/card";
 import { PackageTypeSelector } from "./UnifiedPackagingModal";
 import { PreBottlingBanner, type PreBottlingData } from "./PreBottlingBanner";
-import { WorkerLaborInput, type WorkerAssignment, toApiLaborAssignments } from "@/components/labor/WorkerLaborInput";
+import { WorkerLaborInput, type WorkerAssignment, toApiLaborAssignments, laborDurationHours } from "@/components/labor/WorkerLaborInput";
 
 // Form validation schema
 const packagingMaterialSchema = z.object({
@@ -73,7 +73,7 @@ interface BottleModalProps {
   onTypeChange?: (type: "bottles" | "kegs") => void; // Callback when type changes
   preBottling?: PreBottlingData;
   /** Called after a packaging run is created; receives packagedAt for schedule anchoring. */
-  onSuccess?: (packagedAt?: Date) => void;
+  onSuccess?: (packagedAt?: Date, laborHours?: number) => void;
   /** Seed the date field (e.g. a recipe step's scheduled date when back-filling). */
   prefillPackagedAt?: string | Date | null;
 }
@@ -442,7 +442,7 @@ export function BottleModal({
 
       console.log("Packaging run created:", result);
       onClose();
-      onSuccess?.(parseDateTimeFromInput(getValues("packagedAt")));
+      onSuccess?.(parseDateTimeFromInput(getValues("packagedAt")), laborDurationHours(laborAssignments));
     } catch (error) {
       console.error("Failed to create packaging run:", error);
 

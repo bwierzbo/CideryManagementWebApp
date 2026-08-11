@@ -21,7 +21,7 @@ import { toast } from "@/hooks/use-toast";
 import { useBatchDateValidation } from "@/hooks/useBatchDateValidation";
 import { DateWarning } from "@/components/ui/DateWarning";
 import { LastActivityHint } from "@/components/ui/LastActivityHint";
-import { WorkerLaborInput, type WorkerAssignment, toApiLaborAssignments } from "@/components/labor/WorkerLaborInput";
+import { WorkerLaborInput, type WorkerAssignment, toApiLaborAssignments, laborDurationHours } from "@/components/labor/WorkerLaborInput";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Loader2, Package, AlertTriangle, Calculator } from "lucide-react";
 import { additiveRateGramsPerL } from "lib/src/units/conversions";
@@ -49,7 +49,7 @@ interface AddBatchAdditiveFormProps {
   batchId: string;
   /** Receives the recorded addedAt so recipe callers can anchor the schedule
    *  to the actual date (completeTask → recomputeSchedule). */
-  onSuccess: (addedAt?: Date) => void;
+  onSuccess: (addedAt?: Date, laborHours?: number) => void;
   onCancel: () => void;
   /** Recipe-planned values to prefill (e.g. Cascade Hops @ 1.5 g/L = 180 g). */
   prefillAdditiveType?: string | null;
@@ -460,7 +460,7 @@ export function AddBatchAdditiveForm({
       if (data.reclassifiedAsWine) {
         utils.batch.invalidate();
       }
-      onSuccess(parseDateTimeFromInput(addedDate));
+      onSuccess(parseDateTimeFromInput(addedDate), laborDurationHours(laborAssignments));
     },
     onError: (error) => {
       toast({

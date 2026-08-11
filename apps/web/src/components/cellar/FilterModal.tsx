@@ -32,7 +32,7 @@ import { VolumeInput, VolumeUnit } from "@/components/ui/volume-input";
 import { convertVolume } from "lib";
 import { useDateFormat } from "@/hooks/useDateFormat";
 import { humanizeMutationError } from "@/utils/mutation-errors";
-import { WorkerLaborInput, type WorkerAssignment, toApiLaborAssignments } from "@/components/labor/WorkerLaborInput";
+import { WorkerLaborInput, type WorkerAssignment, toApiLaborAssignments, laborDurationHours } from "@/components/labor/WorkerLaborInput";
 
 const filterSchema = z.object({
   filterType: z.enum(["coarse", "fine", "sterile"], {
@@ -58,7 +58,7 @@ interface FilterModalProps {
   /** Called after a filter operation succeeds (e.g. to complete a recipe
    *  task). Receives the operation's filteredAt so recipe callers can anchor
    *  the remaining schedule to the actual date. */
-  onSuccess?: (filteredAt?: Date) => void;
+  onSuccess?: (filteredAt?: Date, laborHours?: number) => void;
   /** Recipe-planned filter type to prefill. */
   prefillFilterType?: "coarse" | "fine" | "sterile";
   /** Seed the date field (e.g. a recipe step's scheduled date when back-filling). */
@@ -192,7 +192,7 @@ export function FilterModal({
       utils.batch.list.invalidate();
       onClose();
       reset();
-      onSuccess?.(filteredAt);
+      onSuccess?.(filteredAt, laborDurationHours(laborAssignments));
     },
     onError: (error) => {
       toast({
@@ -204,7 +204,14 @@ export function FilterModal({
   });
 
   const onSubmit = (data: FilterForm) => {
-    console.log("Filter form submitted with data:", data);
+    // Diagnostic for the recurring lost-destination reports: log the exact
+    // non-form state that accompanies this submit.
+    console.log("Filter submit:", {
+      ...data,
+      destinationVesselId,
+      padsUsed,
+      laborCount: laborAssignments.length,
+    });
     if (data.volumeAfter > data.volumeBefore) {
       toast({
         title: "Invalid Volumes",
@@ -414,6 +421,22 @@ export function FilterModal({
                   <span className="font-medium">Calculated Loss:</span>
                   <span className={showLossWarning ? "text-orange-700 font-semibold" : "text-gray-700"}>
                     {calculatedLoss.toFixed(2)}L ({lossPercentage.toFixed(1)}%)
+                  </span>
+                </div>
+                {/* Destination stated at the point of no return — a dropped
+                    selection must be visible BEFORE submitting. */}
+                <div className="flex items-center justify-between mt-1">
+                  <span className="font-medium">Destination:</span>
+                  <span
+                    className={
+                      destinationVesselId === "same"
+                        ? "text-gray-700"
+                        : "text-blue-700 font-semibold"
+                    }
+                  >
+                    {destinationVesselId === "same"
+                      ? `Stays in ${vesselName}`
+                      : `Moves to ${destinationOptions.find((v: any) => v.id === destinationVesselId)?.name ?? "selected tank"}`}
                   </span>
                 </div>
                 {showLossWarning && (

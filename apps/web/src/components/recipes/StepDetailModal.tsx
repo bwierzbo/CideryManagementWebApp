@@ -221,10 +221,11 @@ export function StepDetailModal({
   // The real forms report the operation's actual date; passing it as
   // completedAt lets recomputeSchedule re-anchor the remaining steps to when
   // the work really happened.
-  const onRealSuccess = (actualAt?: Date) =>
+  const onRealSuccess = (actualAt?: Date, laborHours?: number) =>
     complete.mutate({
       taskId: task.id,
       ...(actualAt ? { completedAt: actualAt } : {}),
+      ...(laborHours ? { laborDurationHours: laborHours } : {}),
     });
 
   // Prefill the add-additive form from the recipe ingredient this step references.
