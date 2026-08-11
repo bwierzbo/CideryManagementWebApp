@@ -1067,6 +1067,7 @@ export function CarbonateModal({
 
           {/* Labor Tracking */}
           <WorkerLaborInput
+              activityType="carbonation"
             value={laborAssignments}
             onChange={setLaborAssignments}
             activityLabel="this carbonation operation"

@@ -5428,7 +5428,8 @@ export const batchRouter = router({
         if (batch.vesselId !== input.vesselId) {
           throw new TRPCError({
             code: "BAD_REQUEST",
-            message: "Batch is not in the specified vessel",
+            message:
+              "This page's data is out of date — the batch has moved to a different tank. Refresh the page and try again.",
           });
         }
 

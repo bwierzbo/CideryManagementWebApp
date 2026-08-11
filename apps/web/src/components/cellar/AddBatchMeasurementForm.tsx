@@ -612,6 +612,7 @@ export function AddBatchMeasurementForm({
       )}
 
       <WorkerLaborInput
+              activityType="measurement"
         value={laborAssignments}
         onChange={setLaborAssignments}
         activityLabel="this measurement"

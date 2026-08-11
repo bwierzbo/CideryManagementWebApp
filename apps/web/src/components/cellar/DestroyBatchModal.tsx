@@ -251,6 +251,7 @@ export function DestroyBatchModal({
           </div>
 
           <WorkerLaborInput
+              activityType="destruction"
             value={laborAssignments}
             onChange={setLaborAssignments}
             activityLabel="this destruction"

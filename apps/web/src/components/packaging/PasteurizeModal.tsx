@@ -868,6 +868,7 @@ export function PasteurizeModal({
 
             {/* Labor Tracking */}
             <WorkerLaborInput
+              activityType="pasteurization"
               value={laborAssignments}
               onChange={setLaborAssignments}
               activityLabel="this pasteurization"

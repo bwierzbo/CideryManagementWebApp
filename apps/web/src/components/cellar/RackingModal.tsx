@@ -457,6 +457,7 @@ export function RackingModal({
 
           {/* Labor Tracking */}
           <WorkerLaborInput
+              activityType="racking"
             value={laborAssignments}
             onChange={setLaborAssignments}
             activityLabel="this racking operation"

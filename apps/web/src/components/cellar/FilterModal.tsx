@@ -393,6 +393,7 @@ export function FilterModal({
           </div>
 
           <WorkerLaborInput
+              activityType="filtering"
             value={laborAssignments}
             onChange={setLaborAssignments}
             activityLabel="this filtering operation"

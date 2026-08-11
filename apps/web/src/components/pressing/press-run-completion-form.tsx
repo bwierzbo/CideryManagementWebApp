@@ -859,6 +859,7 @@ export function PressRunCompletionForm({
             </CardHeader>
             <CardContent>
               <WorkerLaborInput
+              activityType="press_run"
                 value={laborAssignments}
                 onChange={setLaborAssignments}
                 activityLabel="this press run"

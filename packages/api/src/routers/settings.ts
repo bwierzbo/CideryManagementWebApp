@@ -3,6 +3,7 @@ import { router, protectedProcedure, adminProcedure } from "../trpc";
 import {
   db,
   systemSettings,
+  workers,
   organizations,
   organizationSettings,
   bottleRuns,
@@ -11,6 +12,28 @@ import {
 } from "db";
 import { eq, and, gte, lt, sql, asc, isNull } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
+
+/**
+ * Baseline expected hours per activity — owner-approved 2026-08-11 from
+ * recorded labor history (median-based, with owner overrides for racking,
+ * cleaning, and carbonation). Stored overrides in system_settings
+ * ("labor_defaults") take precedence.
+ */
+export const LABOR_DEFAULT_HOURS: Record<string, number> = {
+  press_run: 2.5,
+  bottle_run: 2,
+  pasteurization: 1.5,
+  labeling: 1,
+  keg_fill: 1,
+  filtering: 1,
+  carbonation: 0.5,
+  additive: 0.5,
+  racking: 0.5,
+  cleaning: 0.5,
+  measurement: 0.25,
+  recipe_step: 0.25,
+  destruction: 0.25,
+};
 
 /**
  * Settings Router
@@ -41,6 +64,78 @@ export const settingsRouter = router({
       return "America/Los_Angeles";
     }
   }),
+
+  /**
+   * Labor defaults: the worker and expected hours each activity's labor
+   * section prepopulates with. Values approved by the owner 2026-08-11 from
+   * recorded min/max/median history; editable in Admin → Labor Defaults.
+   */
+  getLaborDefaults: protectedProcedure.query(async () => {
+    let stored: { defaultWorkerId?: string | null; hoursByActivity?: Record<string, number> } = {};
+    try {
+      const setting = await db
+        .select()
+        .from(systemSettings)
+        .where(eq(systemSettings.key, "labor_defaults"))
+        .limit(1);
+      if (setting[0]?.value && typeof setting[0].value === "object") {
+        stored = setting[0].value as typeof stored;
+      }
+    } catch (error) {
+      console.error("Error fetching labor defaults:", error);
+    }
+
+    // Default worker: stored choice, else the first active worker named
+    // Scott (the owner's standing default), else none.
+    let defaultWorkerId = stored.defaultWorkerId ?? null;
+    if (!defaultWorkerId) {
+      try {
+        const [scott] = await db
+          .select({ id: workers.id })
+          .from(workers)
+          .where(and(eq(workers.isActive, true), sql`${workers.name} ILIKE '%scott%'`))
+          .limit(1);
+        defaultWorkerId = scott?.id ?? null;
+      } catch {
+        defaultWorkerId = null;
+      }
+    }
+
+    return {
+      defaultWorkerId,
+      hoursByActivity: {
+        ...LABOR_DEFAULT_HOURS,
+        ...(stored.hoursByActivity ?? {}),
+      },
+    };
+  }),
+
+  updateLaborDefaults: adminProcedure
+    .input(
+      z.object({
+        defaultWorkerId: z.string().uuid().nullable(),
+        hoursByActivity: z.record(z.string(), z.number().nonnegative()),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      await db
+        .insert(systemSettings)
+        .values({
+          key: "labor_defaults",
+          value: input as any,
+          updatedAt: new Date(),
+          updatedBy: ctx.session.user.id,
+        })
+        .onConflictDoUpdate({
+          target: systemSettings.key,
+          set: {
+            value: input as any,
+            updatedAt: new Date(),
+            updatedBy: ctx.session.user.id,
+          },
+        });
+      return { success: true, message: "Labor defaults updated" };
+    }),
 
   /**
    * Update timezone setting

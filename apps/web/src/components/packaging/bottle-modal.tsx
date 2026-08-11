@@ -1019,6 +1019,7 @@ export function BottleModal({
 
           {/* 8. Labor Tracking (optional) */}
           <WorkerLaborInput
+              activityType="bottle_run"
             value={laborAssignments}
             onChange={setLaborAssignments}
             activityLabel="this packaging run"

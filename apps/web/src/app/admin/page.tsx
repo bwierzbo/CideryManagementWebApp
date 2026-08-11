@@ -102,6 +102,7 @@ import { useToast } from "@/hooks/use-toast";
 import { SquareIntegration } from "@/components/admin/SquareIntegration";
 import { WorkersManagement } from "@/components/admin/WorkersManagement";
 import { OverheadSettings } from "@/components/admin/OverheadSettings";
+import { LaborDefaultsSettings } from "@/components/admin/LaborDefaultsSettings";
 import { MeasurementSchedulesSettings } from "@/components/admin/MeasurementSchedulesSettings";
 import { AdditiveVolumeDefaultsSettings } from "@/components/admin/AdditiveVolumeDefaultsSettings";
 import { BarrelOriginTypesManagement } from "@/components/cellar/BarrelOriginTypesManagement";
@@ -1972,6 +1973,9 @@ function SystemSettings() {
 
       {/* Overhead Cost Allocation - IMPLEMENTED */}
       <OverheadSettings />
+
+      {/* Labor defaults — default worker + expected hours per activity */}
+      <LaborDefaultsSettings />
 
       {/* Measurement Schedules - Product-type-specific measurement schedules */}
       <MeasurementSchedulesSettings />

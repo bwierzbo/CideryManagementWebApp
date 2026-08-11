@@ -451,6 +451,7 @@ export function StepDetailModal({
             {/* Labor tracking — same component as the cellar forms */}
             {!isDone && task.kind !== "transfer" && (
               <WorkerLaborInput
+                activityType={task.kind === "rack" ? "racking" : "recipe_step"}
                 value={laborAssignments}
                 onChange={setLaborAssignments}
                 activityLabel="this step"

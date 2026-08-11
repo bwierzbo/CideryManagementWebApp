@@ -202,6 +202,7 @@ export function CleanTankModal({
 
           {/* Labor tracking — mirrors other activities (bottle runs, racking, etc.). */}
           <WorkerLaborInput
+              activityType="cleaning"
             value={laborAssignments}
             onChange={setLaborAssignments}
             activityLabel="this cleaning"

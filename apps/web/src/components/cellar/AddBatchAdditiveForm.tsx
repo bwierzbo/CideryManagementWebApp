@@ -1098,6 +1098,7 @@ export function AddBatchAdditiveForm({
       </div>
 
       <WorkerLaborInput
+              activityType="additive"
         value={laborAssignments}
         onChange={setLaborAssignments}
         activityLabel="this addition"

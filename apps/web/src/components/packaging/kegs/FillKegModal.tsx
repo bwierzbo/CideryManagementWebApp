@@ -454,6 +454,7 @@ export function FillKegModal({
             </div>
 
             <WorkerLaborInput
+              activityType="keg_fill"
               value={laborAssignments}
               onChange={setLaborAssignments}
               activityLabel="this keg fill"

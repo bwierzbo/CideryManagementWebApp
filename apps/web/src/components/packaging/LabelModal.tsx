@@ -549,6 +549,7 @@ export function LabelModal({
 
           {/* Labor Tracking */}
           <WorkerLaborInput
+              activityType="labeling"
             value={laborAssignments}
             onChange={setLaborAssignments}
             activityLabel="this labeling"
