@@ -95,15 +95,26 @@ export function FilterModal({
     return Number.isNaN(d.getTime()) ? new Date() : d;
   };
 
-  // Empty, available vessels the batch can be filtered into.
+  // All other vessels, each with the reason it can't be a destination (if
+  // any). Blocked tanks stay VISIBLE but disabled — silently omitting them
+  // repeatedly convinced the operator their selection "didn't take".
   const { data: vesselList } = trpc.vessel.listWithBatches.useQuery(undefined, {
     enabled: open,
   });
   const destinationOptions = (
     (Array.isArray(vesselList) ? [] : vesselList?.vessels) ?? []
-  ).filter(
-    (v) => v.id !== vesselId && !v.currentBatch && v.status === "available",
-  );
+  )
+    .filter((v) => v.id !== vesselId)
+    .map((v) => ({
+      ...v,
+      blockedReason: v.currentBatch
+        ? `holds ${v.currentBatch.customName || v.currentBatch.name}`
+        : v.status === "cleaning"
+          ? "needs cleaning"
+          : v.status !== "available"
+            ? v.status
+            : null,
+    }));
 
   // Date validation
   const { validateDate } = useBatchDateValidation(batchId);
@@ -328,8 +339,9 @@ export function FilterModal({
               <SelectContent>
                 <SelectItem value="same">Keep in {vesselName}</SelectItem>
                 {destinationOptions.map((v: any) => (
-                  <SelectItem key={v.id} value={v.id}>
+                  <SelectItem key={v.id} value={v.id} disabled={!!v.blockedReason}>
                     {v.name} ({parseFloat(v.capacity || "0").toFixed(0)} {v.capacityUnit || "L"})
+                    {v.blockedReason ? ` — ${v.blockedReason}` : ""}
                   </SelectItem>
                 ))}
               </SelectContent>
