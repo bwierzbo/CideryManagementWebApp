@@ -701,7 +701,7 @@ export function BottleModal({
                   </p>
                 )}
                 {/* Auto-calculated units display */}
-                {unitsProduced !== undefined && !isNaN(unitsProduced) && packageSizeMl && (
+                {Number.isFinite(unitsProduced) && Number.isFinite(packageSizeMl) && (
                   <p className="text-xs text-green-600 mt-1">
                     = {unitsProduced} units ({packageSizeMl}ml each)
                   </p>

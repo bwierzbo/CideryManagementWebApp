@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { BottleModal } from "./bottle-modal";
@@ -45,6 +45,13 @@ export function UnifiedPackagingModal({
   prefillPackagedAt,
 }: UnifiedPackagingModalProps) {
   const [packagingType, setPackagingType] = useState<PackagingType>(initialType);
+
+  // The modal stays mounted across opens — useState freezes the first
+  // initialType forever. Re-sync on every open so a keg step opens on Kegs
+  // and a bottle step opens on Bottles.
+  useEffect(() => {
+    if (open) setPackagingType(initialType);
+  }, [open, initialType]);
 
   // Reset packaging type when modal closes
   const handleClose = () => {
