@@ -249,6 +249,11 @@ export function FilterModal({
       filteredAt: data.filteredAt,
       filteredBy: undefined, // Could be populated from user session
       notes: data.notes,
+      ...(laborAssignments.filter((a) => a.workerId && a.hoursWorked > 0).length > 0 && {
+        laborAssignments: toApiLaborAssignments(
+          laborAssignments.filter((a) => a.workerId && a.hoursWorked > 0),
+        ),
+      }),
     });
   };
 
@@ -480,49 +485,10 @@ export function FilterModal({
             <Button type="button" variant="outline" onClick={onClose}>
               Cancel
             </Button>
-            <Button
-              type="button"
-              disabled={filterMutation.isPending}
-              onClick={async () => {
-                if (!filterType || !volumeBefore || !volumeAfter || !filteredAt) {
-                  toast({
-                    title: "Missing Fields",
-                    description: "Please fill in all required fields",
-                    variant: "destructive",
-                  });
-                  return;
-                }
-                if (volumeAfter > volumeBefore) {
-                  toast({
-                    title: "Invalid Volumes",
-                    description: "Volume after filtering cannot exceed volume before",
-                    variant: "destructive",
-                  });
-                  return;
-                }
-                try {
-                  const beforeL = volumeBeforeUnit === "gal" ? convertVolume(volumeBefore, "gal", "L") : volumeBefore;
-                  const afterL = volumeAfterUnit === "gal" ? convertVolume(volumeAfter, "gal", "L") : volumeAfter;
-                  await filterMutation.mutateAsync({
-                    batchId,
-                    vesselId,
-                    filterType,
-                    volumeBefore: beforeL,
-                    volumeBeforeUnit: "L",
-                    volumeAfter: afterL,
-                    volumeAfterUnit: "L",
-                    filteredAt,
-                    filteredBy: undefined,
-                    notes: watch("notes"),
-                    ...(laborAssignments.filter(a => a.workerId && a.hoursWorked > 0).length > 0 && {
-                      laborAssignments: toApiLaborAssignments(laborAssignments.filter(a => a.workerId && a.hoursWorked > 0)),
-                    }),
-                  });
-                } catch (err: any) {
-                  // Error already handled by onError callback in mutation definition
-                }
-              }}
-            >
+            {/* type="submit" so handleSubmit(onSubmit) runs — a previous
+                inline onClick duplicate silently dropped destinationVesselId
+                and padsUsed on every submission. One submission path only. */}
+            <Button type="submit" disabled={filterMutation.isPending}>
               {filterMutation.isPending ? "Filtering..." : "Record Filter Operation"}
             </Button>
           </div>
