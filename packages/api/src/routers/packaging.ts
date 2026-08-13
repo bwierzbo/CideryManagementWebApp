@@ -2149,6 +2149,13 @@ export const packagingRouter = router({
               pasteurizationUnits: input.pasteurizationUnits.toString(),
               pasteurizedAt: pasteurizedAt,
               pasteurizationLoss: input.bottlesLost || null,
+              // Bottles lost in the bath are gone — reduce the sellable
+              // count so labeling/inventory work from what actually survived.
+              ...(input.bottlesLost
+                ? {
+                    unitsProduced: sql`GREATEST(${bottleRuns.unitsProduced} - ${input.bottlesLost}, 0)`,
+                  }
+                : {}),
               productionNotes: input.notes
                 ? `${input.notes}\n\nPasteurized at ${pasteurizedAt.toISOString()} (${input.temperatureCelsius}°C for ${input.timeMinutes} min, ${input.pasteurizationUnits} PU)${lossNote}`
                 : `Pasteurized at ${pasteurizedAt.toISOString()} (${input.temperatureCelsius}°C for ${input.timeMinutes} min, ${input.pasteurizationUnits} PU)${lossNote}`,
