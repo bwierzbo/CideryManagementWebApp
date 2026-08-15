@@ -5578,6 +5578,13 @@ export const batchRouter = router({
             createdAt: new Date(),
             updatedAt: new Date(),
           });
+
+          // The source tank was just vacated — flag it for cleaning, same as
+          // packaging does when it empties a vessel.
+          await db
+            .update(vessels)
+            .set({ status: "cleaning", updatedAt: new Date() })
+            .where(eq(vessels.id, input.vesselId));
         }
 
         // Write filter loss ledger entry
