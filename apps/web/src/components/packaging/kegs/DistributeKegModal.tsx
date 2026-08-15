@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -31,6 +32,8 @@ const distributeKegSchema = z.object({
   distributedAt: z.string().min(1, "Date is required"),
   distributionLocation: z.string().min(1, "Location is required"),
   salesChannelId: z.string().uuid().optional(),
+  pricePerKeg: z.number().nonnegative().optional().or(z.nan().transform(() => undefined)),
+  notes: z.string().optional(),
 });
 
 type DistributeKegForm = z.infer<typeof distributeKegSchema>;
@@ -96,6 +99,8 @@ export function DistributeKegModal({
       distributedAt: distributedAt,
       distributionLocation: data.distributionLocation,
       salesChannelId: data.salesChannelId,
+      ...(data.pricePerKeg != null && !Number.isNaN(data.pricePerKeg) ? { pricePerKeg: data.pricePerKeg } : {}),
+      ...(data.notes ? { notes: data.notes } : {}),
     });
   };
 
@@ -180,6 +185,34 @@ export function DistributeKegModal({
               For TTB reporting and sales analytics
             </p>
           </div>
+          {/* Price (optional) */}
+          <div>
+            <Label htmlFor="pricePerKeg">Price per keg ($) <span className="text-muted-foreground text-xs">(optional)</span></Label>
+            <Input
+              id="pricePerKeg"
+              type="number"
+              step="any"
+              min="0"
+              placeholder="0.00"
+              {...register("pricePerKeg", { valueAsNumber: true })}
+              className="mt-1"
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              Leave blank when this isn't a sale (taproom, samples, festival)
+            </p>
+          </div>
+
+          {/* Notes (optional) */}
+          <div>
+            <Label htmlFor="notes">Notes <span className="text-muted-foreground text-xs">(optional)</span></Label>
+            <Textarea
+              id="notes"
+              placeholder="Anything worth remembering about this distribution..."
+              {...register("notes")}
+              className="mt-1"
+            />
+          </div>
+
 
           <div className="flex justify-end space-x-2 pt-4">
             <Button type="button" variant="outline" onClick={onClose}>
