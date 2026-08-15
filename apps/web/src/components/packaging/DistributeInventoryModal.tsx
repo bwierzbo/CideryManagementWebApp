@@ -33,7 +33,7 @@ const distributeInventorySchema = z.object({
   salesChannelId: z.string().uuid().optional(),
   distributorName: z.string().optional(),
   quantityDistributed: z.number().int().positive("Quantity must be positive"),
-  pricePerUnit: z.number().positive("Price must be positive"),
+  pricePerUnit: z.number().nonnegative().optional().or(z.nan().transform(() => undefined)),
   distributionDate: z.string().min(1, "Date is required"),
   notes: z.string().optional(),
 });
@@ -135,7 +135,9 @@ export function DistributeInventoryModal({
       salesChannelId: data.salesChannelId,
       distributorName: isWholesaleChannel ? data.distributorName : undefined,
       quantityDistributed: data.quantityDistributed,
-      pricePerUnit: data.pricePerUnit,
+      ...(data.pricePerUnit != null && !Number.isNaN(data.pricePerUnit)
+        ? { pricePerUnit: data.pricePerUnit }
+        : {}),
       distributionDate: distributionDate.toISOString(),
       notes: data.notes,
     });
@@ -287,7 +289,7 @@ export function DistributeInventoryModal({
             {/* Price per Unit */}
             <div>
               <Label htmlFor="pricePerUnit">
-                Price per Unit <span className="text-red-500">*</span>
+                Price per Unit <span className="text-muted-foreground text-xs">(optional)</span>
               </Label>
               <div className="relative mt-1">
                 <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />

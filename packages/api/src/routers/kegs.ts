@@ -231,6 +231,10 @@ const distributeKegFillSchema = z.object({
     .default(() => new Date()),
   distributionLocation: z.string().min(1, "Location is required"),
   salesChannelId: z.string().uuid().optional(),
+  // Unified distribution fields (same set as bottles): optional sale price
+  // per keg and free-text notes.
+  pricePerKeg: z.number().nonnegative().optional(),
+  notes: z.string().optional(),
 });
 
 const returnKegFillSchema = z.object({
@@ -255,6 +259,8 @@ const bulkDistributeKegFillsSchema = z.object({
     .default(() => new Date()),
   distributionLocation: z.string().min(1, "Location is required"),
   salesChannelId: z.string().uuid().optional(),
+  pricePerKeg: z.number().nonnegative().optional(),
+  notes: z.string().optional(),
 });
 
 const bulkReturnKegFillsSchema = z.object({
@@ -1379,6 +1385,12 @@ export const kegsRouter = router({
           distributedAt: input.distributedAt,
           distributionLocation: input.distributionLocation,
           salesChannelId: input.salesChannelId,
+          ...(input.pricePerKeg != null ? { retailPrice: input.pricePerKeg.toString() } : {}),
+          ...(input.notes
+            ? {
+                productionNotes: sql`COALESCE(${kegFills.productionNotes} || E'\n\n', '') || ${"Distribution: " + input.notes}`,
+              }
+            : {}),
           updatedBy: ctx.user.id,
           updatedAt: new Date(),
         };
@@ -1491,6 +1503,15 @@ export const kegsRouter = router({
     .mutation(async ({ input, ctx }) => {
       try {
         const { kegFillIds, distributedAt, distributionLocation, salesChannelId } = input;
+        // Unified distribution fields — applied to every keg in the batch.
+        const sharedFields = {
+          ...(input.pricePerKeg != null ? { retailPrice: input.pricePerKeg.toString() } : {}),
+          ...(input.notes
+            ? {
+                productionNotes: sql`COALESCE(${kegFills.productionNotes} || E'\n\n', '') || ${"Distribution: " + input.notes}`,
+              }
+            : {}),
+        };
 
         // Get all keg fills with their current status
         const fills = await db
@@ -1537,6 +1558,7 @@ export const kegsRouter = router({
                 distributedAt,
                 distributionLocation,
                 salesChannelId,
+                ...sharedFields,
                 updatedBy: ctx.user.id,
                 updatedAt: new Date(),
               })
@@ -1552,6 +1574,7 @@ export const kegsRouter = router({
                 distributedAt,
                 distributionLocation,
                 salesChannelId,
+                ...sharedFields,
                 updatedBy: ctx.user.id,
                 updatedAt: new Date(),
               })

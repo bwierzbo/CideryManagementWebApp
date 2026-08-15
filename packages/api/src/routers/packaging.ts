@@ -1923,6 +1923,9 @@ export const packagingRouter = router({
       distributedAt: z.date().or(z.string().transform((val) => new Date(val))).optional(),
       distributionLocation: z.string().min(1, "Distribution location is required"),
       salesChannelId: z.string().uuid().optional(),
+      // Unified distribution fields (same set as kegs/inventory)
+      pricePerUnit: z.number().nonnegative().optional(),
+      notes: z.string().optional(),
     }))
     .mutation(async ({ input, ctx }) => {
       try {
@@ -1971,6 +1974,14 @@ export const packagingRouter = router({
             updateData.bottleRunSalesChannelId = input.salesChannelId;
           }
 
+          // Unified distribution fields: optional sale price and notes
+          if (input.pricePerUnit != null) {
+            updateData.retailPrice = input.pricePerUnit.toString();
+          }
+          if (input.notes) {
+            updateData.productionNotes = sql`COALESCE(${bottleRuns.productionNotes} || E'\n\n', '') || ${"Distribution: " + input.notes}`;
+          }
+
           // Update bottle run status to distributed
           const [updated] = await tx
             .update(bottleRuns)
@@ -1994,8 +2005,8 @@ export const packagingRouter = router({
                 distributionLocation: input.distributionLocation,
                 salesChannelId: input.salesChannelId,
                 quantityDistributed: qty,
-                pricePerUnit: "0",
-                totalRevenue: "0",
+                pricePerUnit: (input.pricePerUnit ?? 0).toString(),
+                totalRevenue: (qty * (input.pricePerUnit ?? 0)).toString(),
                 distributedBy: ctx.user.id,
               });
 

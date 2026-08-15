@@ -821,7 +821,9 @@ export const inventoryRouter = router({
         // (future LIQ-777 breakdown). Optional and non-breaking.
         distributorName: z.string().optional(),
         quantityDistributed: z.number().int().positive(),
-        pricePerUnit: z.number().positive(),
+        // Optional — not every distribution is a sale (taproom transfers,
+        // samples, festival pours). Absent price = no revenue recorded.
+        pricePerUnit: z.number().nonnegative().optional(),
         distributionDate: z.string().datetime(),
         notes: z.string().optional(),
       }),
@@ -851,7 +853,8 @@ export const inventoryRouter = router({
         }
 
         // Calculate total revenue
-        const totalRevenue = input.quantityDistributed * input.pricePerUnit;
+        const pricePerUnit = input.pricePerUnit ?? 0;
+        const totalRevenue = input.quantityDistributed * pricePerUnit;
 
         // Create distribution record and update quantity in a transaction
         await db.transaction(async (tx) => {
@@ -863,7 +866,7 @@ export const inventoryRouter = router({
             salesChannelId: input.salesChannelId,
             distributorName: input.distributorName,
             quantityDistributed: input.quantityDistributed,
-            pricePerUnit: input.pricePerUnit.toString(),
+            pricePerUnit: pricePerUnit.toString(),
             totalRevenue: totalRevenue.toString(),
             notes: input.notes,
             distributedBy: ctx.session?.user?.id || "unknown",
