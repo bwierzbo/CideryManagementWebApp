@@ -1274,6 +1274,9 @@ export const batchFilterOperations = pgTable(
     // Consumables: how many filter pads this operation used. Feeds pad
     // efficiency analysis (pads per liter by filter type / fruit load).
     padsUsed: integer("pads_used"),
+    // Pad COGS: the Supplies lot consumed and the snapshotted cost
+    padPurchaseItemId: uuid("pad_purchase_item_id"),
+    padCost: decimal("pad_cost", { precision: 10, scale: 2 }),
     // Volume tracking
     volumeBefore: decimal("volume_before", {
       precision: 10,
