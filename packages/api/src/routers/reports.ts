@@ -513,6 +513,7 @@ export const reportsRouter = router({
             totals: {
               totalFruitCost: 0,
               totalAdditiveCost: 0,
+              totalSuppliesCost: 0,
               totalPackagingCost: 0,
               totalLaborCost: 0,
               totalOverheadCost: 0,
@@ -571,6 +572,19 @@ export const reportsRouter = router({
         const additiveCostByBatch = new Map<string, number>();
         for (const row of additiveCostRows) {
           additiveCostByBatch.set(row.batchId, row.totalAdditiveCost);
+        }
+
+        // 2b2. Supplies costs by batch (filter pads consumed by filter ops)
+        const suppliesCostRows = await db.execute(sql`
+          SELECT batch_id::text AS "batchId",
+                 COALESCE(SUM(pad_cost::numeric), 0)::float AS "totalSuppliesCost"
+          FROM batch_filter_operations
+          WHERE batch_id IN (${sql.join(batchIds.map((id) => sql`${id}::uuid`), sql`, `)})
+            AND deleted_at IS NULL AND pad_cost IS NOT NULL
+          GROUP BY batch_id`);
+        const suppliesCostByBatch = new Map<string, number>();
+        for (const row of (suppliesCostRows as unknown as { rows: Array<{ batchId: string; totalSuppliesCost: number }> }).rows) {
+          suppliesCostByBatch.set(row.batchId, row.totalSuppliesCost);
         }
 
         // 2c. Batch denominators (for proration: volumeTaken / batchVolume)
@@ -719,6 +733,7 @@ export const reportsRouter = router({
         // 3. Assemble per-run breakdown
         let totalFruitCost = 0;
         let totalAdditiveCost = 0;
+        let totalSuppliesCost = 0;
         let totalPackagingCost = 0;
         let totalLaborCost = 0;
         let totalOverheadCost = 0;
@@ -741,10 +756,11 @@ export const reportsRouter = router({
 
           const fruitCost = (fruitCostByBatch.get(run.batchId) ?? 0) * prorationFactor;
           const additiveCost = (additiveCostByBatch.get(run.batchId) ?? 0) * prorationFactor;
+          const suppliesCost = (suppliesCostByBatch.get(run.batchId) ?? 0) * prorationFactor;
           const packagingCost = packagingCostByRun.get(run.id) ?? 0;
           const laborCost = laborCostByRun.get(run.id) ?? 0;
           const overheadCost = parseFloat(run.overheadCostAllocated?.toString() ?? "0");
-          const runTotalCogs = fruitCost + additiveCost + packagingCost + laborCost + overheadCost;
+          const runTotalCogs = fruitCost + additiveCost + suppliesCost + packagingCost + laborCost + overheadCost;
           const unitsProduced = run.unitsProduced ?? 0;
           const costPerUnit = unitsProduced > 0 ? runTotalCogs / unitsProduced : 0;
           const costPerLiter = volumeTakenL > 0 ? runTotalCogs / volumeTakenL : 0;
@@ -757,6 +773,7 @@ export const reportsRouter = router({
           // Accumulate totals
           totalFruitCost += fruitCost;
           totalAdditiveCost += additiveCost;
+          totalSuppliesCost += suppliesCost;
           totalPackagingCost += packagingCost;
           totalLaborCost += laborCost;
           totalOverheadCost += overheadCost;
@@ -778,6 +795,7 @@ export const reportsRouter = router({
             volumeTakenL: Math.round(volumeTakenL * 1000) / 1000,
             fruitCost: Math.round(fruitCost * 100) / 100,
             additiveCost: Math.round(additiveCost * 100) / 100,
+            suppliesCost: Math.round(suppliesCost * 100) / 100,
             packagingCost: Math.round(packagingCost * 100) / 100,
             laborCost: Math.round(laborCost * 100) / 100,
             overheadCost: Math.round(overheadCost * 100) / 100,
@@ -794,6 +812,7 @@ export const reportsRouter = router({
           totals: {
             totalFruitCost: Math.round(totalFruitCost * 100) / 100,
             totalAdditiveCost: Math.round(totalAdditiveCost * 100) / 100,
+            totalSuppliesCost: Math.round(totalSuppliesCost * 100) / 100,
             totalPackagingCost: Math.round(totalPackagingCost * 100) / 100,
             totalLaborCost: Math.round(totalLaborCost * 100) / 100,
             totalOverheadCost: Math.round(totalOverheadCost * 100) / 100,

@@ -248,6 +248,17 @@ export default function COGSReportPage() {
                       color: "bg-purple-500",
                     },
                     {
+                      label: "Supplies",
+                      value: data.totals.totalSuppliesCost ?? 0,
+                      pct:
+                        data.totals.totalCogs > 0
+                          ? ((data.totals.totalSuppliesCost ?? 0) /
+                              data.totals.totalCogs) *
+                            100
+                          : 0,
+                      color: "bg-amber-500",
+                    },
+                    {
                       label: "Packaging",
                       value: data.totals.totalPackagingCost,
                       pct:
@@ -328,6 +339,9 @@ export default function COGSReportPage() {
                             Additives
                           </TableHead>
                           <TableHead className="text-right">
+                            Supplies
+                          </TableHead>
+                          <TableHead className="text-right">
                             Packaging
                           </TableHead>
                           <TableHead className="text-right">Labor</TableHead>
@@ -376,6 +390,9 @@ export default function COGSReportPage() {
                               {fmt(run.additiveCost)}
                             </TableCell>
                             <TableCell className="text-right">
+                              {fmt(run.suppliesCost ?? 0)}
+                            </TableCell>
+                            <TableCell className="text-right">
                               {fmt(run.packagingCost)}
                             </TableCell>
                             <TableCell className="text-right">
@@ -421,6 +438,9 @@ export default function COGSReportPage() {
                           </TableCell>
                           <TableCell className="text-right">
                             {fmt(data.totals.totalAdditiveCost)}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {fmt(data.totals.totalSuppliesCost ?? 0)}
                           </TableCell>
                           <TableCell className="text-right">
                             {fmt(data.totals.totalPackagingCost)}

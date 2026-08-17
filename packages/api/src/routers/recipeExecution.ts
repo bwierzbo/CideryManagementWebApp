@@ -37,6 +37,7 @@ import {
 } from "db";
 import { buildStepSchedule, rescheduleWithActuals } from "lib";
 import { router, createRbacProcedure } from "../trpc";
+import { writeLedgerEntry } from "../lib/volume-ledger";
 import { recomputeBatchVolume } from "../services/batch-volume-recompute";
 import { computeFamilyFulfillment } from "../services/recipe-family-fulfillment";
 
@@ -633,8 +634,6 @@ export const recipeExecutionRouter = router({
    * destination vessel, assigns that vessel to this batch, debits each source,
    * blends ABV/OG volume-weighted, records per-source lineage, and marks the
    * task done. Custom because the recipe batch is a pre-created shell.
-   *
-   * Follow-up: TTB volume-ledger entries.
    */
   performTransfer: createRbacProcedure("update", "batch")
     .input(z.object({ taskId: z.string().uuid(), destinationVesselId: z.string().uuid() }))
@@ -749,22 +748,57 @@ export const recipeExecutionRouter = router({
             mergedBy: ctx.user.id,
             createdAt: new Date(),
           });
-          await tx.insert(batchTransfers).values({
-            sourceBatchId: src.id,
-            sourceVesselId: src.vesselId,
-            destinationBatchId: task.batchId,
-            destinationVesselId: input.destinationVesselId,
-            volumeTransferred: draw.volumeL.toString(),
-            volumeTransferredUnit: "L",
-            totalVolumeProcessed: draw.volumeL.toString(),
-            totalVolumeProcessedUnit: "L",
-            loss: "0",
-            lossUnit: "L",
-            transferredAt: blendedAt,
-            transferredBy: ctx.user.id,
-            notes: `Recipe blend: ${draw.volumeL} L from ${src.customName || src.name} → ${destVessel.name}`,
-            createdAt: new Date(),
-          });
+          const [xferRow] = await tx
+            .insert(batchTransfers)
+            .values({
+              sourceBatchId: src.id,
+              sourceVesselId: src.vesselId,
+              destinationBatchId: task.batchId,
+              destinationVesselId: input.destinationVesselId,
+              volumeTransferred: draw.volumeL.toString(),
+              volumeTransferredUnit: "L",
+              totalVolumeProcessed: draw.volumeL.toString(),
+              totalVolumeProcessedUnit: "L",
+              loss: "0",
+              lossUnit: "L",
+              transferredAt: blendedAt,
+              transferredBy: ctx.user.id,
+              notes: `Recipe blend: ${draw.volumeL} L from ${src.customName || src.name} → ${destVessel.name}`,
+              createdAt: new Date(),
+            })
+            .returning({ id: batchTransfers.id });
+
+          // Double-entry volume ledger: source loses the draw, the recipe
+          // batch gains it. Without these the per-batch ledger audit can't
+          // balance and TTB reconciliation loses recipe-made volume.
+          await writeLedgerEntry(
+            {
+              batchId: src.id,
+              eventDate: blendedAt,
+              eventType: "outflow",
+              volumeChange: -draw.volumeL,
+              vesselId: src.vesselId,
+              sourceDescription: `Recipe draw → ${destVessel.name}`,
+              linkedEntityType: "batch_transfer",
+              linkedEntityId: xferRow?.id ?? null,
+              performedBy: ctx.user.id,
+            },
+            tx as unknown as Parameters<typeof writeLedgerEntry>[1],
+          );
+          await writeLedgerEntry(
+            {
+              batchId: task.batchId,
+              eventDate: blendedAt,
+              eventType: "creation",
+              volumeChange: draw.volumeL,
+              vesselId: input.destinationVesselId,
+              sourceDescription: `Recipe blend: ${draw.volumeL} L from ${src.customName || src.name}`,
+              linkedEntityType: "batch_transfer",
+              linkedEntityId: xferRow?.id ?? null,
+              performedBy: ctx.user.id,
+            },
+            tx as unknown as Parameters<typeof writeLedgerEntry>[1],
+          );
         }
 
         // Fill this batch + assign vessel + blended ABV/OG.

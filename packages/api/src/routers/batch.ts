@@ -2289,6 +2289,18 @@ export const batchRouter = router({
             reason: `Volume contribution from ${input.additiveType}: ${input.additiveName}`,
             adjustedBy: ctx.user.id,
           });
+
+          // Mirror it into the volume ledger so the per-batch ledger audit
+          // balances (additive volume was the other missing inflow class).
+          await writeLedgerEntry({
+            batchId: input.batchId,
+            eventDate: input.addedAt || new Date(),
+            eventType: "inflow",
+            volumeChange: input.volumeAddedL,
+            vesselId: batchData[0].vesselId,
+            sourceDescription: `Additive volume: ${input.additiveName} (+${input.volumeAddedL} L)`,
+            performedBy: ctx.user.id,
+          });
         }
 
         // Update quantityUsed on the source purchase item if provided.
@@ -5458,6 +5470,33 @@ export const batchRouter = router({
         );
         const volumeLossL = volumeBeforeL - volumeRackedL;
 
+        // Pad COGS: consume pads FIFO from Supplies inventory ("Filter Pads%"
+        // varieties) and snapshot the cost. Insufficient stock goes negative
+        // on the newest lot (warn-don't-block policy); no stock at all falls
+        // back to a null lot with no cost (nothing to price against).
+        let padPurchaseItemId: string | null = null;
+        let padCost: number | null = null;
+        if (input.padsUsed && input.padsUsed > 0) {
+          const padLots = await db.execute(sql`
+            SELECT pi.id, pi.price_per_unit, (pi.quantity - pi.quantity_used) AS available
+            FROM packaging_purchase_items pi
+            JOIN packaging_varieties pv ON pv.id = pi.packaging_variety_id
+            WHERE pv.name ILIKE 'Filter Pads%' AND pi.deleted_at IS NULL
+            ORDER BY CASE WHEN (pi.quantity - pi.quantity_used) > 0 THEN 0 ELSE 1 END,
+                     pi.created_at
+            LIMIT 1`);
+          const lot = (padLots as unknown as { rows: Array<{ id: string; price_per_unit: string | null }> }).rows[0];
+          if (lot) {
+            padPurchaseItemId = lot.id;
+            const price = lot.price_per_unit ? parseFloat(lot.price_per_unit) : 0;
+            padCost = input.padsUsed * price;
+            await db.execute(sql`
+              UPDATE packaging_purchase_items
+              SET quantity_used = quantity_used + ${input.padsUsed}, updated_at = NOW()
+              WHERE id = ${lot.id}`);
+          }
+        }
+
         // Create filter operation record
         const filterOperation = await db
           .insert(batchFilterOperations)
@@ -5466,6 +5505,8 @@ export const batchRouter = router({
             vesselId: input.vesselId,
             filterType: input.filterType,
             padsUsed: input.padsUsed ?? null,
+            padPurchaseItemId,
+            padCost: padCost != null ? padCost.toFixed(2) : null,
             volumeBefore: input.volumeBefore.toString(),
             volumeBeforeUnit: input.volumeBeforeUnit,
             volumeAfter: input.volumeAfter.toString(),
