@@ -445,6 +445,7 @@ export function CreateFortifiedBlendDialog({
               <Label htmlFor="name">Batch Name (optional)</Label>
               <Input
                 id="name"
+                autoComplete="off"
                 placeholder="Auto-generated if not provided"
                 value={name}
                 onChange={(e) => setName(e.target.value)}

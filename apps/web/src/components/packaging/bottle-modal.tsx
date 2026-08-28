@@ -700,6 +700,14 @@ export function BottleModal({
                     {errors.volumeTakenL.message}
                   </p>
                 )}
+                {typeof volumeTakenL === "number" &&
+                  volumeTakenL > currentVolumeL + 0.001 && (
+                    <p className="text-sm text-red-600 mt-1">
+                      Exceeds the {currentVolumeL.toFixed(3)}L available in this
+                      vessel. Entering a bottle count instead? Switch to "By
+                      Unit Count".
+                    </p>
+                  )}
                 {/* Auto-calculated units display */}
                 {Number.isFinite(unitsProduced) && Number.isFinite(packageSizeMl) && (
                   <p className="text-xs text-green-600 mt-1">
@@ -1061,7 +1069,7 @@ export function BottleModal({
                 selectedMaterials.length === 0 ||
                 !packageSizeMl ||
                 unitsProduced === undefined ||
-                (inputMode === "units" && volumeTakenL > currentVolumeL)
+                volumeTakenL > currentVolumeL + 0.001
               }
               className="w-full sm:w-auto h-10 md:h-11"
             >

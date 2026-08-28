@@ -305,6 +305,7 @@ export function WorkersManagement() {
                 <Input
                   id="name"
                   placeholder="Worker name"
+                  autoComplete="off"
                   {...register("name")}
                 />
                 {errors.name && (
@@ -334,6 +335,7 @@ export function WorkersManagement() {
                   id="email"
                   type="email"
                   placeholder="worker@example.com"
+                  autoComplete="off"
                   {...register("email")}
                 />
                 {errors.email && (
@@ -345,6 +347,7 @@ export function WorkersManagement() {
                 <Input
                   id="phone"
                   placeholder="(555) 123-4567"
+                  autoComplete="off"
                   {...register("phone")}
                 />
               </div>

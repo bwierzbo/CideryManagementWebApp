@@ -452,6 +452,7 @@ function CustomProductTypeDialog({
               <Label htmlFor="name">Name</Label>
               <Input
                 id="name"
+                autoComplete="off"
                 value={formData.name}
                 onChange={(e) => handleNameChange(e.target.value)}
                 placeholder="e.g., Ice Cider"

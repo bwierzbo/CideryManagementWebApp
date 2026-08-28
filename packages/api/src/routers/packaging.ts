@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { router, createRbacProcedure } from "../trpc";
 import { MIN_WORKING_VOLUME_L } from "lib";
+import { convertToLiters } from "lib/src/units/conversions";
 import { kegsRouter } from "./kegs";
 import {
   db,
@@ -301,6 +302,7 @@ export const packagingRouter = router({
               status: batches.status,
               currentVolume: batches.currentVolume,
               currentVolumeUnit: batches.currentVolumeUnit,
+              currentVolumeLiters: batches.currentVolumeLiters,
               vesselId: batches.vesselId,
             })
             .from(batches)
@@ -338,9 +340,14 @@ export const packagingRouter = router({
                 message: `Batch must be in fermentation, aging, or conditioning stage to package. Current status: ${batch.status}`,
               });
             }
-            currentVolumeL = parseFloat(
-              batch.currentVolume?.toString() || "0",
-            );
+            // Normalize to liters: prefer the trigger-maintained liters column,
+            // fall back to converting currentVolume by its stored unit.
+            currentVolumeL = batch.currentVolumeLiters
+              ? parseFloat(batch.currentVolumeLiters.toString())
+              : convertToLiters(
+                  parseFloat(batch.currentVolume?.toString() || "0"),
+                  batch.currentVolumeUnit || "L",
+                );
           }
 
           // Validate sufficient volume (for both keg and vessel)
@@ -554,7 +561,7 @@ export const packagingRouter = router({
                 .set({
                   currentVolume: "0",
                   currentVolumeLiters: "0",
-                  currentVolumeUnit: batch.currentVolumeUnit || "L",
+                  currentVolumeUnit: "L",
                   status: "completed",
                   vesselId: null,
                   endDate: new Date(),
@@ -575,9 +582,11 @@ export const packagingRouter = router({
               await tx
                 .update(batches)
                 .set({
+                  // newVolumeL is in liters, so the stored unit must be "L"
+                  // even if the batch previously tracked volume in gallons.
                   currentVolume: newVolumeL.toString(),
                   currentVolumeLiters: newVolumeL.toString(),
-                  currentVolumeUnit: batch.currentVolumeUnit || "L",
+                  currentVolumeUnit: "L",
                   updatedAt: new Date(),
                 })
                 .where(eq(batches.id, input.batchId));

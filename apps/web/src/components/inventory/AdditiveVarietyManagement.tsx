@@ -300,6 +300,10 @@ export function AdditiveVarietyManagement() {
                   id="name"
                   {...register("name")}
                   placeholder="e.g., Pectic Enzyme, Potassium Sorbate"
+                  // Browsers treat a field with id/name "name" as a contact
+                  // field and autofill it with the user's saved personal or
+                  // organization name, silently overwriting the typed value.
+                  autoComplete="off"
                 />
                 {errors.name && (
                   <p className="text-sm text-red-600 mt-1">
