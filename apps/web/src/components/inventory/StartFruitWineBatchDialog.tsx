@@ -233,6 +233,7 @@ export function StartFruitWineBatchDialog({
             <Input
               id="name"
               {...register("name")}
+              autoComplete="off"
               placeholder={`${fruitPurchaseItem.varietyName} Wine`}
               className="mt-1"
             />

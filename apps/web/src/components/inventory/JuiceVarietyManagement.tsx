@@ -226,6 +226,7 @@ export function JuiceVarietyManagement() {
                 <Input
                   id="name"
                   {...register("name")}
+                  autoComplete="off"
                   placeholder="e.g., Apple Concentrate, Grape Juice, Pear Blend"
                 />
                 {errors.name && (

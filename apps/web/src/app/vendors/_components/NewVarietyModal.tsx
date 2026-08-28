@@ -145,7 +145,7 @@ export function NewVarietyModal({ onSuccess }: NewVarietyModalProps) {
                 <FormItem>
                   <FormLabel>Name *</FormLabel>
                   <FormControl>
-                    <Input placeholder="e.g., Honeycrisp" {...field} />
+                    <Input placeholder="e.g., Honeycrisp" autoComplete="off" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>

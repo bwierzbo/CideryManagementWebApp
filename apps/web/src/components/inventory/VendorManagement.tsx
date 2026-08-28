@@ -279,6 +279,7 @@ export function VendorManagement({
                 <Input
                   id="name"
                   {...register("name")}
+                  autoComplete="off"
                   placeholder="e.g., Mountain View Orchards"
                 />
                 {errors.name && (
@@ -293,6 +294,7 @@ export function VendorManagement({
                   id="contactEmail"
                   type="email"
                   {...register("contactEmail")}
+                  autoComplete="off"
                   placeholder="contact@vendor.com"
                 />
                 {errors.contactEmail && (
@@ -306,6 +308,7 @@ export function VendorManagement({
                 <Input
                   id="contactPhone"
                   {...register("contactPhone")}
+                  autoComplete="off"
                   placeholder="(555) 123-4567"
                 />
               </div>
@@ -314,6 +317,7 @@ export function VendorManagement({
                 <Input
                   id="address"
                   {...register("address")}
+                  autoComplete="off"
                   placeholder="123 Farm Road, City, State"
                 />
               </div>

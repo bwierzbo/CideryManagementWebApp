@@ -265,6 +265,7 @@ export function LegacyInventorySection() {
                   <Label htmlFor="name">Batch Name</Label>
                   <Input
                     id="name"
+                    autoComplete="off"
                     placeholder="e.g., Legacy Inventory - Hard Cider 2024"
                     value={formData.name}
                     onChange={(e) =>

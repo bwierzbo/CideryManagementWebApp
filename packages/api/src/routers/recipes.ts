@@ -40,8 +40,9 @@ const INPUT_KINDS = [
 ] as const;
 
 const STEP_KINDS = [
-  "pitch_yeast", "add_additive", "measurement", "rack", "filter", "transfer",
-  "carbonate", "package", "pasteurize", "label", "wait", "qa_gate", "note",
+  "pitch_yeast", "add_additive", "add_juice", "measurement", "rack", "filter",
+  "transfer", "carbonate", "package", "pasteurize", "label", "wait", "qa_gate",
+  "note",
 ] as const;
 
 const TRIGGER_KINDS = [

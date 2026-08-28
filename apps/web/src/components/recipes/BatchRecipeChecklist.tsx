@@ -18,6 +18,7 @@ import { StepDetailModal } from "@/components/recipes/StepDetailModal";
 import { FilterModal } from "@/components/cellar/FilterModal";
 import { CarbonateModal } from "@/components/batch/CarbonateModal";
 import { UnifiedPackagingModal } from "@/components/packaging/UnifiedPackagingModal";
+import { AddJuiceDialog } from "@/components/cellar/AddJuiceDialog";
 import { PasteurizeModal } from "@/components/packaging/PasteurizeModal";
 import { LabelModal } from "@/components/packaging/LabelModal";
 import {
@@ -166,7 +167,7 @@ export function BatchRecipeChecklist({ batchId }: { batchId: string }) {
     setPlan.mutate({ batchId, bottleVolumeL: b, kegVolumeL: k });
   };
 
-  const VESSEL_KINDS = new Set(["filter", "carbonate", "package"]);
+  const VESSEL_KINDS = new Set(["filter", "carbonate", "package", "add_juice"]);
   const RUN_KINDS = new Set(["pasteurize", "label"]);
   const currentVolumeL = batchData
     ? (batchData.currentVolumeUnit === "gal" ? 3.785411784 : 1) * Number(batchData.currentVolume ?? 0)
@@ -177,6 +178,19 @@ export function BatchRecipeChecklist({ batchId }: { batchId: string }) {
         toast({
           title: "No vessel yet",
           description: "Do the Transfer step first — this action needs the batch in a vessel.",
+        });
+        return;
+      }
+      if (
+        t.kind === "package" &&
+        batchData.status !== "fermentation" &&
+        batchData.status !== "aging" &&
+        batchData.status !== "conditioning"
+      ) {
+        toast({
+          title: "Cannot Package",
+          description: `Packaging is only available for batches in fermentation, aging, or conditioning status. This batch is ${batchData.status} — change its status from the batch page first.`,
+          variant: "destructive",
         });
         return;
       }
@@ -706,6 +720,29 @@ export function BatchRecipeChecklist({ batchId }: { batchId: string }) {
               taskId: actionTask.id,
               ...(actualAt ? { completedAt: actualAt } : {}),
               ...(laborHours ? { laborDurationHours: laborHours } : {}),
+            })
+          }
+        />
+        <AddJuiceDialog
+          open={actionTask?.kind === "add_juice"}
+          onOpenChange={(o) => !o && setActionTask(null)}
+          batchId={batchId}
+          vesselId={batchData.vesselId}
+          batchName={batchData.name ?? ""}
+          currentVolumeL={currentVolumeL}
+          prefillRateMlPerL={
+            typeof actionTask?.actionData?.doseMlPerL === "number"
+              ? (actionTask.actionData.doseMlPerL as number)
+              : null
+          }
+          prefillDate={
+            actionTask?.scheduledDate ? new Date(actionTask.scheduledDate) : null
+          }
+          onSuccess={(actualAt?: Date) =>
+            actionTask &&
+            complete.mutate({
+              taskId: actionTask.id,
+              ...(actualAt ? { completedAt: actualAt } : {}),
             })
           }
         />

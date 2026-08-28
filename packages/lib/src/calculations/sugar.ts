@@ -177,3 +177,89 @@ export function convertSugarToGrams(amount: number, unit: string): number {
 
   return amount * factor;
 }
+
+/**
+ * Convert specific gravity to degrees Brix.
+ *
+ * Uses the standard cubic approximation (accurate to ±0.02°Bx for
+ * SG 1.000–1.120, well beyond the juice range).
+ *
+ * @param sg - Specific gravity (e.g., 1.050)
+ * @returns Degrees Brix (% sucrose by weight)
+ *
+ * @example
+ * sgToBrix(1.050); // ~12.4
+ */
+export function sgToBrix(sg: number): number {
+  if (sg <= 0) {
+    return 0;
+  }
+  const brix = 143.254 * sg ** 3 - 648.670 * sg ** 2 + 1125.805 * sg - 620.389;
+  return Math.max(0, brix);
+}
+
+/**
+ * Estimate the sugar content of a liquid (e.g., juice) from its specific
+ * gravity, in grams per liter.
+ *
+ * Brix is % sucrose by WEIGHT, so g/L = Brix × density(g/mL) × 10.
+ * This is a sucrose-equivalent estimate: SG reflects all dissolved solids
+ * (sugars, acids, sorbitol), so true fermentable sugar is slightly lower.
+ *
+ * @param sg - Specific gravity of the liquid (e.g., 1.050)
+ * @returns Approximate sugar content in g/L (sucrose-equivalent)
+ *
+ * @example
+ * sugarGramsPerLiterFromSG(1.050); // ~130 g/L
+ */
+export function sugarGramsPerLiterFromSG(sg: number): number {
+  if (sg <= 1.0) {
+    return 0;
+  }
+  return sgToBrix(sg) * sg * 10;
+}
+
+/**
+ * Sugar (grams) contributed by a juice addition, from the juice's SG and
+ * the volume added.
+ *
+ * @param juiceSG - Specific gravity of the juice being added
+ * @param juiceVolumeL - Volume of juice added in liters
+ * @returns Approximate sugar added in grams (sucrose-equivalent)
+ */
+export function sugarGramsFromJuiceAddition(
+  juiceSG: number,
+  juiceVolumeL: number,
+): number {
+  if (juiceVolumeL <= 0) {
+    return 0;
+  }
+  return sugarGramsPerLiterFromSG(juiceSG) * juiceVolumeL;
+}
+
+/**
+ * Sugar concentration (g/L) a juice dose adds to a batch, accounting for
+ * the volume the juice itself contributes.
+ *
+ * At a dose of R mL of juice per liter of batch, the added sugar lands in
+ * (1000 + R) mL of final blend per original liter — not 1000 mL — so the
+ * naive rate × concentration overstates the result by R/1000.
+ *
+ * @param juiceSG - Specific gravity of the juice being added
+ * @param doseMlPerL - Dose rate in mL of juice per liter of batch
+ * @returns Approximate added sugar in the final blend, g/L (sucrose-equivalent)
+ *
+ * @example
+ * // 34 mL/L of SG 1.050 juice
+ * addedSugarGramsPerLiter(1.050, 34); // ~4.3 g/L in the final blend
+ */
+export function addedSugarGramsPerLiter(
+  juiceSG: number,
+  doseMlPerL: number,
+): number {
+  if (doseMlPerL <= 0) {
+    return 0;
+  }
+  const sugarPerLiterOfJuice = sugarGramsPerLiterFromSG(juiceSG);
+  return (sugarPerLiterOfJuice * doseMlPerL) / (1000 + doseMlPerL);
+}

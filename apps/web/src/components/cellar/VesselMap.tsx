@@ -772,6 +772,22 @@ const updateBatchStatusMutation = trpc.batch.update.useMutation({
       return;
     }
 
+    const packageBatchStatus = liquidMapVessel?.batchStatus;
+
+    // Check if batch is in an active status (fermentation, aging, conditioning)
+    if (
+      packageBatchStatus !== "fermentation" &&
+      packageBatchStatus !== "aging" &&
+      packageBatchStatus !== "conditioning"
+    ) {
+      toast({
+        title: "Cannot Package",
+        description: `Packaging is only available for batches in fermentation, aging, or conditioning status. This batch is ${packageBatchStatus ?? "unknown"} — change its status from the batch page first.`,
+        variant: "destructive",
+      });
+      return;
+    }
+
     // Compute pre-bottling summary from liquidMap data
     const sugarAmount = liquidMapVessel.primingSugarAmount
       ? parseFloat(String(liquidMapVessel.primingSugarAmount))

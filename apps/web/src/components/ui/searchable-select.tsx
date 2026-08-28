@@ -56,7 +56,10 @@ export function SearchableSelect({
   const selectedOption = options.find((opt) => opt.value === value);
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    // modal: gives the popover its own scroll layer so trackpad/wheel
+    // scrolling works when the trigger sits inside a Dialog, whose scroll
+    // lock otherwise swallows wheel events on the portalled list.
+    <Popover open={open} onOpenChange={setOpen} modal>
       <PopoverTrigger asChild>
         <Button
           variant="outline"

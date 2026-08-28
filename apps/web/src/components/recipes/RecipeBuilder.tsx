@@ -80,8 +80,8 @@ export type InputKind =
   | "juice_purchase_requirement";
 
 export type StepKind =
-  | "pitch_yeast" | "add_additive" | "measurement" | "rack" | "filter"
-  | "transfer" | "carbonate" | "package" | "pasteurize" | "label"
+  | "pitch_yeast" | "add_additive" | "add_juice" | "measurement" | "rack"
+  | "filter" | "transfer" | "carbonate" | "package" | "pasteurize" | "label"
   | "wait" | "qa_gate" | "note";
 
 export type TriggerKind =
@@ -175,6 +175,7 @@ const RATE_UNITS = ["g/L", "kg/L", "mL/L", "L/L", "ppm", "%v/v"];
 const STEP_KINDS: { value: StepKind; label: string }[] = [
   { value: "pitch_yeast",  label: "Pitch yeast / fermentation organism" },
   { value: "add_additive", label: "Add additive" },
+  { value: "add_juice",    label: "Add juice (backsweeten)" },
   { value: "measurement",  label: "Take measurement" },
   { value: "rack",         label: "Rack" },
   { value: "filter",       label: "Filter" },
@@ -1135,6 +1136,10 @@ function summarizeStepAction(step: RecipeStepDraft): string | null {
     case "add_additive":
     case "pitch_yeast":
       return d.ingredientLabel ? `→ ${d.ingredientLabel}` : null;
+    case "add_juice":
+      return d.doseMlPerL != null
+        ? `→ ${d.juiceName || "juice"} @ ${d.doseMlPerL} mL/L`
+        : null;
     case "pasteurize":
       return d.targetPu != null
         ? `→ ${d.targetPu} PU @ ${d.tempC}°C / ${d.timeMinutes} min`
@@ -1453,6 +1458,44 @@ function StepActionParams({
             {ing
               ? `Rate: ${ing.rateValue ?? "?"} ${ing.rateUnit ?? ""} — defined in the Ingredients section`
               : "Declare additives & rates in the Ingredients section, then pick one here."}
+          </div>
+        </div>
+      );
+    }
+
+    case "add_juice": {
+      // The specific juice lot (purchased or from a vessel) is chosen at
+      // execution time in the Add Juice dialog — the recipe stores the
+      // intent: which juice character and at what dose rate.
+      return (
+        <div className="grid grid-cols-12 gap-2">
+          <div className="col-span-6">
+            <Label className="text-xs">Juice (e.g. Apple, Plum, Cherry)</Label>
+            <Input
+              autoComplete="off"
+              placeholder="e.g. Apple Juice"
+              value={(data.juiceName as string) ?? ""}
+              onChange={(e) => setData({ juiceName: e.target.value || null })}
+              className="h-9"
+            />
+          </div>
+          <div className="col-span-3">
+            <Label className="text-xs">Dose (mL/L)</Label>
+            <Input
+              type="number"
+              step="0.1"
+              min="0"
+              value={(data.doseMlPerL as number | undefined) ?? ""}
+              onChange={(e) =>
+                setData({
+                  doseMlPerL: e.target.value === "" ? null : Number(e.target.value),
+                })
+              }
+              className="h-9"
+            />
+          </div>
+          <div className="col-span-3 flex items-end text-xs text-muted-foreground">
+            Lot & SG chosen at execution
           </div>
         </div>
       );

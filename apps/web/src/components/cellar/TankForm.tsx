@@ -192,6 +192,7 @@ export function TankForm({
           <Label htmlFor="name">Tank Name</Label>
           <Input
             id="name"
+            autoComplete="off"
             placeholder="Leave empty to auto-generate (Tank 1, Tank 2, etc.)"
             {...register("name")}
           />

@@ -240,6 +240,7 @@ export function PackagingVarietyManagement() {
                 <Input
                   id="name"
                   {...register("name")}
+                  autoComplete="off"
                   placeholder="e.g., 750ml Glass Bottles, Crown Caps"
                 />
                 {errors.name && (

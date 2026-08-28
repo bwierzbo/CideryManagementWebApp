@@ -603,6 +603,7 @@ function ReferenceValues() {
                       <Input
                         id="name"
                         {...register("name")}
+                        autoComplete="off"
                         placeholder="e.g., Honeycrisp, Granny Smith"
                       />
                       {errors.name && (

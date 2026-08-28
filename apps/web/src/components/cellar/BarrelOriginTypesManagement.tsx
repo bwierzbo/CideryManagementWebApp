@@ -265,6 +265,7 @@ export function BarrelOriginTypesManagement() {
                 <Label htmlFor="name">Name</Label>
                 <Input
                   id="name"
+                  autoComplete="off"
                   placeholder="e.g., Cognac"
                   {...register("name", {
                     onChange: (e) => {

@@ -218,6 +218,7 @@ export function CalibrationSettings() {
                       <Label htmlFor="name">Calibration Name</Label>
                       <Input
                         id="name"
+                        autoComplete="off"
                         value={newCalibrationName}
                         onChange={(e) => setNewCalibrationName(e.target.value)}
                         placeholder="e.g., January 2025 Calibration"

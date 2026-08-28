@@ -73,6 +73,7 @@ import {
 import { formatDate, formatDateTime, formatDateForInput } from "@/utils/date-format";
 import { AddBatchMeasurementForm } from "@/components/cellar/AddBatchMeasurementForm";
 import { AddBatchAdditiveForm } from "@/components/cellar/AddBatchAdditiveForm";
+import { AddJuiceDialog } from "@/components/cellar/AddJuiceDialog";
 import { BatchActivityHistory } from "@/components/batch/BatchActivityHistory";
 import { BatchVolumeTrace } from "@/components/batch/BatchVolumeTrace";
 import { CarbonateModal } from "@/components/batch/CarbonateModal";
@@ -95,6 +96,7 @@ export default function BatchDetailsPage() {
 
   const [showMeasurementForm, setShowMeasurementForm] = useState(false);
   const [showAdditiveForm, setShowAdditiveForm] = useState(false);
+  const [showAddJuiceDialog, setShowAddJuiceDialog] = useState(false);
   const [showCarbonateModal, setShowCarbonateModal] = useState(false);
   const [showCompleteCarbonationModal, setShowCompleteCarbonationModal] =
     useState(false);
@@ -584,6 +586,13 @@ export default function BatchDetailsPage() {
             <DropdownMenuItem onClick={() => setShowAdditiveForm(true)}>
               <Droplets className="w-4 h-4 mr-2" />
               Add Additive
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => setShowAddJuiceDialog(true)}
+              disabled={!batch.vesselId}
+            >
+              <Droplets className="w-4 h-4 mr-2" />
+              Add Juice
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => setShowChangeStatusModal(true)}>
@@ -1630,6 +1639,24 @@ export default function BatchDetailsPage() {
             />
           </DialogContent>
         </Dialog>
+      )}
+
+      {/* Add Juice Dialog */}
+      {showAddJuiceDialog && batch.vesselId && (
+        <AddJuiceDialog
+          open={showAddJuiceDialog}
+          onOpenChange={setShowAddJuiceDialog}
+          batchId={batchId}
+          vesselId={batch.vesselId}
+          batchName={batch.customName || batch.name}
+          currentVolumeL={
+            batch.currentVolume
+              ? (batch.currentVolumeUnit === "gal" ? 3.78541 : 1) *
+                parseFloat(batch.currentVolume)
+              : 0
+          }
+          currentSG={latestMeasurement?.specificGravity ?? null}
+        />
       )}
 
       {/* Carbonate Modal */}
