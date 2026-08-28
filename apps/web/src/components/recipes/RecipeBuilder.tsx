@@ -538,7 +538,12 @@ export function RecipeBuilder({
               <div>
                 <CardTitle>Ingredients</CardTitle>
                 <CardDescription>
-                  Rates are per liter of finished batch volume.
+                  Rates are per liter of finished batch volume. Backsweetening
+                  with juice? Juice is not an ingredient — add an{" "}
+                  <span className="font-medium">
+                    &ldquo;Add juice (backsweeten)&rdquo;
+                  </span>{" "}
+                  process step below instead.
                 </CardDescription>
               </div>
               <Button type="button" variant="outline" size="sm" onClick={addIngredient}>
