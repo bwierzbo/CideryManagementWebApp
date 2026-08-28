@@ -6674,6 +6674,36 @@ export const batchRouter = router({
 
             console.log("✅ Batch composition created for merged juice purchase");
 
+            // Mirror the merge into the volume ledger — without this the
+            // juice inflow is visible in composition/recompute but missing
+            // from the per-batch ledger audit.
+            await writeLedgerEntry(
+              {
+                batchId: batchId,
+                eventDate: input.transferDate,
+                eventType: "inflow",
+                volumeChange: transferVolumeL,
+                sourceSg: juice.specificGravity
+                  ? parseFloat(juice.specificGravity)
+                  : null,
+                // Pro-rate the lot's cost to the transferred share
+                materialCost:
+                  juice.totalCost && parseFloat(juice.volume || "0") > 0
+                    ? (parseFloat(juice.totalCost) * transferVolumeL) /
+                      convertToLiters(
+                        parseFloat(juice.volume),
+                        (juice.volumeUnit as "L" | "gal") || "L",
+                      )
+                    : null,
+                vesselId: input.vesselId,
+                sourceDescription: `Juice added: ${juice.varietyName || juice.juiceType || "juice"} (+${transferVolumeL} L)`,
+                linkedEntityType: "juice_purchase_item",
+                linkedEntityId: input.juicePurchaseItemId,
+                performedBy: ctx.session?.user?.id,
+              },
+              tx,
+            );
+
             // Recalculate fractions for all compositions on the batch
             await recalculateCompositionFractions(tx, batchId);
 
