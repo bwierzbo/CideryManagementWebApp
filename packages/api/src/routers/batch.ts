@@ -6483,10 +6483,21 @@ export const batchRouter = router({
           });
 
           // Convert transfer volume to liters for comparison
-          const transferVolumeL = convertToLiters(
+          let transferVolumeL = convertToLiters(
             input.volumeToTransfer,
             input.volumeUnit as "L" | "gal" | "mL"
           );
+
+          // Unit conversion can overshoot stored 3-decimal volumes by a
+          // hair (5 gal = 18.92706 L vs a stored 18.927 L) — clamp tiny
+          // overruns to the available volume instead of rejecting.
+          const ROUNDING_TOLERANCE_L = 0.05;
+          if (
+            transferVolumeL > availableVolumeL &&
+            transferVolumeL <= availableVolumeL + ROUNDING_TOLERANCE_L
+          ) {
+            transferVolumeL = availableVolumeL;
+          }
 
           if (transferVolumeL > availableVolumeL) {
             throw new TRPCError({
