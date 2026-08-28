@@ -164,9 +164,12 @@ export function TransferToTankModal({
     });
   };
 
-  // Calculate volume in liters for validation
+  // Calculate volume in liters for validation. Allow a hair of headroom:
+  // unit conversion overshoots stored 3-decimal volumes (5 gal = 18.92706 L
+  // vs a stored 18.927 L) and the server clamps such overruns.
   const volumeInL =
     volumeUnit === "gal" ? volumeToTransfer * 3.78541 : volumeToTransfer;
+  const overAvailable = volumeInL > availableVolumeL + 0.05;
 
   // Filter vessels based on search query
   const filteredVessels = vesselsQuery.data?.vessels?.filter((vessel) => {
@@ -325,7 +328,7 @@ export function TransferToTankModal({
           </div>
 
           {/* Volume validation warning */}
-          {volumeToTransfer && volumeInL > availableVolumeL && (
+          {volumeToTransfer && overAvailable && (
             <div className="p-3 bg-orange-50 border border-orange-200 rounded-lg">
               <div className="flex items-start gap-2">
                 <AlertTriangle className="h-4 w-4 text-orange-600 mt-0.5 flex-shrink-0" />
@@ -341,7 +344,7 @@ export function TransferToTankModal({
           )}
 
           {/* Transfer preview */}
-          {volumeToTransfer && volumeInL <= availableVolumeL && (
+          {volumeToTransfer && !overAvailable && (
             <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg">
               <div className="flex items-center gap-2 mb-2">
                 <Droplets className="h-4 w-4 text-gray-600" />
@@ -397,7 +400,7 @@ export function TransferToTankModal({
               disabled={
                 transferMutation.isPending ||
                 !volumeToTransfer ||
-                volumeInL > availableVolumeL ||
+                overAvailable ||
                 !vesselId
               }
             >
