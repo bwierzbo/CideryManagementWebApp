@@ -170,6 +170,12 @@ const ADDITIVE_TYPES = [
   "Tannins & Mouthfeel", "Preservatives",
 ];
 
+// Ingredient rows can also declare juice (backsweetening/blending). Juice
+// options come from the juice-variety registry, not additive inventory,
+// and the actual lot is chosen at execution in the Add Juice dialog.
+const JUICE_TYPE = "Juice";
+const INGREDIENT_TYPES = [...ADDITIVE_TYPES, JUICE_TYPE];
+
 const RATE_UNITS = ["g/L", "kg/L", "mL/L", "L/L", "ppm", "%v/v"];
 
 const STEP_KINDS: { value: StepKind; label: string }[] = [
@@ -538,12 +544,14 @@ export function RecipeBuilder({
               <div>
                 <CardTitle>Ingredients</CardTitle>
                 <CardDescription>
-                  Rates are per liter of finished batch volume. Backsweetening
-                  with juice? Juice is not an ingredient — add an{" "}
+                  Rates are per liter of finished batch volume. For
+                  backsweetening juice, use Type{" "}
+                  <span className="font-medium">&ldquo;Juice&rdquo;</span> here,
+                  then reference it from an{" "}
                   <span className="font-medium">
                     &ldquo;Add juice (backsweeten)&rdquo;
                   </span>{" "}
-                  process step below instead.
+                  process step.
                 </CardDescription>
               </div>
               <Button type="button" variant="outline" size="sm" onClick={addIngredient}>
@@ -888,7 +896,15 @@ function IngredientRow({
 }) {
   // Inventory additive varieties for the optional link. Deduped across rows.
   const varietiesQuery = trpc.additiveVarieties.list.useQuery({ limit: 100 });
-  const additiveOpts = varietiesQuery.data?.varieties ?? [];
+  const juiceVarietiesQuery = trpc.juiceVarieties.list.useQuery({ limit: 100 });
+  const isJuice = input.additiveType === JUICE_TYPE;
+  // Options follow the selected Type: juice types come from the juice
+  // registry; additive types filter additive inventory to that type.
+  const additiveOpts = isJuice
+    ? (juiceVarietiesQuery.data?.varieties ?? [])
+    : (varietiesQuery.data?.varieties ?? []).filter(
+        (v) => !input.additiveType || v.itemType === input.additiveType,
+      );
 
   if (!editing) {
     const meta = [
@@ -912,11 +928,20 @@ function IngredientRow({
         <Label className="text-xs">Type</Label>
         <Select
           value={input.additiveType ?? ""}
-          onValueChange={(v) => onChange({ additiveType: v })}
+          onValueChange={(v) =>
+            onChange({
+              additiveType: v,
+              // A previously linked variety may not match the new type —
+              // drop the link but keep the typed label.
+              additiveVarietyId: null,
+              // Juice doses by volume; default the unit accordingly.
+              ...(v === JUICE_TYPE ? { rateUnit: "mL/L" } : {}),
+            })
+          }
         >
           <SelectTrigger className="h-9"><SelectValue placeholder="Select…" /></SelectTrigger>
           <SelectContent>
-            {ADDITIVE_TYPES.map((t) => (
+            {INGREDIENT_TYPES.map((t) => (
               <SelectItem key={t} value={t}>{t}</SelectItem>
             ))}
           </SelectContent>
@@ -928,7 +953,12 @@ function IngredientRow({
           varieties={additiveOpts.map((v) => ({ id: v.id, name: v.name }))}
           label={input.label}
           additiveVarietyId={input.additiveVarietyId ?? null}
-          onPick={(next) => onChange(next)}
+          // additiveVarietyId FKs additive inventory; juice varieties live
+          // in their own registry, so juice picks stay name-only and the
+          // concrete lot is chosen at execution.
+          onPick={(next) =>
+            onChange(isJuice ? { ...next, additiveVarietyId: null } : next)
+          }
         />
       </div>
       <div className="col-span-2">
@@ -967,6 +997,10 @@ function IngredientRow({
           {input.additiveVarietyId ? (
             <Badge variant="outline" className="text-[10px] border-green-300 text-green-700">
               <Check className="w-3 h-3 mr-1" /> Linked to inventory
+            </Badge>
+          ) : isJuice ? (
+            <Badge variant="outline" className="text-[10px] border-amber-300 text-amber-700">
+              Juice — source lot chosen at batch execution
             </Badge>
           ) : (
             <Badge variant="outline" className="text-[10px] border-gray-300 text-gray-600">
@@ -1469,38 +1503,50 @@ function StepActionParams({
     }
 
     case "add_juice": {
-      // The specific juice lot (purchased or from a vessel) is chosen at
-      // execution time in the Add Juice dialog — the recipe stores the
-      // intent: which juice character and at what dose rate.
+      // References a juice declared in the Ingredients section (type
+      // "Juice"), mirroring add_additive. The dose is stamped into
+      // actionData so instantiated tasks can prefill the Add Juice dialog;
+      // the specific lot and SG are chosen there at execution time.
+      const juiceIngredients = ingredients.filter(
+        (i) => i.additiveType === JUICE_TYPE && i.label.trim(),
+      );
+      const selectedJuice = (data.ingredientLabel as string) ?? "";
+      const juiceIng = juiceIngredients.find((i) => i.label === selectedJuice);
       return (
         <div className="grid grid-cols-12 gap-2">
           <div className="col-span-6">
-            <Label className="text-xs">Juice (e.g. Apple, Plum, Cherry)</Label>
-            <Input
-              autoComplete="off"
-              placeholder="e.g. Apple Juice"
-              value={(data.juiceName as string) ?? ""}
-              onChange={(e) => setData({ juiceName: e.target.value || null })}
-              className="h-9"
-            />
-          </div>
-          <div className="col-span-3">
-            <Label className="text-xs">Dose (mL/L)</Label>
-            <Input
-              type="number"
-              step="0.1"
-              min="0"
-              value={(data.doseMlPerL as number | undefined) ?? ""}
-              onChange={(e) =>
+            <Label className="text-xs">Juice (from Ingredients)</Label>
+            <Select
+              value={selectedJuice}
+              onValueChange={(v) => {
+                const ing = juiceIngredients.find((i) => i.label === v);
                 setData({
-                  doseMlPerL: e.target.value === "" ? null : Number(e.target.value),
-                })
-              }
-              className="h-9"
-            />
+                  ingredientLabel: v,
+                  juiceName: v,
+                  doseMlPerL: ing?.rateValue ?? null,
+                });
+              }}
+            >
+              <SelectTrigger className="h-9">
+                <SelectValue
+                  placeholder={
+                    juiceIngredients.length
+                      ? "Select juice…"
+                      : "Add a Juice ingredient first"
+                  }
+                />
+              </SelectTrigger>
+              <SelectContent>
+                {juiceIngredients.map((i) => (
+                  <SelectItem key={i.uiId} value={i.label}>{i.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
-          <div className="col-span-3 flex items-end text-xs text-muted-foreground">
-            Lot & SG chosen at execution
+          <div className="col-span-6 flex items-end text-xs text-muted-foreground">
+            {juiceIng
+              ? `Rate: ${juiceIng.rateValue ?? "?"} ${juiceIng.rateUnit ?? "mL/L"} — defined in the Ingredients section. Lot & SG chosen at execution.`
+              : 'Declare the juice in the Ingredients section (Type "Juice"), then pick it here.'}
           </div>
         </div>
       );
