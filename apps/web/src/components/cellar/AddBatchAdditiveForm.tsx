@@ -811,7 +811,12 @@ export function AddBatchAdditiveForm({
                   value={searchQuery}
                   onValueChange={setSearchQuery}
                 />
-                <CommandList className="max-h-[200px] overflow-y-auto overscroll-contain">
+                {/* stopPropagation keeps the surrounding Dialog's scroll lock
+                    from swallowing trackpad/wheel events over the list */}
+                <CommandList
+                  className="max-h-[200px] overflow-y-auto overscroll-contain"
+                  onWheel={(e) => e.stopPropagation()}
+                >
                   {isLoadingInventory && (
                     <CommandEmpty>
                       <div className="flex items-center justify-center py-6">

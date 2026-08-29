@@ -81,7 +81,10 @@ export function SearchableSelect({
       <PopoverContent className="w-[--radix-popover-trigger-width] p-0 z-[200]" align="start">
         <Command>
           <CommandInput placeholder={searchPlaceholder} />
-          <CommandList className="max-h-[200px] overflow-y-auto overscroll-contain">
+          <CommandList
+            className="max-h-[200px] overflow-y-auto overscroll-contain"
+            onWheel={(e) => e.stopPropagation()}
+          >
             <CommandEmpty>{emptyText}</CommandEmpty>
             <CommandGroup heading={groupLabel}>
               {options.map((option) => (
