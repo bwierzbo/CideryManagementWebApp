@@ -1617,7 +1617,7 @@ export default function BatchDetailsPage() {
       {/* Add Additive Dialog */}
       {showAdditiveForm && (
         <Dialog open={showAdditiveForm} onOpenChange={setShowAdditiveForm}>
-          <DialogContent className="max-w-2xl">
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Add Batch Additive</DialogTitle>
               <DialogDescription>
