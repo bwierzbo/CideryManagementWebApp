@@ -232,9 +232,16 @@ export function StepDetailModal({
   const additivePrefill = (() => {
     if (task.kind !== "add_additive" && task.kind !== "pitch_yeast") return null;
     const ingLabel = (task.actionData?.ingredientLabel as string) ?? task.label ?? "";
+    const taskLabel = (task.label ?? "").toLowerCase();
     const ing =
       ingredients.find((i) => i.label === ingLabel || i.additiveName === ingLabel) ??
-      ingredients.find((i) => ingLabel.includes(i.label));
+      ingredients.find((i) => ingLabel.includes(i.label)) ??
+      // Last resort: the stored reference can go stale (e.g. the ingredient
+      // was renamed after the step was written) — match the ingredient
+      // named in the step's own title so the form still prefills.
+      ingredients.find(
+        (i) => i.label.trim() && taskLabel.includes(i.label.trim().toLowerCase()),
+      );
     if (!ing) return null;
     const rate = ing.rateValue != null ? Number(ing.rateValue) : undefined;
     const rateUnit = ing.rateUnit ?? undefined;
