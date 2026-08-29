@@ -115,6 +115,24 @@ export function AddJuiceDialog({
     [liquidMapQuery.data, batchId],
   );
 
+  // Land on the tab that has something to offer: when no purchased lots
+  // have volume but vessels do (e.g. juice stored in a freezer vessel),
+  // start on the vessel tab instead of an empty inventory list.
+  useEffect(() => {
+    if (
+      open &&
+      !juicePurchaseItemId &&
+      !sourceVesselId &&
+      sourceTab === "inventory" &&
+      inventoryQuery.isFetched &&
+      inventoryItems.length === 0 &&
+      vesselSources.length > 0
+    ) {
+      setSourceTab("vessel");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, inventoryQuery.isFetched, inventoryItems.length, vesselSources.length]);
+
   const selectedInventoryItem = inventoryItems.find(
     (item) => item.id === juicePurchaseItemId,
   );
@@ -141,7 +159,11 @@ export function AddJuiceDialog({
   const handleSelectVesselSource = (id: string) => {
     setSourceVesselId(id);
     const v = vesselSources.find((s) => s.vesselId === id);
-    const sg = v?.finalGravity ?? v?.originalGravity;
+    const sg =
+      (v as { latestMeasurement?: { specificGravity?: unknown } } | undefined)
+        ?.latestMeasurement?.specificGravity ??
+      v?.finalGravity ??
+      v?.originalGravity;
     if (sg) {
       setJuiceSG(parseFloat(sg.toString()).toFixed(3));
     }
@@ -188,9 +210,12 @@ export function AddJuiceDialog({
         )
       : null;
 
-  const overAvailable = hasDose && totalNum > availableL + 0.001;
   const sourceSelected =
     sourceTab === "inventory" ? !!juicePurchaseItemId : !!sourceVesselId;
+  // Only meaningful once a source is chosen — otherwise availableL is 0
+  // and the warning fires before the user has done anything wrong.
+  const overAvailable =
+    sourceSelected && hasDose && totalNum > availableL + 0.001;
 
   const transferJuiceMutation = trpc.batch.transferJuiceToTank.useMutation({
     onSuccess: handleSaved,
