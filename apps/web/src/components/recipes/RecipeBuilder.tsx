@@ -326,10 +326,34 @@ export function RecipeBuilder({
   };
 
   const updateInput = (uiId: string, patch: Partial<RecipeInputDraft>) => {
-    setDraft((d) => ({
-      ...d,
-      inputs: d.inputs.map((i) => (i.uiId === uiId ? { ...i, ...patch } : i)),
-    }));
+    setDraft((d) => {
+      const prev = d.inputs.find((i) => i.uiId === uiId);
+      const inputs = d.inputs.map((i) => (i.uiId === uiId ? { ...i, ...patch } : i));
+      // Steps reference ingredients by label (actionData.ingredientLabel /
+      // juiceName). Renaming an ingredient must carry those references
+      // along, or execution prefill silently breaks against the old name.
+      const oldLabel = prev?.label?.trim();
+      const newLabel = patch.label?.trim();
+      if (!oldLabel || !newLabel || oldLabel === newLabel) {
+        return { ...d, inputs };
+      }
+      return {
+        ...d,
+        inputs,
+        steps: d.steps.map((s) => {
+          const a = s.actionData as Record<string, unknown>;
+          if (a?.ingredientLabel !== oldLabel) return s;
+          return {
+            ...s,
+            actionData: {
+              ...a,
+              ingredientLabel: newLabel,
+              ...(a.juiceName === oldLabel ? { juiceName: newLabel } : {}),
+            },
+          };
+        }),
+      };
+    });
   };
 
   const removeInput = (uiId: string) => {
