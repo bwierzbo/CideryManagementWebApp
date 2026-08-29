@@ -113,6 +113,10 @@ interface CarbonateModalProps {
   prefillMethod?: "forced" | "natural";
   /** Seed the date field (e.g. a recipe step's scheduled date when back-filling). */
   prefillStartedAt?: string | Date | null;
+  /** Carbonating in the keg after packaging (no vessel): kegs are
+   *  pressure-rated, so skip the pressure-vessel warnings and default to
+   *  forced carbonation. */
+  kegContext?: boolean;
 }
 
 export function CarbonateModal({
@@ -124,6 +128,7 @@ export function CarbonateModal({
   prefillTargetCo2Volumes,
   prefillMethod,
   prefillStartedAt,
+  kegContext = false,
 }: CarbonateModalProps) {
   const utils = trpc.useUtils();
   const { formatDateTimeForInput, parseDateTimeFromInput, seedDateTimeForInput } = useDateFormat();
@@ -272,7 +277,10 @@ export function CarbonateModal({
             ? "forced"
             : undefined;
       const defaultMethod =
-        recipeMethod ?? (vessel?.isPressureVessel === "yes" ? "forced" : "bottle_conditioning");
+        recipeMethod ??
+        (vessel?.isPressureVessel === "yes" || kegContext
+          ? "forced"
+          : "bottle_conditioning");
       reset({
         carbonationMethod: defaultMethod,
         startedAt: seedDateTimeForInput(prefillStartedAt) as any,
@@ -437,7 +445,8 @@ export function CarbonateModal({
         return;
       }
       // Warn (never block) when force-carbonating in a non-pressure tank.
-      if (vessel?.isPressureVessel !== "yes") {
+      // Kegs are pressure-rated, so keg carbonation skips the warning.
+      if (vessel?.isPressureVessel !== "yes" && !kegContext) {
         const proceed = window.confirm(
           `${vessel?.name ?? "This vessel"} is not marked as a pressure-rated tank.\n\n` +
             "Forced carbonation should happen in a pressure vessel (e.g. the brite tank). " +
@@ -564,7 +573,14 @@ export function CarbonateModal({
                 </CardHeader>
               </Card>
             </div>
+            {kegContext && (
+              <p className="text-sm text-muted-foreground">
+                Carbonating in the keg — kegs are pressure-rated, no transfer
+                needed.
+              </p>
+            )}
             {vessel?.isPressureVessel !== "yes" &&
+              !kegContext &&
               (carbonationMethod === "forced" ? (
                 <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
                   <p className="font-medium">

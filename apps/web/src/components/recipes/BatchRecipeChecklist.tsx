@@ -174,7 +174,10 @@ export function BatchRecipeChecklist({ batchId }: { batchId: string }) {
     : 0;
   const openStep = (t: Task) => {
     if (VESSEL_KINDS.has(t.kind)) {
-      if (!batchData?.vesselId) {
+      // Carbonation doesn't need the batch in a vessel: kegged batches
+      // force-carbonate in the keg, bottled ones bottle-condition — the
+      // modal records the operation with a null vessel.
+      if (!batchData?.vesselId && t.kind !== "carbonate") {
         toast({
           title: "No vessel yet",
           description: "Do the Transfer step first — this action needs the batch in a vessel.",
@@ -183,13 +186,13 @@ export function BatchRecipeChecklist({ batchId }: { batchId: string }) {
       }
       if (
         t.kind === "package" &&
-        batchData.status !== "fermentation" &&
-        batchData.status !== "aging" &&
-        batchData.status !== "conditioning"
+        batchData?.status !== "fermentation" &&
+        batchData?.status !== "aging" &&
+        batchData?.status !== "conditioning"
       ) {
         toast({
           title: "Cannot Package",
-          description: `Packaging is only available for batches in fermentation, aging, or conditioning status. This batch is ${batchData.status} — change its status from the batch page first.`,
+          description: `Packaging is only available for batches in fermentation, aging, or conditioning status. This batch is ${batchData?.status ?? "unknown"} — change its status from the batch page first.`,
           variant: "destructive",
         });
         return;
@@ -213,7 +216,8 @@ export function BatchRecipeChecklist({ batchId }: { batchId: string }) {
   // Why a step can't run yet (shown as a lock on the row).
   const blockedReason = (t: Task): string | null => {
     if (t.status === "done" || t.status === "skipped") return null;
-    if (VESSEL_KINDS.has(t.kind) && !batchData?.vesselId) return "needs Transfer first";
+    if (VESSEL_KINDS.has(t.kind) && t.kind !== "carbonate" && !batchData?.vesselId)
+      return "needs Transfer first";
     if (RUN_KINDS.has(t.kind) && !latestRun) return "needs Package first";
     return null;
   };
@@ -684,45 +688,6 @@ export function BatchRecipeChecklist({ batchId }: { batchId: string }) {
             })
           }
         />
-        <CarbonateModal
-          open={actionTask?.kind === "carbonate"}
-          onOpenChange={(o) => !o && setActionTask(null)}
-          batch={{
-            id: batchId,
-            name: batchData.name ?? "",
-            vesselId: batchData.vesselId,
-            currentVolume: Number(batchData.currentVolume ?? 0),
-            currentVolumeUnit: batchData.currentVolumeUnit ?? "L",
-            status: batchData.status ?? "",
-          }}
-          vessel={{
-            id: batchData.vesselId,
-            name: batchData.vesselName ?? "",
-            isPressureVessel: batchData.vesselIsPressureVessel === "yes" ? "yes" : "no",
-            maxPressure: Number(batchData.vesselMaxPressure ?? 30),
-          }}
-          prefillTargetCo2Volumes={
-            typeof actionTask?.actionData?.targetCo2Volumes === "number"
-              ? (actionTask.actionData.targetCo2Volumes as number)
-              : undefined
-          }
-          prefillMethod={
-            actionTask?.actionData?.method === "natural"
-              ? "natural"
-              : actionTask?.actionData?.method === "forced"
-                ? "forced"
-                : undefined
-          }
-          prefillStartedAt={actionTask?.scheduledDate ?? null}
-          onSuccess={(actualAt?: Date, laborHours?: number) =>
-            actionTask &&
-            complete.mutate({
-              taskId: actionTask.id,
-              ...(actualAt ? { completedAt: actualAt } : {}),
-              ...(laborHours ? { laborDurationHours: laborHours } : {}),
-            })
-          }
-        />
         <AddJuiceDialog
           open={actionTask?.kind === "add_juice"}
           onOpenChange={(o) => !o && setActionTask(null)}
@@ -765,6 +730,60 @@ export function BatchRecipeChecklist({ batchId }: { batchId: string }) {
           }
         />
       </>
+    )}
+
+    {/* Carbonation works with or without a vessel: in-tank when the batch
+        is in one, in the keg (or bottle-conditioning) after packaging —
+        the operation records a null vessel in that case. */}
+    {batchData && (
+      <CarbonateModal
+        open={actionTask?.kind === "carbonate"}
+        onOpenChange={(o) => !o && setActionTask(null)}
+        batch={{
+          id: batchId,
+          name: batchData.name ?? "",
+          vesselId: batchData.vesselId ?? null,
+          currentVolume:
+            currentVolumeL > 0
+              ? Number(batchData.currentVolume ?? 0)
+              : Number(execution.kegVolumeL ?? 0),
+          currentVolumeUnit: batchData.currentVolumeUnit ?? "L",
+          status: batchData.status ?? "",
+        }}
+        vessel={
+          batchData.vesselId
+            ? {
+                id: batchData.vesselId,
+                name: batchData.vesselName ?? "",
+                isPressureVessel:
+                  batchData.vesselIsPressureVessel === "yes" ? "yes" : "no",
+                maxPressure: Number(batchData.vesselMaxPressure ?? 30),
+              }
+            : null
+        }
+        kegContext={!batchData.vesselId && actionTask?.packagingPath === "keg"}
+        prefillTargetCo2Volumes={
+          typeof actionTask?.actionData?.targetCo2Volumes === "number"
+            ? (actionTask.actionData.targetCo2Volumes as number)
+            : undefined
+        }
+        prefillMethod={
+          actionTask?.actionData?.method === "natural"
+            ? "natural"
+            : actionTask?.actionData?.method === "forced"
+              ? "forced"
+              : undefined
+        }
+        prefillStartedAt={actionTask?.scheduledDate ?? null}
+        onSuccess={(actualAt?: Date, laborHours?: number) =>
+          actionTask &&
+          complete.mutate({
+            taskId: actionTask.id,
+            ...(actualAt ? { completedAt: actualAt } : {}),
+            ...(laborHours ? { laborDurationHours: laborHours } : {}),
+          })
+        }
+      />
     )}
 
     {/* Pasteurize / label operate on the batch's latest packaging run. */}
