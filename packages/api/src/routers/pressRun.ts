@@ -17,6 +17,8 @@ import {
   batchTransfers,
   batchRackingOperations,
   systemSettings,
+  activityLaborAssignments,
+  workers,
 } from "db";
 import { eq, and, desc, asc, sql, isNull, inArray } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
@@ -145,6 +147,14 @@ const createWithInventorySchema = z.object({
     .min(1, "At least one vessel assignment is required"),
   laborHours: z.number().min(0).optional(),
   workerCount: z.number().int().min(1).optional(),
+  laborAssignments: z
+    .array(
+      z.object({
+        workerId: z.string().uuid(),
+        hoursWorked: z.number().positive(),
+      }),
+    )
+    .optional(),
   notes: z.string().optional(),
 });
 
@@ -425,7 +435,12 @@ export const pressRunRouter = router({
               totalJuiceVolume: input.totalJuiceVolumeL.toString(),
               totalJuiceVolumeUnit: "L",
               extractionRate: extractionRate.toString(),
-              laborHours: input.laborHours?.toString(),
+              // Keep the summary column populated: explicit value, else the
+              // sum of per-worker assignments.
+              laborHours: (
+                input.laborHours ??
+                input.laborAssignments?.reduce((s, a) => s + a.hoursWorked, 0)
+              )?.toString(),
               notes: input.notes,
               createdBy: ctx.session?.user?.id,
               updatedBy: ctx.session?.user?.id,
@@ -435,6 +450,32 @@ export const pressRunRouter = router({
             .returning();
 
           const pressRunId = newPressRun[0].id;
+
+          // 5b. Per-worker labor assignments (rate snapshotted at entry)
+          if (input.laborAssignments && input.laborAssignments.length > 0) {
+            const workerIds = input.laborAssignments.map((a) => a.workerId);
+            const workerRows = await tx
+              .select({ id: workers.id, hourlyRate: workers.hourlyRate })
+              .from(workers)
+              .where(inArray(workers.id, workerIds));
+            const rateById = new Map(
+              workerRows.map((w) => [w.id, parseFloat(w.hourlyRate ?? "20")]),
+            );
+            await tx.insert(activityLaborAssignments).values(
+              input.laborAssignments.map((a) => {
+                const rate = rateById.get(a.workerId) ?? 20;
+                return {
+                  activityType: "press_run" as const,
+                  pressRunId,
+                  workerId: a.workerId,
+                  hoursWorked: a.hoursWorked.toString(),
+                  hourlyRateSnapshot: rate.toString(),
+                  laborCost: (a.hoursWorked * rate).toFixed(2),
+                  createdBy: ctx.session?.user?.id,
+                };
+              }),
+            );
+          }
 
           // 6. Create press run loads for each item
           const depletedPurchaseItemIds: string[] = [];

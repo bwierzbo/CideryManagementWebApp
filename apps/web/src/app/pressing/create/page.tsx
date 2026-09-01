@@ -29,6 +29,11 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import {
+  WorkerLaborInput,
+  type WorkerAssignment,
+  toApiLaborAssignments,
+} from "@/components/labor/WorkerLaborInput";
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -45,7 +50,6 @@ import {
   Beaker,
   Scale,
   Droplets,
-  Clock,
   Users,
   Plus,
   Trash2,
@@ -102,8 +106,7 @@ export default function BuildPressRunPage() {
     { toVesselId: "", volumeL: 0, transferLossL: 0, transferLossNotes: "" },
   ]);
   const [vesselVolumeUnit, setVesselVolumeUnit] = useState<"L" | "gal">("L");
-  const [laborHours, setLaborHours] = useState<number | undefined>();
-  const [workerCount, setWorkerCount] = useState<number | undefined>();
+  const [laborAssignments, setLaborAssignments] = useState<WorkerAssignment[]>([]);
   const [notes, setNotes] = useState("");
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [successData, setSuccessData] = useState<{ pressRunName: string; batchIds: string[] } | null>(null);
@@ -313,8 +316,8 @@ export default function BuildPressRunPage() {
           transferLossL: a.transferLossL || 0,
           transferLossNotes: a.transferLossNotes || undefined,
         })),
-      laborHours,
-      workerCount,
+      laborAssignments: toApiLaborAssignments(laborAssignments),
+      workerCount: laborAssignments.length || undefined,
       notes: notes || undefined,
     });
   };
@@ -778,43 +781,18 @@ export default function BuildPressRunPage() {
             </div>
           </div>
 
-          {/* Labor & Notes */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="space-y-2">
-              <Label className="flex items-center gap-2">
-                <Clock className="w-4 h-4" />
-                Labor Hours
-              </Label>
-              <Input
-                type="number"
-                step="0.5"
-                min="0"
-                max="24"
-                placeholder="Hours"
-                value={laborHours ?? ""}
-                onChange={(e) =>
-                  setLaborHours(e.target.value ? parseFloat(e.target.value) : undefined)
-                }
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label className="flex items-center gap-2">
-                <Users className="w-4 h-4" />
-                Worker Count
-              </Label>
-              <Input
-                type="number"
-                step="1"
-                min="1"
-                max="20"
-                placeholder="Workers"
-                value={workerCount ?? ""}
-                onChange={(e) =>
-                  setWorkerCount(e.target.value ? parseInt(e.target.value) : undefined)
-                }
-              />
-            </div>
+          {/* Labor — same per-worker widget as the rest of the app */}
+          <div className="space-y-2">
+            <Label className="flex items-center gap-2">
+              <Users className="w-4 h-4" />
+              Labor Tracking
+            </Label>
+            <WorkerLaborInput
+              value={laborAssignments}
+              onChange={setLaborAssignments}
+              activityLabel="this press run"
+              activityType="press_run"
+            />
           </div>
 
           <div className="space-y-2">
