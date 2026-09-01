@@ -20,7 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ScrollableSelectContent } from "@/components/ui/scrollable-select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Badge } from "@/components/ui/badge";
 import {
   Plus,
@@ -591,8 +591,12 @@ export function AdditivesTransactionForm({
                       {/* Additive Selection */}
                       <div>
                         <Label>Additive</Label>
-                        <Select
-                          value={line.additiveId}
+                        <SearchableSelect
+                          options={vendorAdditives.map((additive: any) => ({
+                            value: additive.id,
+                            label: additive.name,
+                          }))}
+                          value={line.additiveId || undefined}
                           onValueChange={(value) => {
                             const newLines = [...lines];
                             newLines[index].additiveId = value;
@@ -602,26 +606,17 @@ export function AdditivesTransactionForm({
                           disabled={
                             !selectedVendorId || vendorAdditives.length === 0
                           }
-                        >
-                          <SelectTrigger className="h-12">
-                            <SelectValue
-                              placeholder={
-                                !selectedVendorId
-                                  ? "Select a vendor first"
-                                  : vendorAdditives.length === 0
-                                    ? "No additives for this vendor"
-                                    : "Select additive"
-                              }
-                            />
-                          </SelectTrigger>
-                          <ScrollableSelectContent maxHeight="300px">
-                            {vendorAdditives.map((additive: any) => (
-                              <SelectItem key={additive.id} value={additive.id}>
-                                {additive.name}
-                              </SelectItem>
-                            ))}
-                          </ScrollableSelectContent>
-                        </Select>
+                          placeholder={
+                            !selectedVendorId
+                              ? "Select a vendor first"
+                              : vendorAdditives.length === 0
+                                ? "No additives for this vendor"
+                                : "Select additive"
+                          }
+                          searchPlaceholder="Search additives..."
+                          emptyText="No matching additives"
+                          className="h-12"
+                        />
                         {line.validationError && (
                           <p className="text-sm text-red-600 mt-1">
                             {line.validationError}

@@ -23,7 +23,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ScrollableSelectContent } from "@/components/ui/scrollable-select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
   Plus,
   Trash2,
@@ -614,8 +614,12 @@ export function JuiceTransactionForm({
                       {/* Juice Selection */}
                       <div>
                         <Label>Juice</Label>
-                        <Select
-                          value={line.juiceId}
+                        <SearchableSelect
+                          options={vendorJuices.map((juice: any) => ({
+                            value: juice.id,
+                            label: juice.name,
+                          }))}
+                          value={line.juiceId || undefined}
                           onValueChange={(value) => {
                             const newLines = [...lines];
                             newLines[index].juiceId = value;
@@ -625,26 +629,17 @@ export function JuiceTransactionForm({
                           disabled={
                             !selectedVendorId || vendorJuices.length === 0
                           }
-                        >
-                          <SelectTrigger className="h-12">
-                            <SelectValue
-                              placeholder={
-                                !selectedVendorId
-                                  ? "Select a vendor first"
-                                  : vendorJuices.length === 0
-                                    ? "No juices for this vendor"
-                                    : "Select juice"
-                              }
-                            />
-                          </SelectTrigger>
-                          <ScrollableSelectContent maxHeight="300px">
-                            {vendorJuices.map((juice: any) => (
-                              <SelectItem key={juice.id} value={juice.id}>
-                                {juice.name}
-                              </SelectItem>
-                            ))}
-                          </ScrollableSelectContent>
-                        </Select>
+                          placeholder={
+                            !selectedVendorId
+                              ? "Select a vendor first"
+                              : vendorJuices.length === 0
+                                ? "No juices for this vendor"
+                                : "Select juice"
+                          }
+                          searchPlaceholder="Search juices..."
+                          emptyText="No matching juices"
+                          className="h-12"
+                        />
                         {line.validationError && (
                           <p className="text-sm text-red-600 mt-1">
                             {line.validationError}
