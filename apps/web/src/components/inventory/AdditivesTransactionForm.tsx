@@ -20,6 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { ScrollableSelectContent } from "@/components/ui/scrollable-select";
 import { Badge } from "@/components/ui/badge";
 import {
   Plus,
@@ -613,13 +614,13 @@ export function AdditivesTransactionForm({
                               }
                             />
                           </SelectTrigger>
-                          <SelectContent className="max-h-[300px] overflow-y-auto">
+                          <ScrollableSelectContent maxHeight="300px">
                             {vendorAdditives.map((additive: any) => (
                               <SelectItem key={additive.id} value={additive.id}>
                                 {additive.name}
                               </SelectItem>
                             ))}
-                          </SelectContent>
+                          </ScrollableSelectContent>
                         </Select>
                         {line.validationError && (
                           <p className="text-sm text-red-600 mt-1">

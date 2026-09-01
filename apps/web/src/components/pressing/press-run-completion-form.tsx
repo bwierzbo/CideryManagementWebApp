@@ -15,6 +15,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { ScrollableSelectContent } from "@/components/ui/scrollable-select";
 import { VolumeInput, VolumeDisplay, type VolumeUnit } from "@/components/ui/volume-input";
 import {
   Card,
@@ -430,7 +431,7 @@ export function PressRunCompletionForm({
                                   <SelectValue placeholder="Select vessel..." />
                                 </SelectTrigger>
                               </FormControl>
-                              <SelectContent className="max-h-[300px] overflow-y-auto">
+                              <ScrollableSelectContent maxHeight="300px">
                                 {vesselsLoading ? (
                                   <SelectItem value="loading" disabled>
                                     Loading vessels...
@@ -467,7 +468,7 @@ export function PressRunCompletionForm({
                                     </SelectItem>
                                   ))
                                 )}
-                              </SelectContent>
+                              </ScrollableSelectContent>
                             </Select>
                             <FormMessage />
                           </FormItem>
