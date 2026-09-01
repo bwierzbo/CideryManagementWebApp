@@ -23,6 +23,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { ScrollableSelectContent } from "@/components/ui/scrollable-select";
 import {
   Plus,
   Trash2,
@@ -636,13 +637,13 @@ export function JuiceTransactionForm({
                               }
                             />
                           </SelectTrigger>
-                          <SelectContent className="max-h-[300px] overflow-y-auto">
+                          <ScrollableSelectContent maxHeight="300px">
                             {vendorJuices.map((juice: any) => (
                               <SelectItem key={juice.id} value={juice.id}>
                                 {juice.name}
                               </SelectItem>
                             ))}
-                          </SelectContent>
+                          </ScrollableSelectContent>
                         </Select>
                         {line.validationError && (
                           <p className="text-sm text-red-600 mt-1">

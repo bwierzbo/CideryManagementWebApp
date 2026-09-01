@@ -637,13 +637,13 @@ export function AppleTransactionForm({
                           <SelectTrigger className="h-12">
                             <SelectValue placeholder="Select variety" />
                           </SelectTrigger>
-                          <SelectContent className="max-h-[300px] overflow-y-auto">
+                          <ScrollableSelectContent maxHeight="300px">
                             {vendorVarieties.map((variety: any) => (
                               <SelectItem key={variety.id} value={variety.id}>
                                 {variety.name}
                               </SelectItem>
                             ))}
-                          </SelectContent>
+                          </ScrollableSelectContent>
                         </Select>
                         {line.validationError && (
                           <p className="text-sm text-red-600 mt-1">
