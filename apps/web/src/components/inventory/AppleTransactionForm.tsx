@@ -21,7 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ScrollableSelectContent } from "@/components/ui/scrollable-select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Badge } from "@/components/ui/badge";
 import {
   Plus,
@@ -626,25 +626,26 @@ export function AppleTransactionForm({
                       {/* Base Fruit Variety Selection */}
                       <div>
                         <Label>Base Fruit Variety</Label>
-                        <Select
+                        {/* Searchable combobox: matches any part of the name
+                            ("bartlet" finds Red/Yellow Bartlet), unlike the
+                            plain Select's first-letter typeahead. */}
+                        <SearchableSelect
+                          options={vendorVarieties.map((variety: any) => ({
+                            value: variety.id,
+                            label: variety.name,
+                          }))}
+                          value={line.appleVarietyId || undefined}
                           onValueChange={(value) => {
                             const newLines = [...lines];
                             newLines[index].appleVarietyId = value;
                             setLines(newLines);
                             setValue(`lines.${index}.appleVarietyId`, value);
                           }}
-                        >
-                          <SelectTrigger className="h-12">
-                            <SelectValue placeholder="Select variety" />
-                          </SelectTrigger>
-                          <ScrollableSelectContent maxHeight="300px">
-                            {vendorVarieties.map((variety: any) => (
-                              <SelectItem key={variety.id} value={variety.id}>
-                                {variety.name}
-                              </SelectItem>
-                            ))}
-                          </ScrollableSelectContent>
-                        </Select>
+                          placeholder="Select variety"
+                          searchPlaceholder="Search varieties..."
+                          emptyText="No matching varieties"
+                          className="h-12"
+                        />
                         {line.validationError && (
                           <p className="text-sm text-red-600 mt-1">
                             {line.validationError}
