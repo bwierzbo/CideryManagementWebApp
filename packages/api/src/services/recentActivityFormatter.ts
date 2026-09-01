@@ -695,11 +695,50 @@ function buildCarbonationMessage(r: RawActivityRow, lookups: Lookups): string {
 
 function buildVendorMessage(r: RawActivityRow): string {
   const data = (r.newData ?? r.oldData ?? {}) as Json;
-  const name = get(data, "name") || "Vendor";
+  // The custom "vendor" (singular) audit event nests the row under `data`
+  // and carries a top-level vendorName; the standard row has `name`.
+  const name =
+    get(data, "vendorName", "name") || get(data?.data, "name") || "Vendor";
 
   if (r.operation === "create") return `Vendor ${name} added`;
   if (r.operation === "update") return `Vendor ${name} updated`;
   return `Vendor ${name} ${r.operation}`;
+}
+
+function buildFruitVarietyMessage(r: RawActivityRow): string {
+  const newData = r.newData as Json;
+  const oldData = r.oldData as Json;
+  const name = get(newData, "name") || get(oldData, "name") || "variety";
+
+  if (r.operation === "create") return `Fruit variety ${name} added`;
+  if (r.operation === "delete" || r.operation === "soft_delete")
+    return `Fruit variety ${name} deleted`;
+
+  // Updates: audit newData holds only the changed columns — surface the
+  // interesting ones so the feed says what actually changed.
+  const changes: string[] = [];
+  const changedName = get(newData, "name");
+  if (changedName && changedName !== get(oldData, "name")) {
+    changes.push(`renamed from ${get(oldData, "name") ?? "?"} to ${changedName}`);
+  }
+  const fruitType = get(newData, "fruitType");
+  if (fruitType && fruitType !== get(oldData, "fruitType")) {
+    changes.push(`type → ${fruitType}`);
+  }
+  return changes.length
+    ? `Fruit variety ${name} updated · ${changes.join(" · ")}`
+    : `Fruit variety ${name} updated`;
+}
+
+function buildVendorVarietyMessage(r: RawActivityRow): string {
+  const data = (r.newData ?? r.oldData ?? {}) as Json;
+  const variety = get(data, "varietyName") || "Variety";
+  const vendor = get(data, "vendorName") || "vendor";
+
+  if (r.operation === "create") return `${variety} added to ${vendor}`;
+  if (r.operation === "delete" || r.operation === "soft_delete")
+    return `${variety} removed from ${vendor}`;
+  return `${variety} ${r.operation} for ${vendor}`;
 }
 
 function buildFallbackMessage(r: RawActivityRow): string {
@@ -716,7 +755,11 @@ function buildFallbackMessage(r: RawActivityRow): string {
     (typeof data?.batchNumber === "string" && data.batchNumber) ||
     (typeof data?.invoiceNumber === "string" && data.invoiceNumber) ||
     null;
-  const entity = titleCase(r.tableName).replace(/s$/, "");
+  // Singularize: "varieties" → "variety", "batches" → "batch", "runs" → "run"
+  const entity = titleCase(r.tableName)
+    .replace(/ies$/, "y")
+    .replace(/hes$/, "h")
+    .replace(/s$/, "");
   return label
     ? `${entity} ${label} ${verb}`
     : `${entity} ${verb}`;
@@ -746,6 +789,12 @@ function formatRow(r: RawActivityRow, lookups: Lookups): string {
     case "keg_fills":                 return buildKegFillMessage(r, lookups);
     case "batch_carbonation_operations": return buildCarbonationMessage(r, lookups);
     case "vendors":            return buildVendorMessage(r);
+    // "vendor" (singular) is the custom audit event the vendors page writes.
+    case "vendor":             return buildVendorMessage(r);
+    // Audit rows use both names for the same table (schema was renamed).
+    case "apple_varieties":       return buildFruitVarietyMessage(r);
+    case "base_fruit_varieties":  return buildFruitVarietyMessage(r);
+    case "vendor_varieties":   return buildVendorVarietyMessage(r);
     default:                   return buildFallbackMessage(r);
   }
 }
