@@ -38,6 +38,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
 import { SessionIndicator } from "@/components/auth/session-indicator";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 export function Navbar() {
   const pathname = usePathname();
@@ -214,6 +215,7 @@ export function Navbar() {
 
             {/* User Menu */}
             <div className="flex items-center space-x-3">
+              <ThemeToggle />
               <SessionIndicator />
               {session ? (
                 <DropdownMenu>
