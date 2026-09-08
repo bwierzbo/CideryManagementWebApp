@@ -13,6 +13,7 @@ import { IdleTimeoutProvider } from "../components/providers/idle-timeout-provid
 import { FontSizeProvider } from "../components/providers/font-size-provider";
 import { TimezoneProvider } from "../contexts/TimezoneContext";
 import { SettingsProvider } from "../contexts/SettingsContext";
+import { ThemeProvider } from "next-themes";
 
 // Enhanced QueryClient with performance optimizations
 function createOptimizedQueryClient() {
@@ -120,6 +121,10 @@ export function Providers({ children }: { children: React.ReactNode }) {
   );
 
   return (
+    // Dark palette has existed in globals.css since the start; next-themes
+    // activates it. Default stays light so nothing changes until the user
+    // opts in via the navbar toggle.
+    <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false}>
     <SessionProvider>
       <IdleTimeoutProvider>
         <FontSizeProvider>
@@ -135,5 +140,6 @@ export function Providers({ children }: { children: React.ReactNode }) {
         </FontSizeProvider>
       </IdleTimeoutProvider>
     </SessionProvider>
+    </ThemeProvider>
   );
 }

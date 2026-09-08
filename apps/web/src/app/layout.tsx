@@ -36,7 +36,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={`${crimsonPro.variable} ${sourceSans.variable}`} data-scroll-behavior="smooth">
+    <html
+      lang="en"
+      className={`${crimsonPro.variable} ${sourceSans.variable}`}
+      data-scroll-behavior="smooth"
+      suppressHydrationWarning
+    >
       <body className="font-body antialiased">
         <Providers>{children}</Providers>
       </body>
