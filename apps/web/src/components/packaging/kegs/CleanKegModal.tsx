@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -20,6 +20,11 @@ import { toast } from "@/hooks/use-toast";
 import { useDateFormat } from "@/hooks/useDateFormat";
 import { CheckCircle } from "lucide-react";
 import { humanizeMutationError } from "@/utils/mutation-errors";
+import {
+  WorkerLaborInput,
+  toApiLaborAssignments,
+  type WorkerAssignment,
+} from "@/components/labor/WorkerLaborInput";
 
 const cleanKegSchema = z.object({
   cleanedAt: z.date(),
@@ -62,6 +67,7 @@ export function CleanKegModal({
   });
 
   const cleanedAt = watch("cleanedAt");
+  const [laborAssignments, setLaborAssignments] = useState<WorkerAssignment[]>([]);
 
   // Reset when modal opens
   useEffect(() => {
@@ -70,6 +76,7 @@ export function CleanKegModal({
         cleanedAt: new Date(),
         notes: "",
       });
+      setLaborAssignments([]);
     }
   }, [open, reset]);
 
@@ -98,6 +105,7 @@ export function CleanKegModal({
       kegId,
       cleanedAt: data.cleanedAt,
       notes: data.notes,
+      laborAssignments: toApiLaborAssignments(laborAssignments),
     });
   };
 
@@ -151,6 +159,14 @@ export function CleanKegModal({
               Record the cleaning method, sanitizers used, and any observations (optional)
             </p>
           </div>
+
+          {/* Labor tracking — mirrors other activities (fills, vessel cleaning) */}
+          <WorkerLaborInput
+            activityType="cleaning"
+            value={laborAssignments}
+            onChange={setLaborAssignments}
+            activityLabel="this cleaning"
+          />
 
           <div className="flex justify-end space-x-2 pt-4">
             <Button type="button" variant="outline" onClick={onClose}>
