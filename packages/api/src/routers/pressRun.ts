@@ -413,16 +413,10 @@ export const pressRunRouter = router({
               ? input.totalJuiceVolumeL / totalAppleWeightKg
               : 0;
 
-          // Calculate pear percentage to determine if batch is perry (>50% pears)
-          const pearWeightKg = input.items.reduce((sum, item) => {
-            const purchaseItem = purchaseItems.find(p => p.id === item.purchaseItemId);
-            if (purchaseItem?.fruitType === "pear") {
-              return sum + item.quantityKg;
-            }
-            return sum;
-          }, 0);
-          const pearPercentage = totalAppleWeightKg > 0 ? (pearWeightKg / totalAppleWeightKg) * 100 : 0;
-          const productType = pearPercentage > 50 ? "perry" : "cider";
+          // Fresh-pressed batches are juice until fermentation starts —
+          // TTB does not track juice as a wine commodity. addAdditive
+          // upgrades juice to cider/perry when yeast is pitched.
+          const productType = "juice";
 
           // 5. Create the press run
           const newPressRun = await tx
@@ -1280,15 +1274,10 @@ export const pressRunRouter = router({
             0,
           );
 
-          // Calculate pear percentage to determine if batch is perry (>50% pears)
-          const pearWeightKg = loads.reduce((sum, load) => {
-            if (load.fruitType === "pear") {
-              return sum + parseFloat(load.appleWeightKg || "0");
-            }
-            return sum;
-          }, 0);
-          const pearPercentage = totalWeight > 0 ? (pearWeightKg / totalWeight) * 100 : 0;
-          const productType = pearPercentage > 50 ? "perry" : "cider";
+          // Fresh-pressed batches are juice until fermentation starts —
+          // TTB does not track juice as a wine commodity. addAdditive
+          // upgrades juice to cider/perry when yeast is pitched.
+          const productType = "juice";
 
           // Generate batch composition for naming
           const batchCompositionData: BatchComposition[] = loads.map((load) => {
@@ -1722,15 +1711,10 @@ export const pressRunRouter = router({
             });
           }
 
-          // Calculate pear percentage to determine if batch is perry (>50% pears)
-          const pearWeightKg = loads.reduce((sum, load) => {
-            if (load.fruitType === "pear") {
-              return sum + parseFloat(load.appleWeightKg || "0");
-            }
-            return sum;
-          }, 0);
-          const pearPercentage = totalWeight > 0 ? (pearWeightKg / totalWeight) * 100 : 0;
-          const productType = pearPercentage > 50 ? "perry" : "cider";
+          // Fresh-pressed batches are juice until fermentation starts —
+          // TTB does not track juice as a wine commodity. addAdditive
+          // upgrades juice to cider/perry when yeast is pitched.
+          const productType = "juice";
 
           const createdBatchIds: string[] = [];
 
