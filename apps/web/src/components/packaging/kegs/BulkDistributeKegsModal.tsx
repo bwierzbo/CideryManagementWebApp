@@ -61,10 +61,12 @@ export function BulkDistributeKegsModal({
   const utils = trpc.useUtils();
   const { formatDateTimeForInput, parseDateTimeFromInput } = useDateFormat();
 
-  // Separate valid (filled) from invalid kegs
+  // Filled and ready kegs can both be distributed (matches the
+  // bulkDistributeKegFills eligibility on the server)
   const { validKegs, invalidKegs } = useMemo(() => {
-    const valid = selectedKegs.filter((k) => k.status === "filled");
-    const invalid = selectedKegs.filter((k) => k.status !== "filled");
+    const distributable = (s: string | null) => s === "filled" || s === "ready";
+    const valid = selectedKegs.filter((k) => distributable(k.status));
+    const invalid = selectedKegs.filter((k) => !distributable(k.status));
     return { validKegs: valid, invalidKegs: invalid };
   }, [selectedKegs]);
 
@@ -173,7 +175,7 @@ export function BulkDistributeKegsModal({
                   {invalidKegs.length} keg{invalidKegs.length !== 1 ? "s" : ""} will be skipped
                 </p>
                 <p className="text-yellow-700 mt-1">
-                  Only kegs with "filled" status can be distributed. The following kegs have a different status:
+                  Only kegs in "filled" or "ready" status can be distributed. The following kegs have a different status:
                 </p>
                 <div className="flex flex-wrap gap-1 mt-2">
                   {invalidKegs.map((keg) => (
@@ -191,7 +193,7 @@ export function BulkDistributeKegsModal({
           <div className="text-center py-6 text-muted-foreground">
             <AlertTriangle className="h-8 w-8 mx-auto mb-2 text-yellow-500" />
             <p>No kegs are eligible for distribution.</p>
-            <p className="text-sm">Select kegs with "filled" status.</p>
+            <p className="text-sm">Select kegs in "filled" or "ready" status.</p>
           </div>
         ) : (
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
