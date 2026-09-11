@@ -2228,6 +2228,42 @@ export const batchRouter = router({
           })
           .returning();
 
+        // Pitching yeast turns juice into a fermenting product: upgrade
+        // juice batches to perry (>50% pear by input weight) or cider.
+        // Until this moment the batch is not a TTB wine commodity.
+        if (
+          batchData[0].productType === "juice" &&
+          input.additiveType === "Fermentation Organisms"
+        ) {
+          const fruitShares = await db
+            .select({
+              fruitType: baseFruitVarieties.fruitType,
+              kg: sql<string>`COALESCE(SUM(${batchCompositions.inputWeightKg}), 0)`,
+            })
+            .from(batchCompositions)
+            .innerJoin(
+              baseFruitVarieties,
+              eq(baseFruitVarieties.id, batchCompositions.varietyId),
+            )
+            .where(
+              and(
+                eq(batchCompositions.batchId, input.batchId),
+                isNull(batchCompositions.deletedAt),
+              ),
+            )
+            .groupBy(baseFruitVarieties.fruitType);
+          const totalKg = fruitShares.reduce((s, r) => s + Number(r.kg), 0);
+          const pearKg = Number(
+            fruitShares.find((r) => r.fruitType === "pear")?.kg ?? 0,
+          );
+          const upgradedType =
+            totalKg > 0 && pearKg / totalKg > 0.5 ? "perry" : "cider";
+          await db
+            .update(batches)
+            .set({ productType: upgradedType, updatedAt: new Date() })
+            .where(eq(batches.id, input.batchId));
+        }
+
         // Save labor assignments if provided
         if (input.laborAssignments && input.laborAssignments.length > 0) {
           for (const assignment of input.laborAssignments) {
