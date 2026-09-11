@@ -51,6 +51,11 @@ import {
 import { performanceMonitor } from "@/lib/performance-monitor";
 import { PackagingFiltersSkeleton, PackagingTableRowSkeleton } from "./loading";
 import { BulkDistributeKegsModal } from "@/components/packaging/kegs/BulkDistributeKegsModal";
+import {
+  WorkerLaborInput,
+  toApiLaborAssignments,
+  type WorkerAssignment,
+} from "@/components/labor/WorkerLaborInput";
 import { BulkReturnKegsModal } from "@/components/packaging/kegs/BulkReturnKegsModal";
 import { VolumeUnitToggle } from "@/components/ui/volume-unit-toggle";
 import { useVolumeUnit } from "@/hooks/use-volume-unit";
@@ -274,6 +279,7 @@ export default function PackagingPage() {
   const [bulkCleanOpen, setBulkCleanOpen] = useState(false);
   const [bulkCleanDate, setBulkCleanDate] = useState("");
   const [bulkCleanNotes, setBulkCleanNotes] = useState("");
+  const [bulkCleanLabor, setBulkCleanLabor] = useState<WorkerAssignment[]>([]);
   const bulkCleanMutation = trpc.packaging.kegs.bulkCleanKegs.useMutation({
     onSuccess: (res) => {
       toast({
@@ -286,6 +292,7 @@ export default function PackagingPage() {
       utils.packaging.list.invalidate();
       utils.packaging.getStats.invalidate();
       setBulkCleanOpen(false);
+      setBulkCleanLabor([]);
       setSelectedItems([]);
       setShowBulkActions(false);
     },
@@ -919,6 +926,14 @@ export default function PackagingPage() {
                 className="mt-1"
               />
             </div>
+            {/* One work session for the whole batch of kegs — labor is
+                recorded once, not multiplied per keg */}
+            <WorkerLaborInput
+              activityType="cleaning"
+              value={bulkCleanLabor}
+              onChange={setBulkCleanLabor}
+              activityLabel="this cleaning session"
+            />
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => setBulkCleanOpen(false)}>
                 Cancel
@@ -930,6 +945,7 @@ export default function PackagingPage() {
                     kegIds: dirtyKegIds,
                     cleanedAt: new Date(bulkCleanDate),
                     ...(bulkCleanNotes.trim() ? { notes: bulkCleanNotes.trim() } : {}),
+                    laborAssignments: toApiLaborAssignments(bulkCleanLabor),
                   })
                 }
               >

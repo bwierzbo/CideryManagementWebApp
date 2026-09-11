@@ -31,6 +31,37 @@ import { writeLedgerEntry } from "../lib/volume-ledger";
 import { recomputeBatchVolume } from "../services/batch-volume-recompute";
 
 /**
+ * Attach labor to a keg cleaning operation (hours -> snapshot rate ->
+ * cost), the same convention as fills and vessel cleaning. Rates are
+ * snapshotted at assignment time for accurate COGS.
+ */
+async function saveKegCleaningLabor(
+  kegCleaningOperationId: string,
+  laborAssignments: Array<{ workerId: string; hoursWorked: number }> | undefined,
+  createdBy: string | undefined,
+): Promise<void> {
+  if (!laborAssignments || laborAssignments.length === 0) return;
+  for (const assignment of laborAssignments) {
+    const [worker] = await db
+      .select({ hourlyRate: workers.hourlyRate })
+      .from(workers)
+      .where(eq(workers.id, assignment.workerId))
+      .limit(1);
+    const hourlyRate = parseFloat(worker?.hourlyRate?.toString() || "20.00");
+    const laborCost = assignment.hoursWorked * hourlyRate;
+    await db.insert(activityLaborAssignments).values({
+      activityType: "cleaning",
+      kegCleaningOperationId,
+      workerId: assignment.workerId,
+      hoursWorked: assignment.hoursWorked.toString(),
+      hourlyRateSnapshot: hourlyRate.toString(),
+      laborCost: laborCost.toString(),
+      createdBy: createdBy ?? null,
+    });
+  }
+}
+
+/**
  * Reverse the batch-volume effect of a keg fill (shared by void + delete).
  *
  * fillKegs deducts volumeTaken+loss from the batch and, if that emptied it,
@@ -1848,6 +1879,10 @@ export const kegsRouter = router({
           .or(z.string().transform((val) => new Date(val)))
           .optional(),
         notes: z.string().optional(),
+        laborAssignments: z.array(z.object({
+          workerId: z.string().uuid(),
+          hoursWorked: z.number().positive(),
+        })).optional(),
       }),
     )
     .mutation(async ({ input, ctx }) => {
@@ -1884,12 +1919,17 @@ export const kegsRouter = router({
           .where(eq(kegs.id, input.kegId));
 
         // Log the cleaning event (per-keg history)
-        await db.insert(kegCleaningOperations).values({
-          kegId: input.kegId,
-          cleanedAt: input.cleanedAt ?? new Date(),
-          cleanedBy: ctx.user?.id ?? null,
-          notes: input.notes ?? null,
-        });
+        const [cleaningOp] = await db
+          .insert(kegCleaningOperations)
+          .values({
+            kegId: input.kegId,
+            cleanedAt: input.cleanedAt ?? new Date(),
+            cleanedBy: ctx.user?.id ?? null,
+            notes: input.notes ?? null,
+          })
+          .returning({ id: kegCleaningOperations.id });
+
+        await saveKegCleaningLabor(cleaningOp.id, input.laborAssignments, ctx.user?.id);
 
         return {
           success: true,
@@ -1920,6 +1960,10 @@ export const kegsRouter = router({
           .or(z.string().transform((val) => new Date(val)))
           .optional(),
         notes: z.string().optional(),
+        laborAssignments: z.array(z.object({
+          workerId: z.string().uuid(),
+          hoursWorked: z.number().positive(),
+        })).optional(),
       }),
     )
     .mutation(async ({ input, ctx }) => {
@@ -1941,14 +1985,29 @@ export const kegsRouter = router({
 
           // Log one cleaning event per keg (per-keg history)
           const cleanedAt = input.cleanedAt ?? new Date();
-          await db.insert(kegCleaningOperations).values(
-            cleanable.map((kegId) => ({
-              kegId,
-              cleanedAt,
-              cleanedBy: ctx.user?.id ?? null,
-              notes: input.notes ?? null,
-            })),
-          );
+          const cleaningOps = await db
+            .insert(kegCleaningOperations)
+            .values(
+              cleanable.map((kegId) => ({
+                kegId,
+                cleanedAt,
+                cleanedBy: ctx.user?.id ?? null,
+                notes: input.notes ?? null,
+              })),
+            )
+            .returning({ id: kegCleaningOperations.id });
+
+          // The whole multi-keg session is one block of work, so labor
+          // attaches to the first cleaning record only — attaching to
+          // every keg would multiply the cost (same convention as
+          // multi-keg fills).
+          if (cleaningOps.length > 0) {
+            await saveKegCleaningLabor(
+              cleaningOps[0].id,
+              input.laborAssignments,
+              ctx.user?.id,
+            );
+          }
         }
 
         return {
