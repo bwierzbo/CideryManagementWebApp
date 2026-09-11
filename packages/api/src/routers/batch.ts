@@ -419,7 +419,7 @@ const batchIdSchema = z.object({
 });
 
 const listBatchesSchema = z.object({
-  status: z.enum(["fermentation", "aging", "conditioning", "completed", "discarded"]).optional(),
+  status: z.enum(["juice", "fermentation", "aging", "conditioning", "completed", "discarded"]).optional(),
   productType: z.enum(["juice", "cider", "perry", "wine", "cyser", "brandy", "pommeau", "other"]).optional(),
   vesselId: z.string().uuid().optional(),
   unassigned: z.boolean().optional(), // Filter for batches without a vessel
@@ -431,6 +431,53 @@ const listBatchesSchema = z.object({
   includeDeleted: z.boolean().default(false),
   includeArchived: z.boolean().default(false), // Include archived batches in results
 });
+
+/**
+ * A juice batch becomes a fermenting product the moment fermentation
+ * demonstrably starts — yeast pitched, or (wild ferment) a measured
+ * gravity drop. Classifies from the batch's fruit composition:
+ * >50% pear by input weight = perry, otherwise cider. Sets status to
+ * 'fermentation'. Until this moment the batch is not a TTB commodity.
+ */
+async function upgradeJuiceBatchToFermenting(batchId: string): Promise<void> {
+  const fruitShares = await db
+    .select({
+      fruitType: baseFruitVarieties.fruitType,
+      kg: sql<string>`COALESCE(SUM(${batchCompositions.inputWeightKg}), 0)`,
+    })
+    .from(batchCompositions)
+    .innerJoin(
+      baseFruitVarieties,
+      eq(baseFruitVarieties.id, batchCompositions.varietyId),
+    )
+    .where(
+      and(
+        eq(batchCompositions.batchId, batchId),
+        isNull(batchCompositions.deletedAt),
+      ),
+    )
+    .groupBy(baseFruitVarieties.fruitType);
+  const totalKg = fruitShares.reduce((s, r) => s + Number(r.kg), 0);
+  const pearKg = Number(
+    fruitShares.find((r) => r.fruitType === "pear")?.kg ?? 0,
+  );
+  const upgradedType =
+    totalKg > 0 && pearKg / totalKg > 0.5 ? "perry" : "cider";
+  await db
+    .update(batches)
+    .set({
+      productType: upgradedType,
+      status: "fermentation",
+      updatedAt: new Date(),
+    })
+    .where(eq(batches.id, batchId));
+}
+
+/**
+ * SG drop below original gravity that counts as fermentation having
+ * started (beyond hydrometer noise) for wild-ferment detection.
+ */
+const WILD_FERMENT_SG_DROP = 0.005;
 
 const addMeasurementSchema = z.object({
   batchId: z.string().uuid("Invalid batch ID"),
@@ -564,7 +611,7 @@ const updateBatchSchema = z.object({
   batchId: z.string().uuid("Invalid batch ID"),
   name: z.string().optional(),
   batchNumber: z.string().optional(),
-  status: z.enum(["fermentation", "aging", "conditioning", "completed", "discarded"]).optional(),
+  status: z.enum(["juice", "fermentation", "aging", "conditioning", "completed", "discarded"]).optional(),
   productType: z.enum(["juice", "cider", "perry", "wine", "cyser", "brandy", "pommeau", "other"]).optional(),
   fermentationStage: z.enum(["not_started", "not_applicable", "early", "mid", "approaching_dry", "terminal", "unknown"]).optional(),
   customName: z.string().optional(),
@@ -1951,6 +1998,21 @@ export const batchRouter = router({
           })
           .returning();
 
+        // Wild-ferment detection: a juice batch whose gravity has
+        // dropped meaningfully below OG is fermenting on native yeast
+        // even though no yeast additive was ever recorded.
+        const og = batchData[0].originalGravity
+          ? Number(batchData[0].originalGravity)
+          : null;
+        if (
+          batchData[0].productType === "juice" &&
+          og !== null &&
+          correctedSg != null &&
+          og - correctedSg >= WILD_FERMENT_SG_DROP
+        ) {
+          await upgradeJuiceBatchToFermenting(input.batchId);
+        }
+
         // Save labor assignments if provided
         if (input.laborAssignments && input.laborAssignments.length > 0) {
           for (const assignment of input.laborAssignments) {
@@ -2228,40 +2290,12 @@ export const batchRouter = router({
           })
           .returning();
 
-        // Pitching yeast turns juice into a fermenting product: upgrade
-        // juice batches to perry (>50% pear by input weight) or cider.
-        // Until this moment the batch is not a TTB wine commodity.
+        // Pitching yeast turns juice into a fermenting product.
         if (
           batchData[0].productType === "juice" &&
           input.additiveType === "Fermentation Organisms"
         ) {
-          const fruitShares = await db
-            .select({
-              fruitType: baseFruitVarieties.fruitType,
-              kg: sql<string>`COALESCE(SUM(${batchCompositions.inputWeightKg}), 0)`,
-            })
-            .from(batchCompositions)
-            .innerJoin(
-              baseFruitVarieties,
-              eq(baseFruitVarieties.id, batchCompositions.varietyId),
-            )
-            .where(
-              and(
-                eq(batchCompositions.batchId, input.batchId),
-                isNull(batchCompositions.deletedAt),
-              ),
-            )
-            .groupBy(baseFruitVarieties.fruitType);
-          const totalKg = fruitShares.reduce((s, r) => s + Number(r.kg), 0);
-          const pearKg = Number(
-            fruitShares.find((r) => r.fruitType === "pear")?.kg ?? 0,
-          );
-          const upgradedType =
-            totalKg > 0 && pearKg / totalKg > 0.5 ? "perry" : "cider";
-          await db
-            .update(batches)
-            .set({ productType: upgradedType, updatedAt: new Date() })
-            .where(eq(batches.id, input.batchId));
+          await upgradeJuiceBatchToFermenting(input.batchId);
         }
 
         // Save labor assignments if provided

@@ -20,6 +20,7 @@ import { unitEnum } from "./schema/shared";
 import type { BatchMeasurementOverride } from "./schema/organization";
 export { unitEnum };
 export const batchStatusEnum = pgEnum("batch_status", [
+  "juice",
   "fermentation",
   "aging",
   "conditioning",

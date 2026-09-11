@@ -1755,6 +1755,7 @@ export default function BatchDetailsPage() {
                   <SelectValue placeholder="Select new status" />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="juice">Juice (pre-ferment)</SelectItem>
                   <SelectItem value="fermentation">Fermentation</SelectItem>
                   <SelectItem value="aging">Aging</SelectItem>
                   <SelectItem value="conditioning">Conditioning</SelectItem>
