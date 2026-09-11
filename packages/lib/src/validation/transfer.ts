@@ -17,7 +17,7 @@ export interface BatchData {
   id: string;
   batchNumber: string;
   currentVolumeL: number;
-  status: "fermentation" | "aging" | "conditioning" | "completed" | "discarded";
+  status: "juice" | "fermentation" | "aging" | "conditioning" | "completed" | "discarded";
   vesselId?: string;
 }
 
