@@ -256,12 +256,16 @@ export default function PackagingPage() {
     if (selectedKegs.length === 0) {
       return { canDistribute: false, canReturn: false, canClean: false };
     }
-    const hasFilledKegs = selectedKegs.some((k) => k.status === "filled");
+    // Filled and ready kegs can both be distributed (matches the
+    // bulkDistributeKegFills eligibility on the server)
+    const hasDistributableKegs = selectedKegs.some(
+      (k) => k.status === "filled" || k.status === "ready",
+    );
     const hasDistributedKegs = selectedKegs.some((k) => k.status === "distributed");
     // "Needs Cleaning" = the physical keg sits in cleaning status
     const hasDirtyKegs = selectedKegs.some((k) => k.kegStatus === "cleaning" && k.kegId);
     return {
-      canDistribute: hasFilledKegs,
+      canDistribute: hasDistributableKegs,
       canReturn: hasDistributedKegs,
       canClean: hasDirtyKegs,
     };
