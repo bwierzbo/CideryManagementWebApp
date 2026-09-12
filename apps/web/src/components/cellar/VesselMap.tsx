@@ -1444,6 +1444,26 @@ const updateBatchStatusMutation = trpc.batch.update.useMutation({
                   </div>
                 </div>
 
+                {/* Volume integrity alarm: book volume disagrees with the
+                    event ledger, or exceeds physical capacity */}
+                {liquidMapVessel?.volumeIntegrity && (
+                  <div className="mb-2 rounded-md border border-amber-300 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-800">
+                    <span className="font-semibold">⚠ Volume check:</span>{" "}
+                    {liquidMapVessel.volumeIntegrity.overCapacity && (
+                      <span>book volume exceeds vessel capacity. </span>
+                    )}
+                    {liquidMapVessel.volumeIntegrity.driftL !== null && (
+                      <span>
+                        book {liquidMapVessel.volumeIntegrity.storedL.toFixed(0)} L ≠ ledger{" "}
+                        {(liquidMapVessel.volumeIntegrity.ledgerL ?? 0).toFixed(0)} L (
+                        {liquidMapVessel.volumeIntegrity.driftL > 0 ? "+" : ""}
+                        {liquidMapVessel.volumeIntegrity.driftL.toFixed(0)} L).{" "}
+                      </span>
+                    )}
+                    Verify the tank and correct via Volume Adjustment.
+                  </div>
+                )}
+
                 {/* Filter & Carbonation Status */}
                 {liquidMapVessel?.batchId && (
                   <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-gray-500 mb-2">
