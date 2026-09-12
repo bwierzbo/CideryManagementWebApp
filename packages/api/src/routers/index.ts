@@ -4537,11 +4537,30 @@ export const appRouter = router({
                 }
               }
 
-              // For non-pommeau blends, compute volume-weighted ABV from batch values
+              // For non-pommeau blends, compute volume-weighted ABV.
+              // A missing stored ABV must not silently skip the dilution
+              // math (a juice blend-in that skips leaves the destination
+              // reading the undiluted cider ABV — the Pear Cider 2026-065
+              // keg-label bug). Fallbacks: unfermented juice contributes
+              // 0% ABV; fermented product without a stored ABV estimates
+              // from OG assuming fully fermented ((OG-1.000) x 131.25).
               if (!isPommeauBlend) {
-                const srcAbv = parseFloat(sourceBatch[0].actualAbv || sourceBatch[0].estimatedAbv || "0");
-                const dstAbv = parseFloat(destBatch[0].actualAbv || destBatch[0].estimatedAbv || "0");
-                if (srcAbv > 0 || dstAbv > 0) {
+                const abvSignal = (b: {
+                  actualAbv: string | null;
+                  estimatedAbv: string | null;
+                  originalGravity: string | null;
+                  productType: string | null;
+                }): number | null => {
+                  const stored = parseFloat(b.actualAbv || b.estimatedAbv || "");
+                  if (!Number.isNaN(stored)) return stored;
+                  if (b.productType === "juice") return 0;
+                  const og = b.originalGravity ? parseFloat(b.originalGravity) : NaN;
+                  if (!Number.isNaN(og) && og > 1.0) return (og - 1.0) * 131.25;
+                  return null;
+                };
+                const srcAbv = abvSignal(sourceBatch[0]);
+                const dstAbv = abvSignal(destBatch[0]);
+                if (srcAbv !== null && dstAbv !== null && newVolumeL > 0) {
                   const blendedAbv = ((input.volumeL * srcAbv) + (destCurrentVolumeL * dstAbv)) / newVolumeL;
                   newEstimatedAbv = blendedAbv.toFixed(2);
                 }
