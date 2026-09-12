@@ -5641,7 +5641,7 @@ export const batchRouter = router({
             .where(
               and(
                 eq(batches.vesselId, input.destinationVesselId!),
-                inArray(batches.status, ["fermentation", "aging", "conditioning"]),
+                inArray(batches.status, ["juice", "fermentation", "aging", "conditioning"]),
                 isNull(batches.deletedAt),
               ),
             )

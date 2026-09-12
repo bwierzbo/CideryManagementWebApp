@@ -1108,7 +1108,7 @@ export function BatchActivityHistory({ batchId, bottleRunId }: BatchActivityHist
                   <span className="text-muted-foreground">Current Status:</span>
                   <Badge
                     className="ml-2"
-                    variant={["fermentation", "aging", "conditioning"].includes(batch.status) ? "default" : "secondary"}
+                    variant={["juice", "fermentation", "aging", "conditioning"].includes(batch.status) ? "default" : "secondary"}
                   >
                     {batch.status}
                   </Badge>

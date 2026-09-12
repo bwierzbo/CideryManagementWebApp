@@ -2623,7 +2623,7 @@ export const appRouter = router({
             batches,
             and(
               eq(vessels.id, batches.vesselId),
-              inArray(batches.status, ["fermentation", "aging", "conditioning"]),
+              inArray(batches.status, ["juice", "fermentation", "aging", "conditioning"]),
               isNull(batches.deletedAt),
             ),
           )
@@ -3067,7 +3067,7 @@ export const appRouter = router({
           .innerJoin(batches, and(
             eq(batches.vesselId, vessels.id),
             isNull(batches.deletedAt),
-            inArray(batches.status, ["fermentation", "aging", "conditioning"]),
+            inArray(batches.status, ["juice", "fermentation", "aging", "conditioning"]),
           ))
           .where(isNull(vessels.deletedAt));
 
@@ -3626,7 +3626,7 @@ export const appRouter = router({
                 .where(
                   and(
                     eq(batches.vesselId, input.fromVesselId),
-                    inArray(batches.status, ["fermentation", "aging", "conditioning"]),
+                    inArray(batches.status, ["juice", "fermentation", "aging", "conditioning"]),
                     isNull(batches.deletedAt),
                   ),
                 )
@@ -3752,7 +3752,7 @@ export const appRouter = router({
               .where(
                 and(
                   eq(batches.vesselId, input.toVesselId),
-                  inArray(batches.status, ["fermentation", "aging", "conditioning"]),
+                  inArray(batches.status, ["juice", "fermentation", "aging", "conditioning"]),
                   isNull(batches.deletedAt),
                 ),
               )
@@ -3805,7 +3805,7 @@ export const appRouter = router({
               .where(
                 and(
                   eq(batches.vesselId, input.fromVesselId),
-                  inArray(batches.status, ["fermentation", "aging", "conditioning"]),
+                  inArray(batches.status, ["juice", "fermentation", "aging", "conditioning"]),
                   isNull(batches.deletedAt),
                 ),
               )
