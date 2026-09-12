@@ -352,7 +352,7 @@ export const pressRunRouter = router({
               .where(
                 and(
                   eq(batches.vesselId, assignment.toVesselId),
-                  eq(batches.status, "fermentation"),
+                  inArray(batches.status, ["juice", "fermentation"]),
                   isNull(batches.deletedAt),
                 ),
               )
@@ -542,7 +542,7 @@ export const pressRunRouter = router({
               .where(
                 and(
                   eq(batches.vesselId, assignment.toVesselId),
-                  eq(batches.status, "fermentation"),
+                  inArray(batches.status, ["juice", "fermentation"]),
                   isNull(batches.deletedAt),
                 ),
               )
@@ -1590,7 +1590,7 @@ export const pressRunRouter = router({
               .where(
                 and(
                   eq(batches.vesselId, assignment.toVesselId),
-                  eq(batches.status, "fermentation"),
+                  inArray(batches.status, ["juice", "fermentation"]),
                   isNull(batches.deletedAt),
                 ),
               )
@@ -1744,7 +1744,7 @@ export const pressRunRouter = router({
               .where(
                 and(
                   eq(batches.vesselId, assignment.toVesselId),
-                  eq(batches.status, "fermentation"),
+                  inArray(batches.status, ["juice", "fermentation"]),
                   isNull(batches.deletedAt),
                 ),
               )

@@ -6080,6 +6080,7 @@ export const appRouter = router({
               and(
                 eq(batches.vesselId, input.vesselId),
                 or(
+                  eq(batches.status, "juice"),
                   eq(batches.status, "fermentation"),
                   eq(batches.status, "conditioning"),
                   eq(batches.status, "aging"),
@@ -6255,6 +6256,7 @@ export const appRouter = router({
               and(
                 eq(batches.vesselId, input.vesselId),
                 or(
+                  eq(batches.status, "juice"),
                   eq(batches.status, "fermentation"),
                   eq(batches.status, "conditioning"),
                   eq(batches.status, "aging"),
