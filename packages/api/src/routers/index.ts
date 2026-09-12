@@ -3535,17 +3535,85 @@ export const appRouter = router({
           }
         }
 
+        // Volume integrity: ledger-reconstructed balance per batch, so the
+        // vessel map can alarm when the book volume disagrees with the
+        // event history or exceeds the vessel's physical capacity.
+        const ledgerBalances = new Map<
+          string,
+          { sum: number; hasCreation: boolean }
+        >();
+        if (batchIds.length > 0) {
+          const ledgerRows = await db.execute(sql`
+            SELECT batch_id,
+                   SUM(volume_change)::float AS ledger_sum,
+                   BOOL_OR(event_type = 'creation') AS has_creation
+            FROM batch_volume_ledger
+            WHERE batch_id IN (${sql.join(batchIds.map((id) => sql`${id}`), sql`, `)})
+            GROUP BY batch_id
+          `);
+          for (const r of ledgerRows.rows as Array<{
+            batch_id: string;
+            ledger_sum: number;
+            has_creation: boolean;
+          }>) {
+            ledgerBalances.set(r.batch_id, {
+              sum: Number(r.ledger_sum),
+              hasCreation: Boolean(r.has_creation),
+            });
+          }
+        }
+        const toLiters = (value: number, unit: string | null) =>
+          unit === "gal" ? value * 3.78541 : value;
+
         // Combine vessel data with measurements and last activity
-        const vesselsWithMeasurements = vesselsWithBatches.map((vessel) => ({
-          ...vessel,
-          latestMeasurement: vessel.batchId
-            ? latestMeasurements.get(vessel.batchId)
-            : null,
-          lastActivity: !vessel.batchId
-            ? lastActivityMap.get(vessel.vesselId) || null
-            : null,
-          isBlend: vessel.batchId ? blendBatchIds.has(vessel.batchId) : false,
-        }));
+        const vesselsWithMeasurements = vesselsWithBatches.map((vessel) => {
+          let volumeIntegrity: {
+            overCapacity: boolean;
+            storedL: number;
+            ledgerL: number | null;
+            driftL: number | null;
+          } | null = null;
+          if (vessel.batchId && vessel.currentVolume) {
+            const storedL = toLiters(
+              parseFloat(vessel.currentVolume.toString()),
+              vessel.currentVolumeUnit,
+            );
+            const capacityL = vessel.vesselCapacity
+              ? toLiters(
+                  parseFloat(vessel.vesselCapacity.toString()),
+                  vessel.vesselCapacityUnit,
+                )
+              : 0;
+            const overCapacity = capacityL > 0 && storedL > capacityL + 1;
+            const ledger = ledgerBalances.get(vessel.batchId);
+            // Drift only alarms for ledger-complete batches (creation entry
+            // present) — partial ledgers predate the volume-ledger rollout.
+            const driftL =
+              ledger && ledger.hasCreation ? storedL - ledger.sum : null;
+            const driftAlarm =
+              driftL !== null &&
+              Math.abs(driftL) > Math.max(2, storedL * 0.02);
+            if (overCapacity || driftAlarm) {
+              volumeIntegrity = {
+                overCapacity,
+                storedL,
+                ledgerL: ledger ? ledger.sum : null,
+                driftL,
+              };
+            }
+          }
+          return {
+            ...vessel,
+            latestMeasurement: vessel.batchId
+              ? latestMeasurements.get(vessel.batchId)
+              : null,
+            lastActivity: !vessel.batchId
+              ? lastActivityMap.get(vessel.vesselId) || null
+              : null,
+            isBlend: vessel.batchId ? blendBatchIds.has(vessel.batchId) : false,
+            volumeIntegrity,
+          };
+        });
 
         return {
           vessels: vesselsWithMeasurements,
