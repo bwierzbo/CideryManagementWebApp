@@ -867,7 +867,7 @@ export const reportsRouter = router({
           FROM batches
           WHERE deleted_at IS NULL
             AND vessel_id IS NOT NULL
-            AND status IN ('fermentation', 'aging', 'conditioning')
+            AND status IN ('juice', 'fermentation', 'aging', 'conditioning')
         `).then(r => r.rows) as any[];
 
         // 2. Packaged (bottles + kegs) within date range

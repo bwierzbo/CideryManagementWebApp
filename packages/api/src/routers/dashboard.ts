@@ -45,7 +45,7 @@ export const dashboardRouter = router({
           COALESCE(SUM(CAST(current_volume_liters AS NUMERIC)), 0) as volume_l
         FROM batches
         WHERE deleted_at IS NULL
-          AND status IN ('fermentation', 'aging', 'conditioning')
+          AND status IN ('juice', 'fermentation', 'aging', 'conditioning')
           AND vessel_id IS NOT NULL
         GROUP BY status
       `);
@@ -142,7 +142,7 @@ export const dashboardRouter = router({
         .where(
           and(
             isNull(batches.deletedAt),
-            inArray(batches.status, ["fermentation", "aging", "conditioning"]),
+            inArray(batches.status, ["juice", "fermentation", "aging", "conditioning"]),
             sql`CAST(${batches.currentVolumeLiters} AS NUMERIC) > 0`,
             sql`${batches.vesselId} IS NOT NULL`,
           )
@@ -282,7 +282,7 @@ export const dashboardRouter = router({
           .where(
             and(
               isNull(batches.deletedAt),
-              inArray(batches.status, ["fermentation", "aging", "conditioning"]),
+              inArray(batches.status, ["juice", "fermentation", "aging", "conditioning"]),
               sql`CAST(${batches.currentVolumeLiters} AS NUMERIC) > 0`,
               // Exclude unassigned batches — they're remnants waiting to be completed
               sql`${batches.vesselId} IS NOT NULL`,

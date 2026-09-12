@@ -126,7 +126,7 @@ async function loadActiveBatches(): Promise<ActiveBatchRow[]> {
     .where(
       and(
         isNull(batches.deletedAt),
-        inArray(batches.status, ["fermentation", "aging", "conditioning"]),
+        inArray(batches.status, ["juice", "fermentation", "aging", "conditioning"]),
         sql`CAST(${batches.currentVolumeLiters} AS NUMERIC) > 0`,
         sql`${batches.vesselId} IS NOT NULL`,
       ),
