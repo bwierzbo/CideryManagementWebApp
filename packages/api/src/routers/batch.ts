@@ -6808,15 +6808,16 @@ export const batchRouter = router({
           // 4. Atomically allocate the juice. volume_allocated is written as a
           // SQL delta guarded in the WHERE (…+ transfer <= volume), so two
           // concurrent transfers can't both read the same "available" and
-          // over-allocate (lost update under READ COMMITTED). deletedAt is set
-          // via CASE against the live (pre-update) row so the fully-allocated
-          // soft-delete stays correct even if a concurrent transfer interleaved.
+          // over-allocate (lost update under READ COMMITTED). Full allocation
+          // does NOT soft-delete the item: TTB production for filed years sums
+          // live purchase items, and auto-deleting consumed 2025 items erased
+          // 1,353 gal of filed production (found+restored 2026-09-15). Depleted
+          // items simply show 0 remaining, like packaging materials.
           const allocated = await tx
             .update(juicePurchaseItems)
             .set({
               volumeAllocated: sql`COALESCE(${juicePurchaseItems.volumeAllocated}, 0) + ${transferVolumeL}`,
               updatedAt: new Date(),
-              deletedAt: sql`CASE WHEN COALESCE(${juicePurchaseItems.volumeAllocated}, 0) + ${transferVolumeL} >= ${juicePurchaseItems.volume} THEN now() ELSE ${juicePurchaseItems.deletedAt} END`,
             })
             .where(
               and(
